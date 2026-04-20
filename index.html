@@ -331,6 +331,7 @@
     <button id="tabOverviewBtn">Overview</button>
     <button id="tabLeadersBtn">Leaders</button>
     <button id="tabHaremBtn">Harem</button>
+    <button id="sendModeBtn">Send: 50%</button>
     <button id="endTurnBtn">End Turn</button>
     <button id="restartBtn">Restart</button>
   </header>
@@ -389,6 +390,9 @@
     const hexSize = 27;
     const sqrt3 = Math.sqrt(3);
     const HUMAN_MOVES_PER_TURN = 5;
+    const BOARD_DRAG_THRESHOLD = 8;
+    const BOARD_DRAG_HOLD_MS = 180;
+    const SEND_OPTIONS = [0.25, 0.5, 1];
     const THEME_COLORS = {
       green: "#2f7d4d",
       red: "#b03a2e",
@@ -578,6 +582,7 @@
     const tabOverviewBtn = document.getElementById("tabOverviewBtn");
     const tabLeadersBtn = document.getElementById("tabLeadersBtn");
     const tabHaremBtn = document.getElementById("tabHaremBtn");
+    const sendModeBtn = document.getElementById("sendModeBtn");
     const endTurnBtn = document.getElementById("endTurnBtn");
     const restartBtn = document.getElementById("restartBtn");
     const logEl = document.getElementById("log");
@@ -606,6 +611,7 @@
     let humanMovesRemaining = HUMAN_MOVES_PER_TURN;
     let queenPortraits = {};
     let activeMenuTab = "overview";
+    let sendModeIndex = 1;
     let hoveredTile = null;
     let boardScale = 1;
     const MIN_BOARD_SCALE = 0.6;
@@ -619,6 +625,10 @@
     let dragPointerId = null;
     let dragLastX = 0;
     let dragLastY = 0;
+    let dragOriginX = 0;
+    let dragOriginY = 0;
+    let dragArmed = false;
+    let dragHoldTimer = null;
     let visualTick = 0;
     let landBackdropCanvas = null;
     let oceanBackdropCanvas = null;
@@ -1519,9 +1529,18 @@
         }
 
         if (selectedTile === tile) {
-          drawHex(tile.cx, tile.cy, hexSize - 0.3);
-          ctx.lineWidth = 3.8;
-          ctx.strokeStyle = "#f2c94c";
+          ctx.save();
+          drawHex(tile.cx, tile.cy, hexSize + 0.5);
+          ctx.shadowBlur = 16;
+          ctx.shadowColor = "rgba(242, 201, 76, 0.95)";
+          ctx.lineWidth = 5.4;
+          ctx.strokeStyle = "rgba(255, 228, 118, 0.98)";
+          ctx.stroke();
+          ctx.restore();
+
+          drawHex(tile.cx, tile.cy, hexSize - 1.6);
+          ctx.lineWidth = 2.4;
+          ctx.strokeStyle = "rgba(255, 245, 178, 0.92)";
           ctx.stroke();
         }
 
@@ -1800,10 +1819,18 @@
       }
       if (!gameOver && FACTIONS[currentFactionIndex].isHuman) {
         turnInfo.textContent += ` • Moves: ${humanMovesRemaining}/${HUMAN_MOVES_PER_TURN}`;
+        turnInfo.textContent += ` • Send: ${Math.round(SEND_OPTIONS[sendModeIndex] * 100)}%`;
       }
       if (gameOver) {
         turnInfo.textContent += " • Game Over";
       }
+      sendModeBtn.textContent = `Send: ${Math.round(SEND_OPTIONS[sendModeIndex] * 100)}%`;
+    }
+
+    function sendAmountForTile(tile) {
+      const percent = SEND_OPTIONS[sendModeIndex];
+      if (percent >= 1) return tile.troops;
+      return Math.max(1, Math.floor(tile.troops * percent));
     }
 
     function renderLeaderPanel() {
@@ -2015,7 +2042,7 @@
 
     function resolveMove(fromTile, toTile, factionId, forceAmount = null, attackBonus = 0) {
       if (fromTile.terrain === "ocean" || toTile.terrain === "ocean") return null;
-      const amount = forceAmount ?? Math.floor(fromTile.troops / 2);
+      const amount = Math.min(fromTile.troops, forceAmount ?? Math.floor(fromTile.troops / 2));
       if (amount < 1) return null;
       if (toTile.owner === factionId) {
         fromTile.troops -= amount;
@@ -2047,7 +2074,6 @@
       } else {
         toTile.troops = Math.max(0, toTile.troops - effective);
       }
-      if (fromTile.troops < 1) fromTile.troops = 1;
       return {
         mode: "attack",
         amount,
@@ -2317,7 +2343,7 @@
       }
 
       const beforeOwner = tile.owner;
-      const send = Math.floor(selectedTile.troops / 2);
+      const send = sendAmountForTile(selectedTile);
       const selectedUnit = getUnitAtTile(selectedTile);
       let unitBonus = 0;
       if (selectedUnit && selectedUnit.mode === "fight" && !selectedUnit.usedThisTurn && beforeOwner !== humanId) {
@@ -2326,7 +2352,7 @@
         unitBonus = Math.max(1, base + moraleTierBonus(st.morale));
       }
       const attackBonus = beforeOwner === humanId ? 0 : passiveWarBonus() + unitBonus;
-      const result = resolveMove(selectedTile, tile, humanId, null, attackBonus);
+      const result = resolveMove(selectedTile, tile, humanId, send, attackBonus);
       if (!result) return;
       if (beforeOwner !== humanId && unitBonus > 0 && selectedUnit) {
         selectedUnit.usedThisTurn = true;
@@ -2466,21 +2492,50 @@
       if (ev.button !== 0) return;
       isDraggingBoard = true;
       dragMoved = false;
+      dragArmed = false;
       dragPointerId = ev.pointerId;
+      dragOriginX = ev.clientX;
+      dragOriginY = ev.clientY;
       dragLastX = ev.clientX;
       dragLastY = ev.clientY;
       if (ev.currentTarget && ev.currentTarget.setPointerCapture) {
         ev.currentTarget.setPointerCapture(ev.pointerId);
       }
-      boardWrapEl.style.cursor = "grabbing";
+      boardWrapEl.style.cursor = "grab";
+      if (dragHoldTimer) clearTimeout(dragHoldTimer);
+      dragHoldTimer = setTimeout(() => {
+        if (isDraggingBoard && dragPointerId === ev.pointerId) {
+          dragArmed = true;
+          boardWrapEl.style.cursor = "grabbing";
+        }
+      }, BOARD_DRAG_HOLD_MS);
       ev.preventDefault();
     }
 
     function onBoardPointerMove(ev) {
       if (!isDraggingBoard || ev.pointerId !== dragPointerId) return;
+      if (!dragArmed) {
+        const preArmDx = ev.clientX - dragOriginX;
+        const preArmDy = ev.clientY - dragOriginY;
+        if (Math.abs(preArmDx) > BOARD_DRAG_THRESHOLD || Math.abs(preArmDy) > BOARD_DRAG_THRESHOLD) {
+          if (dragHoldTimer) {
+            clearTimeout(dragHoldTimer);
+            dragHoldTimer = null;
+          }
+          stopBoardDrag(ev);
+        }
+        return;
+      }
+      const totalDx = ev.clientX - dragOriginX;
+      const totalDy = ev.clientY - dragOriginY;
+      if (!dragMoved) {
+        if (Math.abs(totalDx) < BOARD_DRAG_THRESHOLD && Math.abs(totalDy) < BOARD_DRAG_THRESHOLD) {
+          return;
+        }
+        dragMoved = true;
+      }
       const dx = ev.clientX - dragLastX;
       const dy = ev.clientY - dragLastY;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) dragMoved = true;
       boardWrapEl.scrollLeft -= dx;
       boardWrapEl.scrollTop -= dy;
       dragLastX = ev.clientX;
@@ -2491,7 +2546,12 @@
     function stopBoardDrag(ev) {
       if (!isDraggingBoard) return;
       if (ev && dragPointerId !== null && ev.pointerId !== dragPointerId) return;
+      if (dragHoldTimer) {
+        clearTimeout(dragHoldTimer);
+        dragHoldTimer = null;
+      }
       isDraggingBoard = false;
+      dragArmed = false;
       dragPointerId = null;
       boardWrapEl.style.cursor = "grab";
     }
@@ -2520,6 +2580,11 @@
       if (gameOver) return;
       if (!FACTIONS[currentFactionIndex].isHuman) return;
       cycleTurn();
+    });
+
+    sendModeBtn.addEventListener("click", () => {
+      sendModeIndex = (sendModeIndex + 1) % SEND_OPTIONS.length;
+      updateHUD();
     });
 
     restartBtn.addEventListener("click", buildMap);
