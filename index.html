@@ -1,0 +1,2533 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hex Conquest Prototype</title>
+  <style>
+    :root {
+      --bg: #0d3254;
+      --panel: #f1ecd9;
+      --line: #7f7350;
+      --text: #20190d;
+      --neutral: #6ea35d;
+      --player: #2f7d4d;
+      --ai1: #b03a2e;
+      --ai2: #2f5597;
+      --select: #f3d36c;
+      --accent: #335f8f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 12%, #2f5f8d 0%, transparent 38%),
+        radial-gradient(circle at 80% 15%, #1f4f7a 0%, transparent 40%),
+        linear-gradient(180deg, #1f4d79, #0b2f4f),
+        var(--bg);
+      height: 100vh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    header {
+      padding: 12px 18px;
+      border-bottom: 1px solid #8b7a48;
+      background: linear-gradient(180deg, #efe5c4, #ddcf9d);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      box-shadow: 0 2px 7px #0004;
+    }
+
+    .title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      margin-right: auto;
+    }
+
+    .status {
+      font-size: 0.95rem;
+      white-space: nowrap;
+    }
+
+    button {
+      border: 1px solid #7e6633;
+      background: linear-gradient(180deg, #f8efce, #d5be81);
+      color: #3f2d0f;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:hover { filter: brightness(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.active-tab {
+      background: linear-gradient(180deg, #e8d08f, #cda95f);
+      border-color: #6d5425;
+      color: #2b1a04;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 14px;
+      padding: 14px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .board-wrap {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #2b6ca0, #1f4f7a);
+      border-radius: 12px;
+      padding: 8px;
+      overflow: auto;
+      min-height: 0;
+      height: 100%;
+      touch-action: none;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      margin: 0 auto;
+      image-rendering: auto;
+      cursor: inherit;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(180deg, #f6f0db, #e8dbb6);
+      padding: 12px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      min-height: 0;
+      height: 100%;
+      overflow: auto;
+    }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: #061524cc;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-window {
+      width: min(1200px, 94vw);
+      height: min(88vh, 900px);
+      border: 1px solid #8f7d4a;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f4ecd3, #e2d4aa);
+      box-shadow: 0 14px 36px #0008;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid #8f7d4a;
+      background: linear-gradient(180deg, #ecdcae, #d7c183);
+    }
+
+    .modal-head .spacer {
+      margin-right: auto;
+      font-weight: 700;
+    }
+
+    .modal-body {
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid #5552;
+    }
+
+    .log {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+      min-height: 120px;
+      max-height: 220px;
+      overflow: auto;
+      font-size: 0.86rem;
+      line-height: 1.35;
+    }
+
+    .log p {
+      margin: 0 0 6px;
+    }
+
+    .help {
+      font-size: 0.85rem;
+      color: #4d4c49;
+      line-height: 1.35;
+    }
+
+    .harem-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+
+    .leader-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+
+    .harem-card strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .tiny {
+      font-size: 0.8rem;
+      color: #5a5956;
+      margin-bottom: 6px;
+    }
+
+    .row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      background: #f8f5ee;
+      margin-bottom: 6px;
+    }
+
+    .morale-wrap {
+      width: 100%;
+      height: 8px;
+      border: 1px solid #bda;
+      border-radius: 999px;
+      background: #efe6d4;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .morale-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #b44646, #e7aa45, #5b9d58);
+    }
+
+    .portrait {
+      width: 100%;
+      max-height: 170px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #0002;
+      margin-bottom: 6px;
+      display: block;
+      background: #ece6d8;
+    }
+
+    .leader-portrait {
+      width: 100%;
+      height: 360px;
+      object-fit: contain;
+      border-radius: 6px;
+      border: 1px solid #0003;
+      margin-bottom: 6px;
+      display: block;
+      background: #ddd1ad;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      align-items: start;
+    }
+
+    .gallery-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fffdf7;
+      padding: 10px;
+    }
+
+    .gallery-head {
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    .gallery-sub {
+      font-size: 0.8rem;
+      color: #5f5846;
+      margin-bottom: 7px;
+    }
+
+    .gallery-divider {
+      height: 1px;
+      background: #d8ccb1;
+      margin: 7px 0;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      .panel {
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">Hex Conquest Prototype</div>
+    <div id="turnInfo" class="status"></div>
+    <button id="tabOverviewBtn">Overview</button>
+    <button id="tabLeadersBtn">Leaders</button>
+    <button id="tabHaremBtn">Harem</button>
+    <button id="endTurnBtn">End Turn</button>
+    <button id="restartBtn">Restart</button>
+  </header>
+
+  <main>
+    <div id="boardWrap" class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
+    <aside class="panel">
+      <section id="overviewTab" class="tab-pane active">
+        <div><strong>Factions</strong></div>
+        <div class="legend-row"><span class="dot" style="background: var(--player)"></span> You</div>
+        <div class="legend-row"><span class="dot" style="background: var(--ai1)"></span> Red AI</div>
+        <div class="legend-row"><span class="dot" style="background: var(--ai2)"></span> Blue AI</div>
+        <div class="legend-row"><span class="dot" style="background: var(--neutral)"></span> Neutral</div>
+
+        <div style="margin-top:12px;"><strong>Rules</strong></div>
+        <div class="help">
+          Click your hex to select it. Then click an adjacent hex to send half your troops.
+          Blue ocean tiles are impassable.
+          Captures happen when attackers exceed defenders.
+          Every faction gets growth at the start of its turn (+1 each hex, +2 on capital).
+          Defeat a rival leader by taking their capital to capture their queen.
+          Captured queens have morale, assignments, and unique units with fight/serve modes.
+        </div>
+
+        <div style="margin-top:12px;"><strong>Battle Log</strong></div>
+        <div id="log" class="log"></div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="modal-window">
+      <div class="modal-head">
+        <div id="modalTitle" class="spacer">Panel</div>
+        <button id="modalCloseBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <section id="leadersTab" class="tab-pane">
+          <div><strong>Enemy Leaders</strong></div>
+          <div id="leaderStatus" class="help"></div>
+        </section>
+
+        <section id="haremTab" class="tab-pane">
+          <div><strong>Harem</strong></div>
+          <div id="haremPanel" class="help"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const mapW = 28;
+    const mapH = 28;
+    const hexSize = 27;
+    const sqrt3 = Math.sqrt(3);
+    const HUMAN_MOVES_PER_TURN = 5;
+    const THEME_COLORS = {
+      green: "#2f7d4d",
+      red: "#b03a2e",
+      blue: "#2f5597",
+      violet: "#7a4bb8",
+      gold: "#b08a2e",
+      onyx: "#44656d",
+      rose: "#b45f7d",
+      pearl: "#5c8f96",
+      ember: "#b85b32",
+      sky: "#4d89c8",
+      jade: "#3f9a72",
+      steel: "#6c7684",
+    };
+
+    const QUEEN_ARCHETYPES = {
+      edict: {
+        powerName: "Royal Edict",
+        summary: "Boost one tile with morale-scaled reinforcements.",
+        unitName: "Lioness Guard",
+        unitFightBonus: 2,
+        unitServeBonus: 2,
+      },
+      banner: {
+        powerName: "War Banner",
+        summary: "Buff one tile with scaling troops.",
+        unitName: "Crimson Guard",
+        unitFightBonus: 3,
+        unitServeBonus: 2,
+      },
+      raid: {
+        powerName: "Night Raid",
+        summary: "Damage adjacent enemies with scaling power.",
+        unitName: "Moonblade",
+        unitFightBonus: 2,
+        unitServeBonus: 3,
+      },
+      hex: {
+        powerName: "Veil Hex",
+        summary: "Curses the front and strengthens the chosen host.",
+        unitName: "Duskguard",
+        unitFightBonus: 3,
+        unitServeBonus: 1,
+      },
+      tithe: {
+        powerName: "Sun Tithe",
+        summary: "Turns wealth into reinforcements and morale.",
+        unitName: "Gilded Lancer",
+        unitFightBonus: 2,
+        unitServeBonus: 3,
+      },
+      storm: {
+        powerName: "Iron Storm",
+        summary: "Disciplined assault that favors large formations.",
+        unitName: "Shogun Guard",
+        unitFightBonus: 4,
+        unitServeBonus: 1,
+      },
+    };
+
+    const QUEEN_FILES = [
+      "queen_elara_verdantia.jpg",
+      "queen_rhea_crimson.jpg",
+      "queen_selene_azure.jpg",
+      "queen_morwen_violet.jpg",
+      "queen_isolde_gold.jpg",
+      "queen_kaida_onyx.jpg",
+      "queen_akasha_nightblood.jpg",
+      "queen_aoi_tempest.jpg",
+      "queen_aurelia_sunspire.jpg",
+      "queen_brynn_hart.jpg",
+      "queen_calista_pearl.jpg",
+      "queen_dragomira_iron.jpg",
+      "queen_evangeline_noctis.jpg",
+      "queen_iris_prism.jpg",
+      "queen_junia_ember.jpg",
+      "queen_kasumi_velvet.jpg",
+      "queen_lumina_verde.jpg",
+      "queen_lysandra_azure.jpg",
+      "queen_malora_hex.jpg",
+      "queen_maribel_sky.jpg",
+      "queen_matriona_steel.jpg",
+      "queen_meira_sable.jpg",
+      "queen_nymera_rose.jpg",
+      "queen_revena_crimson.jpg",
+      "queen_sabine_westwind.jpg",
+      "queen_seraphina_tide.jpg",
+      "queen_thalassa_blush.jpg",
+      "queen_valeska_scarlet.jpg",
+      "queen_valora_chain.jpg",
+      "queen_vespera_moon.jpeg",
+      "queen_victoria_ruby.jpg",
+      "queen_wilhelmina_ivory.jpg",
+      "queen_zoranna_blackflame.jpg",
+    ];
+
+    function capitalizeWord(word) {
+      return word ? word[0].toUpperCase() + word.slice(1) : "";
+    }
+
+    function parseQueenStem(filename) {
+      return filename.replace(/^queen_/, "").replace(/\.(jpg|jpeg|png|webp)$/i, "");
+    }
+
+    function themeForStem(stem) {
+      if (/(azure|moon|sky|tide|tempest|prism)/.test(stem)) return "blue";
+      if (/(verd|verde|hart|pearl|westwind)/.test(stem)) return "green";
+      if (/(crimson|scarlet|ruby|ember|iron)/.test(stem)) return "red";
+      if (/(violet|hex|velvet|rose)/.test(stem)) return "violet";
+      if (/(gold|sunspire|ivory)/.test(stem)) return "gold";
+      if (/(onyx|night|noctis|blackflame|sable|chain|steel)/.test(stem)) return "onyx";
+      return "rose";
+    }
+
+    function archetypeForIndex(index) {
+      const cycle = ["edict", "banner", "raid", "hex", "tithe", "storm"];
+      return cycle[index % cycle.length];
+    }
+
+    function makeFactionShort(title, kingdom) {
+      const src = `${title} ${kingdom}`.split(/\s+/).filter(Boolean);
+      return src.slice(0, 2).map(word => word[0].toUpperCase()).join("");
+    }
+
+    function reserveFactionFromFile(id, filename) {
+      const stem = parseQueenStem(filename);
+      const parts = stem.split("_");
+      const name = capitalizeWord(parts[0]);
+      const epithet = parts.slice(1).map(capitalizeWord).join(" ");
+      const theme = themeForStem(stem);
+      const archetype = archetypeForIndex(id);
+      const kingdom = `${epithet} Court`;
+      return {
+        id,
+        name: kingdom,
+        short: makeFactionShort(name, kingdom),
+        color: THEME_COLORS[theme] || "#7a6c5b",
+        isHuman: false,
+        leader: `Queen ${name}`,
+        theme,
+        portrait: filename,
+        startActive: false,
+        home: null,
+        archetype,
+      };
+    }
+
+    const BASE_FACTIONS = [
+      { id: 0, name: "Verdant Crown", short: "VC", color: "#2f7d4d", isHuman: true, leader: "Queen Elara", theme: "green", portrait: "queen_elara_verdantia.jpg", startActive: true, home: { q: 4, r: 4 }, archetype: "edict" },
+      { id: 1, name: "Crimson Dominion", short: "CD", color: "#b03a2e", isHuman: false, leader: "Queen Rhea", theme: "red", portrait: "queen_rhea_crimson.jpg", startActive: true, home: { q: mapW - 5, r: 4 }, archetype: "banner" },
+      { id: 2, name: "Azure Covenant", short: "AC", color: "#2f5597", isHuman: false, leader: "Queen Selene", theme: "blue", portrait: "queen_selene_azure.jpg", startActive: true, home: { q: 4, r: mapH - 5 }, archetype: "raid" },
+      { id: 3, name: "Violet Throne", short: "VT", color: "#7a4bb8", isHuman: false, leader: "Queen Morwen", theme: "violet", portrait: "queen_morwen_violet.jpg", startActive: true, home: { q: mapW - 5, r: mapH - 5 }, archetype: "hex" },
+      { id: 4, name: "Golden March", short: "GM", color: "#b08a2e", isHuman: false, leader: "Queen Isolde", theme: "gold", portrait: "queen_isolde_gold.jpg", startActive: true, home: { q: Math.floor(mapW / 2), r: 3 }, archetype: "tithe" },
+      { id: 5, name: "Onyx Shogunate", short: "OS", color: "#44656d", isHuman: false, leader: "Queen Kaida", theme: "onyx", portrait: "queen_kaida_onyx.jpg", startActive: true, home: { q: Math.floor(mapW / 2), r: mapH - 4 }, archetype: "storm" },
+    ];
+
+    const FACTIONS = [
+      ...BASE_FACTIONS,
+      ...QUEEN_FILES.slice(6).map((filename, index) => reserveFactionFromFile(index + 6, filename)),
+    ];
+
+    const QUEEN_POWERS = Object.fromEntries(
+      FACTIONS.map((faction) => {
+        const base = QUEEN_ARCHETYPES[faction.archetype];
+        return [faction.id, {
+          title: faction.leader,
+          abilityType: faction.archetype,
+          powerName: base.powerName,
+          summary: base.summary,
+          unitName: base.unitName,
+          unitFightBonus: base.unitFightBonus,
+          unitServeBonus: base.unitServeBonus,
+        }];
+      })
+    );
+
+    const NEUTRAL = -1;
+    const HEX_ASSET_BASE = "assets/hexempire_images/";
+    const QUEEN_PORTRAITS = Object.fromEntries(
+      FACTIONS.map((faction) => [faction.id, `Queens/${faction.portrait}`])
+    );
+
+    const canvas = document.getElementById("board");
+    const boardWrapEl = document.getElementById("boardWrap");
+    const ctx = canvas.getContext("2d");
+    const turnInfo = document.getElementById("turnInfo");
+    const tabOverviewBtn = document.getElementById("tabOverviewBtn");
+    const tabLeadersBtn = document.getElementById("tabLeadersBtn");
+    const tabHaremBtn = document.getElementById("tabHaremBtn");
+    const endTurnBtn = document.getElementById("endTurnBtn");
+    const restartBtn = document.getElementById("restartBtn");
+    const logEl = document.getElementById("log");
+    const leaderStatusEl = document.getElementById("leaderStatus");
+    const haremPanelEl = document.getElementById("haremPanel");
+    const overviewTabEl = document.getElementById("overviewTab");
+    const leadersTabEl = document.getElementById("leadersTab");
+    const haremTabEl = document.getElementById("haremTab");
+    const modalOverlayEl = document.getElementById("modalOverlay");
+    const modalCloseBtn = document.getElementById("modalCloseBtn");
+    const modalTitleEl = document.getElementById("modalTitle");
+
+    let tiles = [];
+    let selectedTile = null;
+    let currentFactionIndex = 0;
+    let round = 1;
+    let gameOver = false;
+    let leaderState = {};
+    let capturedQueens = [];
+    let queenUsedThisTurn = false;
+    let pendingQueenFaction = null;
+    let queenState = {};
+    let queenUnits = [];
+    let pendingUnitQueenFaction = null;
+    let nextUnitId = 1;
+    let humanMovesRemaining = HUMAN_MOVES_PER_TURN;
+    let queenPortraits = {};
+    let activeMenuTab = "overview";
+    let hoveredTile = null;
+    let boardScale = 1;
+    const MIN_BOARD_SCALE = 0.6;
+    const MAX_BOARD_SCALE = 2.2;
+    let isDraggingBoard = false;
+    let dragMoved = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragStartScrollLeft = 0;
+    let dragStartScrollTop = 0;
+    let dragPointerId = null;
+    let dragLastX = 0;
+    let dragLastY = 0;
+    let visualTick = 0;
+    let landBackdropCanvas = null;
+    let oceanBackdropCanvas = null;
+    const armySpriteCache = {};
+    const hexAssets = {
+      l: {},
+      ld: {},
+      c: {},
+      cd: {},
+      m: {},
+      mp: {},
+      capital: {},
+      city: null,
+      port: null,
+    };
+
+    function tileKey(q, r) {
+      return `${q},${r}`;
+    }
+
+    function factionById(id) {
+      return FACTIONS.find(f => f.id === id);
+    }
+
+    function queenEntry(queenFaction) {
+      if (!queenState[queenFaction]) {
+        queenState[queenFaction] = {
+          morale: 55,
+          assignment: "court",
+          refusedThisTurn: false,
+          tendUsedThisTurn: false,
+        };
+      }
+      return queenState[queenFaction];
+    }
+
+    function setMenuTab(tabName) {
+      activeMenuTab = tabName;
+      if (tabName === "leaders" || tabName === "harem") {
+        modalOverlayEl.classList.add("open");
+        leadersTabEl.classList.toggle("active", tabName === "leaders");
+        haremTabEl.classList.toggle("active", tabName === "harem");
+        modalTitleEl.textContent = tabName === "leaders" ? "Enemy Leaders" : "Harem Management";
+        if (tabName === "leaders") renderLeaderPanel();
+        if (tabName === "harem") renderHaremPanel();
+      } else {
+        modalOverlayEl.classList.remove("open");
+        leadersTabEl.classList.remove("active");
+        haremTabEl.classList.remove("active");
+      }
+      overviewTabEl.classList.add("active");
+      tabOverviewBtn.classList.toggle("active-tab", tabName === "overview");
+      tabLeadersBtn.classList.toggle("active-tab", tabName === "leaders");
+      tabHaremBtn.classList.toggle("active-tab", tabName === "harem");
+    }
+
+    function loadImage(src) {
+      const img = new Image();
+      img.src = src;
+      return img;
+    }
+
+    function loadHexAssets() {
+      for (let i = 1; i <= 6; i++) {
+        hexAssets.l[i] = loadImage(`${HEX_ASSET_BASE}l_${i}.png`);
+        hexAssets.ld[i] = loadImage(`${HEX_ASSET_BASE}ld_${i}.png`);
+        hexAssets.c[i] = loadImage(`${HEX_ASSET_BASE}c_${i}.png`);
+        hexAssets.cd[i] = loadImage(`${HEX_ASSET_BASE}cd_${i}.png`);
+        hexAssets.m[i] = loadImage(`${HEX_ASSET_BASE}m_${i}.png`);
+      }
+      hexAssets.mp[1] = loadImage(`${HEX_ASSET_BASE}m_p1.png`);
+      hexAssets.mp[2] = loadImage(`${HEX_ASSET_BASE}m_p2.png`);
+      hexAssets.capital.green = loadImage(`${HEX_ASSET_BASE}capital_green.png`);
+      hexAssets.capital.red = loadImage(`${HEX_ASSET_BASE}capital_red.png`);
+      hexAssets.capital.blue = loadImage(`${HEX_ASSET_BASE}capital_blue.png`);
+      hexAssets.capital.violet = loadImage(`${HEX_ASSET_BASE}capital_violet.png`);
+      hexAssets.city = loadImage(`${HEX_ASSET_BASE}city.png`);
+      hexAssets.port = loadImage(`${HEX_ASSET_BASE}port.png`);
+
+      for (const bucket of [hexAssets.l, hexAssets.ld, hexAssets.c, hexAssets.cd, hexAssets.m, hexAssets.mp]) {
+        for (const img of Object.values(bucket)) {
+          if (img) img.onload = () => { buildTerrainBackdrops(); render(); };
+        }
+      }
+      for (const img of [hexAssets.capital.green, hexAssets.capital.red, hexAssets.capital.blue, hexAssets.capital.violet, hexAssets.city, hexAssets.port]) {
+        if (img) img.onload = () => { buildTerrainBackdrops(); render(); };
+      }
+    }
+
+    function syncCanvasDisplaySize() {
+      canvas.style.width = `${Math.round(canvas.width * boardScale)}px`;
+      canvas.style.height = `${Math.round(canvas.height * boardScale)}px`;
+    }
+
+    function zoomBoard(nextScale, clientX, clientY) {
+      const clamped = Math.max(MIN_BOARD_SCALE, Math.min(MAX_BOARD_SCALE, nextScale));
+      if (Math.abs(clamped - boardScale) < 0.0001) return;
+
+      const oldScale = boardScale;
+      const wrapRect = boardWrapEl.getBoundingClientRect();
+      const px = clientX - wrapRect.left;
+      const py = clientY - wrapRect.top;
+      const worldX = (boardWrapEl.scrollLeft + px) / oldScale;
+      const worldY = (boardWrapEl.scrollTop + py) / oldScale;
+
+      boardScale = clamped;
+      syncCanvasDisplaySize();
+
+      boardWrapEl.scrollLeft = worldX * boardScale - px;
+      boardWrapEl.scrollTop = worldY * boardScale - py;
+    }
+
+    function pointerToBoard(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = canvas.width / rect.width;
+      const sy = canvas.height / rect.height;
+      return {
+        x: (ev.clientX - rect.left) * sx,
+        y: (ev.clientY - rect.top) * sy,
+      };
+    }
+
+    function buildTerrainBackdrops() {
+      if (!canvas.width || !canvas.height) return;
+      landBackdropCanvas = document.createElement("canvas");
+      oceanBackdropCanvas = document.createElement("canvas");
+      landBackdropCanvas.width = canvas.width;
+      landBackdropCanvas.height = canvas.height;
+      oceanBackdropCanvas.width = canvas.width;
+      oceanBackdropCanvas.height = canvas.height;
+
+      const lg = landBackdropCanvas.getContext("2d");
+      const og = oceanBackdropCanvas.getContext("2d");
+      if (!lg || !og) return;
+
+      const landGrad = lg.createLinearGradient(0, 0, 0, landBackdropCanvas.height);
+      landGrad.addColorStop(0, "#8fbe57");
+      landGrad.addColorStop(1, "#739e4b");
+      lg.fillStyle = landGrad;
+      lg.fillRect(0, 0, landBackdropCanvas.width, landBackdropCanvas.height);
+
+      const oceanGrad = og.createLinearGradient(0, 0, 0, oceanBackdropCanvas.height);
+      oceanGrad.addColorStop(0, "#4e90bf");
+      oceanGrad.addColorStop(1, "#2a628f");
+      og.fillStyle = oceanGrad;
+      og.fillRect(0, 0, oceanBackdropCanvas.width, oceanBackdropCanvas.height);
+
+      // Build a connected "field mosaic" like the reference map.
+      const fieldColors = ["#91c45d", "#86b855", "#7cad4d", "#9ecf69", "#739d4a", "#a5d66f"];
+      for (let i = 0; i < 460; i++) {
+        const x = (i * 173) % landBackdropCanvas.width;
+        const y = (i * 227) % landBackdropCanvas.height;
+        const w = 26 + ((i * 11) % 70);
+        const h = 22 + ((i * 7) % 58);
+        const c = fieldColors[i % fieldColors.length];
+        lg.globalAlpha = 0.34;
+        lg.fillStyle = c;
+        lg.fillRect(x - w / 2, y - h / 2, w, h);
+      }
+
+      // Forest blobs
+      lg.globalAlpha = 0.18;
+      lg.fillStyle = "#3f6d34";
+      for (let i = 0; i < 120; i++) {
+        const cx = (i * 149) % landBackdropCanvas.width;
+        const cy = (i * 211) % landBackdropCanvas.height;
+        const rw = 36 + ((i * 13) % 88);
+        const rh = 26 + ((i * 9) % 62);
+        lg.beginPath();
+        lg.ellipse(cx, cy, rw / 2, rh / 2, (i % 8) * 0.2, 0, Math.PI * 2);
+        lg.fill();
+      }
+
+      // Very soft sprite texture over the connected fields.
+      const landStep = Math.max(78, Math.floor(hexSize * 3.4));
+      for (let y = -landStep; y < landBackdropCanvas.height + landStep; y += landStep) {
+        for (let x = -landStep; x < landBackdropCanvas.width + landStep; x += landStep) {
+          const v = ((Math.floor(x / landStep) * 13 + Math.floor(y / landStep) * 17) % 6) + 1;
+          const sprite = ((x + y) / landStep) % 3 === 0 ? hexAssets.ld[v] : hexAssets.l[v];
+          if (!sprite || !sprite.complete) continue;
+          const size = Math.floor(landStep * 1.38);
+          lg.globalAlpha = 0.13;
+          lg.drawImage(sprite, x - size / 2, y - size / 2, size, size);
+        }
+      }
+      // Extra patch strips to emphasize terrain mosaic using local asset variants.
+      const patchStep = Math.max(60, Math.floor(hexSize * 2.9));
+      for (let y = -patchStep; y < landBackdropCanvas.height + patchStep; y += patchStep) {
+        for (let x = -patchStep; x < landBackdropCanvas.width + patchStep; x += patchStep) {
+          const v = ((Math.floor(x / patchStep) * 5 + Math.floor(y / patchStep) * 9) % 6) + 1;
+          const useDry = ((Math.floor(x / patchStep) + Math.floor(y / patchStep)) % 4) === 0;
+          const sprite = useDry ? hexAssets.c[v] : hexAssets.ld[v];
+          if (!sprite || !sprite.complete) continue;
+          const size = Math.floor(patchStep * 1.08);
+          lg.globalAlpha = useDry ? 0.18 : 0.11;
+          lg.drawImage(sprite, x - size / 2, y - size / 2, size, size);
+        }
+      }
+      lg.globalAlpha = 1;
+
+      // Stamp ocean texture in world-space for connected water look.
+      const oceanStep = Math.max(66, Math.floor(hexSize * 2.8));
+      for (let y = -oceanStep; y < oceanBackdropCanvas.height + oceanStep; y += oceanStep) {
+        for (let x = -oceanStep; x < oceanBackdropCanvas.width + oceanStep; x += oceanStep) {
+          const v = ((Math.floor(x / oceanStep) * 7 + Math.floor(y / oceanStep) * 9) % 6) + 1;
+          const sprite = hexAssets.cd[v];
+          if (!sprite || !sprite.complete) continue;
+          const size = Math.floor(oceanStep * 1.22);
+          og.globalAlpha = 0.16;
+          og.drawImage(sprite, x - size / 2, y - size / 2, size, size);
+          og.globalAlpha = 1;
+        }
+      }
+    }
+
+    function assignQueenPortraits() {
+      queenPortraits = {};
+      for (const qKey of Object.keys(QUEEN_POWERS)) {
+        const qId = Number(qKey);
+        if (!QUEEN_PORTRAITS[qId]) continue;
+        queenPortraits[qId] = QUEEN_PORTRAITS[qId];
+      }
+    }
+
+    function moraleTierBonus(morale) {
+      if (morale >= 85) return 2;
+      if (morale >= 65) return 1;
+      if (morale >= 40) return 0;
+      if (morale >= 20) return -1;
+      return -2;
+    }
+
+    function queenUnitForFaction(queenFaction) {
+      return queenUnits.find(u => u.queenFaction === queenFaction && u.owner === 0) || null;
+    }
+
+    function getUnitAtTile(tile) {
+      return queenUnits.find(u => u.owner === tile.owner && u.q === tile.q && u.r === tile.r) || null;
+    }
+
+    function cleanupUnits() {
+      queenUnits = queenUnits.filter(u => {
+        const t = getTile(u.q, u.r);
+        return t && t.owner === u.owner;
+      });
+    }
+
+    function passiveWarBonus() {
+      let bonus = 0;
+      for (const q of capturedQueens) {
+        const st = queenEntry(q);
+        if (st.assignment === "war" && !st.refusedThisTurn) {
+          bonus += 1;
+        }
+      }
+      return bonus;
+    }
+
+    function axialToPixel(q, r) {
+      return {
+        x: hexSize * sqrt3 * (q + r / 2),
+        y: hexSize * 1.5 * r,
+      };
+    }
+
+    function isOceanTile(q, r) {
+      // Stable generation: mostly land with ocean on borders and some inland water pockets.
+      const edge = Math.min(q, r, mapW - 1 - q, mapH - 1 - r);
+      if (edge === 0) return true;
+      if (edge === 1 && Math.random() < 0.46) return true;
+      if (edge === 2 && Math.random() < 0.16) return true;
+      const pocketNoise =
+        Math.sin((q + 1) * 0.95) +
+        Math.cos((r + 2) * 1.13) +
+        Math.sin((q - r) * 0.61);
+      return pocketNoise > 2.15 && Math.random() < 0.45;
+    }
+
+    function mixHexColors(a, b, t) {
+      const aClean = a.replace("#", "");
+      const bClean = b.replace("#", "");
+      const ar = parseInt(aClean.slice(0, 2), 16);
+      const ag = parseInt(aClean.slice(2, 4), 16);
+      const ab = parseInt(aClean.slice(4, 6), 16);
+      const br = parseInt(bClean.slice(0, 2), 16);
+      const bg = parseInt(bClean.slice(2, 4), 16);
+      const bb = parseInt(bClean.slice(4, 6), 16);
+      const rr = Math.round(ar + (br - ar) * t);
+      const rg = Math.round(ag + (bg - ag) * t);
+      const rb = Math.round(ab + (bb - ab) * t);
+      return `rgb(${rr}, ${rg}, ${rb})`;
+    }
+
+    function clamp01(v) {
+      return Math.max(0, Math.min(1, v));
+    }
+
+    function regionalNoise(q, r) {
+      return (
+        Math.sin(q * 0.33) * 0.55 +
+        Math.cos(r * 0.29) * 0.45 +
+        Math.sin((q - r) * 0.21) * 0.35
+      );
+    }
+
+    function buildMap() {
+      tiles = [];
+      const homeSpots = FACTIONS
+        .filter(f => f.startActive && f.home)
+        .map(f => ({ q: f.home.q, r: f.home.r, owner: f.id }));
+      const homeByKey = new Map(homeSpots.map(h => [tileKey(h.q, h.r), h]));
+      for (let r = 0; r < mapH; r++) {
+        for (let q = 0; q < mapW; q++) {
+          const px = axialToPixel(q, r);
+          const key = tileKey(q, r);
+          const home = homeByKey.get(key);
+          const ocean = home ? false : isOceanTile(q, r);
+          tiles.push({
+            q,
+            r,
+            x: px.x,
+            y: px.y,
+            terrain: ocean ? "ocean" : "land",
+            owner: home ? home.owner : NEUTRAL,
+            troops: home ? 10 : (ocean ? 0 : (Math.random() < 0.23 ? 0 : 1 + Math.floor(Math.random() * 4))),
+            capital: Boolean(home),
+            elevation: Math.random(),
+            moisture: Math.random(),
+            roughness: Math.random(),
+            waveOffset: Math.random() * Math.PI * 2,
+            coastal: false,
+            // Use coarse regions instead of per-tile randomness so textures look smoother.
+            terrainVariant: ((Math.floor(q / 2) * 7 + Math.floor(r / 2) * 11) % 6) + 1,
+            mountainVariant: ((q * 7 + r * 5) % 6) + 1,
+            hasMountain: false,
+            estate: null, // null | town | port
+            townName: null,
+          });
+        }
+      }
+
+      // Ensure each row has enough visible land so the map fills the screen vertically.
+      const minLandPerRow = Math.max(6, Math.floor(mapW * 0.38));
+      for (let r = 0; r < mapH; r++) {
+        const rowTiles = tiles.filter(t => t.r === r);
+        let landCount = rowTiles.filter(t => t.terrain === "land").length;
+        if (landCount >= minLandPerRow) continue;
+        const candidates = rowTiles
+          .filter(t => t.terrain === "ocean" && !t.capital)
+          .sort(() => Math.random() - 0.5);
+        const need = minLandPerRow - landCount;
+        for (let i = 0; i < need && i < candidates.length; i++) {
+          const t = candidates[i];
+          t.terrain = "land";
+          t.troops = 1 + Math.floor(Math.random() * 3);
+          landCount += 1;
+        }
+      }
+
+      // Start condition: each faction owns exactly one tile (its capital).
+      for (const t of tiles) {
+        if (t.capital) continue;
+        if (t.terrain === "land") {
+          t.owner = NEUTRAL;
+          if (t.troops < 1) t.troops = 1 + Math.floor(Math.random() * 3);
+        } else {
+          t.owner = NEUTRAL;
+          t.troops = 0;
+        }
+      }
+      for (const home of homeSpots) {
+        const center = tiles.find(t => t.q === home.q && t.r === home.r);
+        if (!center) continue;
+        center.terrain = "land";
+        center.owner = home.owner;
+        center.capital = true;
+        center.estate = "town";
+        center.troops = 12;
+      }
+
+      const minX = Math.min(...tiles.map(t => t.x));
+      const maxX = Math.max(...tiles.map(t => t.x));
+      const minY = Math.min(...tiles.map(t => t.y));
+      const maxY = Math.max(...tiles.map(t => t.y));
+      const pad = hexSize * 1.4;
+
+      canvas.width = Math.ceil(maxX - minX + pad * 2);
+      canvas.height = Math.ceil(maxY - minY + pad * 2);
+
+      for (const t of tiles) {
+        t.cx = t.x - minX + pad;
+        t.cy = t.y - minY + pad;
+      }
+      buildTerrainBackdrops();
+      for (const t of tiles) {
+        if (t.terrain !== "land") continue;
+        t.coastal = neighbors(t).some(n => n.terrain === "ocean");
+        const n = regionalNoise(t.q, t.r);
+        const dryScore = n + (t.q / mapW) * 0.35 - (t.r / mapH) * 0.12;
+        t.biome = dryScore > 0.42 ? "desert" : (dryScore > 0.1 ? "steppe" : "grass");
+        t.hasMountain = false;
+        t.detailVariantA = ((t.q * 5 + t.r * 3) % 6) + 1;
+        t.detailVariantB = ((t.q * 11 + t.r * 7) % 6) + 1;
+        t.landmarkVariant = ((t.q * 13 + t.r * 17) % 2) + 1;
+        t.hasLandmark = !t.capital && !t.coastal && ((t.q * 19 + t.r * 23) % 29 === 0);
+      }
+      seedSettlements();
+
+      selectedTile = null;
+      currentFactionIndex = 0;
+      round = 1;
+      gameOver = false;
+      leaderState = {};
+      capturedQueens = [0];
+      queenUsedThisTurn = false;
+      pendingQueenFaction = null;
+      queenState = {};
+      queenUnits = [];
+      pendingUnitQueenFaction = null;
+      nextUnitId = 1;
+      humanMovesRemaining = HUMAN_MOVES_PER_TURN;
+      assignQueenPortraits();
+      queenEntry(0).morale = 68;
+      queenEntry(0).assignment = "court";
+      logEl.innerHTML = "";
+      for (const faction of FACTIONS) {
+        leaderState[faction.id] = {
+          active: Boolean(faction.startActive),
+          defeated: false,
+        };
+      }
+      addLog("New game started.");
+      addLog("Queen Elara, your native queen, starts in your harem.");
+      addLog("Tip: select one of your green tiles with 2+ troops, then click an adjacent tile.");
+      startTurn(FACTIONS[currentFactionIndex].id);
+      render();
+      syncCanvasDisplaySize();
+      boardWrapEl.scrollLeft = Math.max(0, (canvas.width * boardScale - boardWrapEl.clientWidth) / 2);
+      boardWrapEl.scrollTop = Math.max(0, (canvas.height * boardScale - boardWrapEl.clientHeight) / 2);
+    }
+
+    function seedSettlements() {
+      const landTiles = tiles.filter(t => t.terrain === "land" && !t.capital);
+      // Approximation of HexEmpire town density with spacing constraints.
+      const townTarget = Math.max(10, Math.floor(landTiles.length / 13));
+      let placedTowns = 0;
+
+      for (const t of landTiles.sort(() => Math.random() - 0.5)) {
+        if (placedTowns >= townTarget) break;
+        if (t.estate) continue;
+        if (t.coastal) continue;
+        // keep towns separated
+        if (neighbors(t).some(n => n.estate)) continue;
+        t.estate = "town";
+        placedTowns += 1;
+      }
+
+      // Ports on coastal land, sparse like original logic.
+      const portCandidates = tiles.filter(t => t.terrain === "land" && t.coastal && !t.capital);
+      const portTarget = Math.max(4, Math.floor(placedTowns / 3));
+      let placedPorts = 0;
+      for (const t of portCandidates.sort(() => Math.random() - 0.5)) {
+        if (placedPorts >= portTarget) break;
+        if (t.estate) continue;
+        if (neighbors(t).some(n => n.estate === "port")) continue;
+        t.estate = "port";
+        placedPorts += 1;
+      }
+    }
+
+    function getTile(q, r) {
+      return tiles.find(t => t.q === q && t.r === r) || null;
+    }
+
+    function neighbors(tile) {
+      const dirs = [
+        [1, 0], [1, -1], [0, -1],
+        [-1, 0], [-1, 1], [0, 1],
+      ];
+      return dirs
+        .map(([dq, dr]) => getTile(tile.q + dq, tile.r + dr))
+        .filter(Boolean);
+    }
+
+    function ownerColor(owner) {
+      if (owner === NEUTRAL) return "#d8d0bf";
+      const fac = factionById(owner);
+      return fac ? fac.color : "#999";
+    }
+
+    function armyTier(troops) {
+      if (troops >= 16) return 2; // tank
+      if (troops >= 8) return 1;  // howitzer
+      return 0;
+    }
+
+    function getArmySprite(owner, tier) {
+      const key = `${owner}:${tier}`;
+      if (armySpriteCache[key]) return armySpriteCache[key];
+
+      const sprite = document.createElement("canvas");
+      sprite.width = 34;
+      sprite.height = 34;
+      const sctx = sprite.getContext("2d");
+      if (!sctx) return null;
+
+      const base = ownerColor(owner);
+      const dark = mixHexColors(base, "#101318", 0.55);
+      const light = mixHexColors(base, "#ffffff", 0.42);
+
+      sctx.clearRect(0, 0, 34, 34);
+      if (tier !== 0) {
+        sctx.shadowColor = "rgba(0,0,0,0.45)";
+        sctx.shadowBlur = 4;
+        sctx.shadowOffsetY = 2;
+        sctx.beginPath();
+        sctx.arc(17, 18, 11.5, 0, Math.PI * 2);
+        const grad = sctx.createLinearGradient(7, 7, 27, 27);
+        grad.addColorStop(0, light);
+        grad.addColorStop(1, dark);
+        sctx.fillStyle = grad;
+        sctx.fill();
+        sctx.shadowBlur = 0;
+        sctx.shadowOffsetY = 0;
+        sctx.strokeStyle = "rgba(245, 241, 221, 0.88)";
+        sctx.lineWidth = 1.8;
+        sctx.stroke();
+      }
+
+      sctx.fillStyle = "rgba(255,255,255,0.9)";
+      sctx.strokeStyle = "rgba(19,20,22,0.9)";
+      sctx.lineWidth = 1.2;
+
+      if (tier === 0) {
+        // Classic-style soldier marker (faction fill, white edge).
+        const fill = ownerColor(owner);
+        sctx.fillStyle = fill;
+        sctx.strokeStyle = "rgba(255,255,255,0.96)";
+        sctx.lineWidth = 1.7;
+        sctx.shadowColor = "rgba(0,0,0,0.5)";
+        sctx.shadowBlur = 2;
+        sctx.shadowOffsetY = 1;
+
+        // Helmet/head
+        sctx.beginPath();
+        sctx.arc(17, 9.6, 2.8, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.stroke();
+
+        // Torso + coat
+        sctx.beginPath();
+        sctx.moveTo(13.6, 13.2);
+        sctx.lineTo(20.4, 13.2);
+        sctx.lineTo(19.3, 20.7);
+        sctx.lineTo(14.7, 20.7);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+
+        // Legs
+        sctx.beginPath();
+        sctx.moveTo(15.3, 20.7);
+        sctx.lineTo(14.3, 26.8);
+        sctx.lineTo(16.4, 26.8);
+        sctx.lineTo(17.0, 22.0);
+        sctx.lineTo(17.6, 26.8);
+        sctx.lineTo(19.7, 26.8);
+        sctx.lineTo(18.7, 20.7);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+
+        // Rifle
+        sctx.beginPath();
+        sctx.moveTo(20.5, 14.0);
+        sctx.lineTo(26.6, 10.9);
+        sctx.lineTo(27.5, 12.5);
+        sctx.lineTo(21.2, 15.8);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+
+        // Small round badge below (like classic icon marker)
+        sctx.shadowBlur = 0;
+        sctx.shadowOffsetY = 0;
+        sctx.fillStyle = fill;
+        sctx.beginPath();
+        sctx.arc(24.2, 22.8, 3.1, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.stroke();
+      } else if (tier === 1) {
+        // Howitzer silhouette.
+        sctx.fillRect(10, 18, 14, 4);
+        sctx.strokeRect(10, 18, 14, 4);
+        sctx.beginPath();
+        sctx.arc(12, 24, 2.2, 0, Math.PI * 2);
+        sctx.arc(22, 24, 2.2, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.stroke();
+        sctx.fillRect(16, 14, 5, 4);
+        sctx.strokeRect(16, 14, 5, 4);
+        sctx.beginPath();
+        sctx.moveTo(21, 15);
+        sctx.lineTo(27, 11);
+        sctx.lineTo(28, 13);
+        sctx.lineTo(22, 17);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+      } else {
+        // Tank silhouette.
+        sctx.beginPath();
+        sctx.moveTo(9, 21);
+        sctx.lineTo(26, 21);
+        sctx.lineTo(24, 16);
+        sctx.lineTo(12, 16);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+        sctx.fillRect(14, 12, 7, 4);
+        sctx.strokeRect(14, 12, 7, 4);
+        sctx.beginPath();
+        sctx.moveTo(21, 13.5);
+        sctx.lineTo(29, 12.5);
+        sctx.lineTo(29, 14.5);
+        sctx.lineTo(21, 15.5);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+        for (const wx of [12, 16.5, 21]) {
+          sctx.beginPath();
+          sctx.arc(wx, 24, 2, 0, Math.PI * 2);
+          sctx.fill();
+          sctx.stroke();
+        }
+      }
+
+      armySpriteCache[key] = sprite;
+      return sprite;
+    }
+
+    function tileFillColor(tile) {
+      if (tile.terrain === "ocean") return "#2d6d9f";
+      if (tile.owner === NEUTRAL) return "#7da566";
+      return ownerColor(tile.owner);
+    }
+
+    function ownerGlowColor(owner, alpha = 0.6) {
+      if (owner === NEUTRAL) return `rgba(173, 162, 126, ${alpha})`;
+      const hex = ownerColor(owner).replace("#", "");
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function drawHex(cx, cy, size) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 180) * (60 * i - 30);
+        const x = cx + size * Math.cos(a);
+        const y = cy + size * Math.sin(a);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+    }
+
+    function drawCrown(cx, cy, size) {
+      const y = cy - 11;
+      const w = size * 1.5;
+      const h = size;
+      ctx.beginPath();
+      ctx.moveTo(cx - w / 2, y + h / 2);
+      ctx.lineTo(cx - w / 2, y + h * 0.15);
+      ctx.lineTo(cx - w * 0.2, y - h * 0.25);
+      ctx.lineTo(cx, y + h * 0.05);
+      ctx.lineTo(cx + w * 0.2, y - h * 0.25);
+      ctx.lineTo(cx + w / 2, y + h * 0.15);
+      ctx.lineTo(cx + w / 2, y + h / 2);
+      ctx.closePath();
+      ctx.fillStyle = "#f7e5a6";
+      ctx.fill();
+      ctx.strokeStyle = "#3e3321";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function drawBoard() {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const seaGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      seaGrad.addColorStop(0, "#3f83b8");
+      seaGrad.addColorStop(1, "#1c4f79");
+      ctx.fillStyle = seaGrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (const tile of tiles) {
+        if (tile.terrain === "ocean") {
+          const waveTone = clamp01(0.5 + Math.sin(tile.waveOffset + tile.q * 0.31 + tile.r * 0.27) * 0.18);
+          const oceanHi = mixHexColors("#2f6f9f", "#5ea7d8", waveTone);
+          const oceanLo = mixHexColors("#1e4c72", "#295f8c", waveTone * 0.8);
+          const og = ctx.createLinearGradient(tile.cx - hexSize, tile.cy - hexSize, tile.cx + hexSize, tile.cy + hexSize);
+          og.addColorStop(0, oceanHi);
+          og.addColorStop(1, oceanLo);
+          drawHex(tile.cx, tile.cy, hexSize - 1);
+          ctx.fillStyle = og;
+          ctx.fill();
+
+          if (oceanBackdropCanvas) {
+            ctx.save();
+            drawHex(tile.cx, tile.cy, hexSize - 1.2);
+            ctx.clip();
+            ctx.globalAlpha = 0.7;
+            ctx.drawImage(oceanBackdropCanvas, 0, 0);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+
+          // Stronger ocean border so water hexes remain clearly visible.
+          drawHex(tile.cx, tile.cy, hexSize - 1);
+          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = "rgba(176, 220, 248, 0.42)";
+          ctx.stroke();
+        } else {
+          const lg = ctx.createLinearGradient(tile.cx - hexSize, tile.cy - hexSize, tile.cx + hexSize, tile.cy + hexSize);
+          if (tile.biome === "desert") {
+            lg.addColorStop(0, "rgba(205, 179, 109, 0.67)");
+            lg.addColorStop(1, "rgba(161, 135, 76, 0.6)");
+          } else if (tile.biome === "steppe") {
+            lg.addColorStop(0, "rgba(170, 181, 106, 0.64)");
+            lg.addColorStop(1, "rgba(121, 130, 75, 0.58)");
+          } else {
+            lg.addColorStop(0, "rgba(148, 185, 89, 0.6)");
+            lg.addColorStop(1, "rgba(95, 132, 63, 0.6)");
+          }
+          drawHex(tile.cx, tile.cy, hexSize - 1);
+          ctx.fillStyle = lg;
+          ctx.fill();
+
+          if (landBackdropCanvas) {
+            ctx.save();
+            drawHex(tile.cx, tile.cy, hexSize - 1.2);
+            ctx.clip();
+            ctx.globalAlpha = 0.88;
+            ctx.drawImage(landBackdropCanvas, 0, 0);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+
+          const biomeSprite = tile.biome === "desert"
+            ? hexAssets.c[tile.terrainVariant]
+            : (tile.biome === "steppe" ? hexAssets.ld[tile.terrainVariant] : hexAssets.l[tile.terrainVariant]);
+          if (biomeSprite && biomeSprite.complete) {
+            ctx.save();
+            drawHex(tile.cx, tile.cy, hexSize - 1.35);
+            ctx.clip();
+            ctx.globalAlpha = tile.biome === "desert" ? 0.26 : (tile.biome === "steppe" ? 0.17 : 0.1);
+            ctx.drawImage(biomeSprite, tile.cx - hexSize * 0.96, tile.cy - hexSize * 0.96, hexSize * 1.92, hexSize * 1.92);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+
+          // Secondary patch layer for more terrain diversity from local tile set.
+          const detailSpriteA = tile.biome === "desert"
+            ? hexAssets.ld[tile.detailVariantA]
+            : (tile.biome === "steppe" ? hexAssets.c[tile.detailVariantA] : hexAssets.ld[tile.detailVariantA]);
+          if (detailSpriteA && detailSpriteA.complete) {
+            ctx.save();
+            drawHex(tile.cx, tile.cy, hexSize - 1.45);
+            ctx.clip();
+            ctx.globalAlpha = tile.biome === "desert" ? 0.16 : 0.12;
+            ctx.drawImage(
+              detailSpriteA,
+              tile.cx - hexSize * 0.78,
+              tile.cy - hexSize * 0.78,
+              hexSize * 1.56,
+              hexSize * 1.56
+            );
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+
+          const detailSpriteB = tile.biome === "grass"
+            ? hexAssets.c[tile.detailVariantB]
+            : hexAssets.l[tile.detailVariantB];
+          if (detailSpriteB && detailSpriteB.complete) {
+            ctx.save();
+            drawHex(tile.cx, tile.cy, hexSize - 1.55);
+            ctx.clip();
+            ctx.globalAlpha = 0.08;
+            ctx.drawImage(
+              detailSpriteB,
+              tile.cx - hexSize * 0.66,
+              tile.cy - hexSize * 0.66,
+              hexSize * 1.32,
+              hexSize * 1.32
+            );
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+
+          if (!tile.capital && tile.estate === "town") {
+            if (hexAssets.city && hexAssets.city.complete) {
+              ctx.globalAlpha = 0.93;
+              ctx.drawImage(hexAssets.city, tile.cx - 10.5, tile.cy - 17, 21, 21);
+              ctx.globalAlpha = 1;
+            } else {
+              ctx.fillStyle = "#1f50c7";
+              ctx.beginPath();
+              ctx.arc(tile.cx, tile.cy - 6, 4.6, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = "#d8e6ff";
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+            }
+          }
+
+          if (tile.estate === "port") {
+            if (hexAssets.port && hexAssets.port.complete) {
+              ctx.globalAlpha = 0.9;
+              ctx.drawImage(hexAssets.port, tile.cx - 8, tile.cy - 14, 16, 16);
+              ctx.globalAlpha = 1;
+            } else {
+              ctx.fillStyle = "#1f50c7";
+              ctx.beginPath();
+              ctx.arc(tile.cx, tile.cy - 7, 3.8, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = "#eef4ff";
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+
+          if (tile.hasLandmark) {
+            const landmark = hexAssets.mp[tile.landmarkVariant];
+            if (landmark && landmark.complete) {
+              ctx.globalAlpha = 0.38;
+              ctx.drawImage(
+                landmark,
+                tile.cx - hexSize * 0.36,
+                tile.cy - hexSize * 0.48,
+                hexSize * 0.72,
+                hexSize * 0.66
+              );
+              ctx.globalAlpha = 1;
+            }
+          }
+        }
+
+        // Top-light bevel gives each hex a carved-board look.
+        drawHex(tile.cx, tile.cy, hexSize - 2.5);
+        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = tile.terrain === "ocean" ? "rgba(175,220,255,0.24)" : "rgba(255,245,205,0.2)";
+        ctx.stroke();
+
+        drawHex(tile.cx, tile.cy, hexSize - 1);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = tile.terrain === "ocean" ? "rgba(12,42,66,0.38)" : "rgba(55,74,37,0.22)";
+        ctx.stroke();
+
+        if (tile.terrain === "land" && tile.coastal) {
+          drawHex(tile.cx, tile.cy, hexSize - 4.2);
+          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = "rgba(220, 244, 255, 0.2)";
+          ctx.stroke();
+        }
+
+        // Keep legacy fallback fill call aligned with ownership tinting.
+        drawHex(tile.cx, tile.cy, hexSize - 1);
+        ctx.globalAlpha = tile.owner === NEUTRAL ? 0.08 : 0.16;
+        ctx.fillStyle = tileFillColor(tile);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        if (tile.terrain === "land") {
+          // Outer nation glow ring for occupied territory.
+          ctx.save();
+          drawHex(tile.cx, tile.cy, hexSize - 0.7);
+          ctx.shadowBlur = tile.owner === NEUTRAL ? 6 : 14;
+          ctx.shadowColor = ownerGlowColor(tile.owner, tile.owner === NEUTRAL ? 0.35 : 0.75);
+          ctx.lineWidth = tile.owner === NEUTRAL ? 1.6 : 2.6;
+          ctx.strokeStyle = ownerGlowColor(tile.owner, tile.owner === NEUTRAL ? 0.4 : 0.82);
+          ctx.stroke();
+          ctx.restore();
+
+          // Inner translucent trim for cleaner fantasy border definition.
+          drawHex(tile.cx, tile.cy, hexSize - 2.7);
+          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = ownerGlowColor(tile.owner, tile.owner === NEUTRAL ? 0.3 : 0.62);
+          ctx.stroke();
+        } else {
+          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = "#1f4360";
+          ctx.stroke();
+        }
+
+        if (selectedTile === tile) {
+          drawHex(tile.cx, tile.cy, hexSize - 0.3);
+          ctx.lineWidth = 3.8;
+          ctx.strokeStyle = "#f2c94c";
+          ctx.stroke();
+        }
+
+        if (tile.capital && tile.terrain === "land") {
+          const ownerTheme = factionById(tile.owner)?.theme;
+          const capSprite = ownerTheme === "green"
+            ? hexAssets.capital.green
+            : (ownerTheme === "red"
+              ? hexAssets.capital.red
+              : (ownerTheme === "blue"
+                ? hexAssets.capital.blue
+                : (ownerTheme === "violet" ? hexAssets.capital.violet : null)));
+          if (capSprite && capSprite.complete) {
+            ctx.drawImage(capSprite, tile.cx - 10.5, tile.cy - 20, 21, 21);
+          } else {
+            drawCrown(tile.cx, tile.cy, 8);
+          }
+        }
+
+        if (tile.troops > 0 && tile.terrain === "land") {
+          if (tile.owner !== NEUTRAL) {
+            const sprite = getArmySprite(tile.owner, armyTier(tile.troops));
+            if (sprite) {
+              ctx.globalAlpha = 0.96;
+              ctx.drawImage(sprite, tile.cx - 13, tile.cy - 12, 26, 26);
+              ctx.globalAlpha = 1;
+            }
+          }
+          const showTroops = hoveredTile === tile || selectedTile === tile;
+          ctx.globalAlpha = showTroops ? 1 : 0.08;
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "rgba(10, 10, 12, 0.95)";
+          ctx.lineWidth = 3;
+          ctx.font = "bold 15px Trebuchet MS";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.strokeText(String(tile.troops), tile.cx, tile.cy + 8);
+          ctx.fillText(String(tile.troops), tile.cx, tile.cy + 8);
+          ctx.globalAlpha = 1;
+        }
+
+        if (tile.terrain === "land" && tile.owner !== NEUTRAL) {
+          const label = factionById(tile.owner)?.short || "?";
+          ctx.fillStyle = "rgba(0,0,0,0.32)";
+          ctx.fillRect(tile.cx - 11, tile.cy - 22, 22, 10);
+          ctx.fillStyle = "#f4f4ee";
+          ctx.font = "bold 8px Trebuchet MS";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, tile.cx, tile.cy - 17);
+        }
+
+        const unit = getUnitAtTile(tile);
+        if (unit) {
+          const queen = QUEEN_POWERS[unit.queenFaction];
+          ctx.fillStyle = "#fff8";
+          ctx.fillRect(tile.cx - 15, tile.cy - 24, 30, 10);
+          ctx.strokeStyle = "#1f1f1f";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(tile.cx - 15, tile.cy - 24, 30, 10);
+          ctx.fillStyle = "#111";
+          ctx.font = "bold 9px Trebuchet MS";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const modeCode = unit.mode === "fight" ? "F" : "S";
+          ctx.fillText(`${queen.title.split(" ")[1]}:${modeCode}`, tile.cx, tile.cy - 19);
+        }
+      }
+    }
+
+    function render() {
+      drawBoard();
+      updateHUD();
+      renderLeaderPanel();
+      renderHaremPanel();
+    }
+
+
+    function addLog(text) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      logEl.prepend(p);
+    }
+
+    function ownedTiles(factionId) {
+      return tiles.filter(t => t.owner === factionId);
+    }
+
+    function factionEconomy(factionId) {
+      const land = ownedTiles(factionId).filter(t => t.terrain === "land");
+      const lands = land.length;
+      const towns = land.filter(t => t.capital || t.estate === "town").length;
+      const ports = land.filter(t => t.estate === "port").length;
+      const ucount = towns > 0 ? Math.max(1, Math.floor((lands + ports * 5) / towns)) : 0;
+      return { lands, towns, ports, ucount };
+    }
+
+    function activeFactions() {
+      return FACTIONS.filter(f => leaderState[f.id]?.active && !leaderState[f.id]?.defeated);
+    }
+
+    function dormantQueens() {
+      return FACTIONS.filter(f => !f.isHuman && !leaderState[f.id]?.active && !leaderState[f.id]?.defeated);
+    }
+
+    function randomItem(list) {
+      if (!list.length) return null;
+      return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function shuffled(list) {
+      const copy = list.slice();
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function awakenFaction(factionId) {
+      leaderState[factionId].active = true;
+      leaderState[factionId].defeated = false;
+    }
+
+    function spawnFrontierQueen(factionId) {
+      const faction = factionById(factionId);
+      const candidates = shuffled(
+        tiles.filter(t =>
+          t.terrain === "land" &&
+          t.owner === NEUTRAL &&
+          !t.capital &&
+          (t.estate === "town" || !t.coastal)
+        )
+      );
+      const center = candidates.find(t => !neighbors(t).some(n => n.capital));
+      if (!center) return false;
+
+      awakenFaction(factionId);
+      center.owner = factionId;
+      center.capital = true;
+      center.estate = "town";
+      center.troops = 10;
+
+      let claimed = 0;
+      for (const n of shuffled(neighbors(center))) {
+        if (n.terrain !== "land" || n.owner !== NEUTRAL || n.capital) continue;
+        n.owner = factionId;
+        n.troops = Math.max(2, n.troops);
+        claimed += 1;
+        if (claimed >= 3) break;
+      }
+
+      addLog(`${faction.leader} rises from the frontier and founds ${faction.name}.`);
+      return true;
+    }
+
+    function spawnRebelQueen(factionId) {
+      const targets = shuffled(
+        activeFactions().filter(f => !f.isHuman && f.id !== factionId && ownedTiles(f.id).length >= 7)
+      );
+      const targetFaction = targets.find(Boolean);
+      if (!targetFaction) return false;
+
+      const rebellionTiles = shuffled(
+        ownedTiles(targetFaction.id).filter(t => t.terrain === "land" && !t.capital && (t.estate === "town" || t.estate === "port"))
+      );
+      const center = rebellionTiles.find(Boolean);
+      if (!center) return false;
+
+      awakenFaction(factionId);
+      center.owner = factionId;
+      center.capital = true;
+      center.estate = "town";
+      center.troops = 9;
+
+      let flipped = 0;
+      for (const n of shuffled(neighbors(center))) {
+        if (n.terrain !== "land" || n.owner !== targetFaction.id || n.capital) continue;
+        n.owner = factionId;
+        n.troops = Math.max(2, Math.ceil(n.troops / 2));
+        flipped += 1;
+        if (flipped >= 3) break;
+      }
+
+      const faction = factionById(factionId);
+      addLog(`${faction.leader} sparks a rebellion inside ${targetFaction.name} and claims ${faction.name}.`);
+      return true;
+    }
+
+    function triggerWorldEvents() {
+      if (round < 3) return;
+      const reserve = dormantQueens();
+      if (!reserve.length) return;
+
+      let triggered = false;
+      if (Math.random() < 0.28) {
+        const rebel = randomItem(reserve);
+        if (rebel) triggered = spawnRebelQueen(rebel.id);
+      }
+      if (!triggered && Math.random() < 0.24) {
+        const frontier = randomItem(dormantQueens());
+        if (frontier) triggered = spawnFrontierQueen(frontier.id);
+      }
+    }
+
+    function startTurn(factionId) {
+      if (gameOver) return;
+      if (!leaderState[factionId].active || leaderState[factionId].defeated) {
+        cycleTurn();
+        return;
+      }
+      const factionTiles = ownedTiles(factionId).filter(t => t.terrain === "land");
+      const eco = factionEconomy(factionId);
+      for (const tile of factionTiles) {
+        if (tile.capital) {
+          tile.troops += 1 + eco.ucount;
+        } else if (tile.estate === "town") {
+          tile.troops += eco.ucount;
+        } else if (tile.estate === "port") {
+          tile.troops += Math.max(1, Math.floor(eco.ucount / 2));
+        }
+      }
+      const fac = factionById(factionId);
+      addLog(`${fac.name} gains reinforcements (land ${eco.lands}, towns ${eco.towns}, ports ${eco.ports}).`);
+
+      if (!fac.isHuman) {
+        endTurnBtn.disabled = true;
+        setTimeout(() => {
+          runAiTurn(factionId);
+        }, 380);
+      } else {
+        queenUsedThisTurn = false;
+        pendingQueenFaction = null;
+        pendingUnitQueenFaction = null;
+        for (const q of capturedQueens) {
+          const st = queenEntry(q);
+          st.tendUsedThisTurn = false;
+          st.refusedThisTurn = false;
+          if (st.assignment === "court") st.morale = Math.min(100, st.morale + 3);
+          if (st.assignment === "war") st.morale = Math.max(0, st.morale - 2);
+          if (st.assignment === "intrigue") st.morale = Math.max(0, st.morale - 1);
+          if (st.morale < 30 && Math.random() < 0.2) {
+            st.refusedThisTurn = true;
+            const queen = QUEEN_POWERS[q];
+            addLog(`${queen.title} refuses orders this turn (low morale).`);
+          }
+        }
+        for (const unit of queenUnits) {
+          if (unit.owner !== factionId) continue;
+          unit.usedThisTurn = false;
+          if (unit.mode === "serve") {
+            const t = getTile(unit.q, unit.r);
+            if (t && t.owner === factionId) {
+              const st = queenEntry(unit.queenFaction);
+              const bonus = Math.max(1, QUEEN_POWERS[unit.queenFaction].unitServeBonus + moraleTierBonus(st.morale));
+              t.troops += bonus;
+            }
+          }
+        }
+        humanMovesRemaining = HUMAN_MOVES_PER_TURN;
+        endTurnBtn.disabled = false;
+      }
+      render();
+    }
+
+    function updateHUD() {
+      const fac = FACTIONS[currentFactionIndex];
+      turnInfo.textContent = `Round ${round} • Turn: ${fac.name}`;
+      if (pendingQueenFaction !== null) {
+        const queen = QUEEN_POWERS[pendingQueenFaction];
+        turnInfo.textContent += ` • Deploying ${queen.title}`;
+      }
+      if (pendingUnitQueenFaction !== null) {
+        const queen = QUEEN_POWERS[pendingUnitQueenFaction];
+        turnInfo.textContent += ` • Recruiting ${queen.unitName}`;
+      }
+      if (!gameOver && FACTIONS[currentFactionIndex].isHuman) {
+        turnInfo.textContent += ` • Moves: ${humanMovesRemaining}/${HUMAN_MOVES_PER_TURN}`;
+      }
+      if (gameOver) {
+        turnInfo.textContent += " • Game Over";
+      }
+    }
+
+    function renderLeaderPanel() {
+      leaderStatusEl.innerHTML = "";
+      const heading = document.createElement("div");
+      heading.className = "gallery-sub";
+      heading.textContent = "Enemy kingdoms and their ruling queens.";
+      leaderStatusEl.appendChild(heading);
+
+      const grid = document.createElement("div");
+      grid.className = "gallery-grid";
+      const leaders = FACTIONS.filter(f => !f.isHuman);
+      for (const f of leaders) {
+        const status = leaderState[f.id].defeated
+          ? "Defeated"
+          : (leaderState[f.id].active ? "Active" : "Reserve");
+        const wrap = document.createElement("div");
+        wrap.className = "gallery-card";
+
+        const head = document.createElement("div");
+        head.className = "gallery-head";
+        head.textContent = f.leader;
+        wrap.appendChild(head);
+
+        const sub = document.createElement("div");
+        sub.className = "gallery-sub";
+        sub.textContent = `${f.name} • ${status}`;
+        wrap.appendChild(sub);
+
+        if (queenPortraits[f.id]) {
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = queenPortraits[f.id];
+          img.alt = `${f.leader} portrait`;
+          wrap.appendChild(img);
+        }
+
+        const divider = document.createElement("div");
+        divider.className = "gallery-divider";
+        wrap.appendChild(divider);
+
+        const row = document.createElement("div");
+        row.className = "tiny";
+        row.innerHTML = `Status: <strong>${status}</strong>`;
+        wrap.appendChild(row);
+        grid.appendChild(wrap);
+      }
+      leaderStatusEl.appendChild(grid);
+    }
+
+    function renderHaremPanel() {
+      haremPanelEl.innerHTML = "";
+      if (capturedQueens.length === 0) {
+        haremPanelEl.textContent = "No captured queens yet.";
+        return;
+      }
+
+      const heading = document.createElement("div");
+      heading.className = "gallery-sub";
+      heading.textContent = "Manage morale, assignments, powers, and units.";
+      haremPanelEl.appendChild(heading);
+
+      const grid = document.createElement("div");
+      grid.className = "gallery-grid";
+      const isHumanTurn = !gameOver && FACTIONS[currentFactionIndex].isHuman;
+      for (const queenFaction of capturedQueens) {
+        const queen = QUEEN_POWERS[queenFaction];
+        const st = queenEntry(queenFaction);
+        const unit = queenUnitForFaction(queenFaction);
+        const wrap = document.createElement("div");
+        wrap.className = "gallery-card";
+
+        const title = document.createElement("div");
+        title.className = "gallery-head";
+        title.textContent = queen.title;
+        wrap.appendChild(title);
+
+        const sub = document.createElement("div");
+        sub.className = "gallery-sub";
+        sub.textContent = `${queen.powerName} • ${queen.unitName}`;
+        wrap.appendChild(sub);
+
+        if (queenPortraits[queenFaction]) {
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = queenPortraits[queenFaction];
+          img.alt = `${queen.title} portrait`;
+          wrap.appendChild(img);
+        }
+
+        const tag = document.createElement("div");
+        tag.className = "tag";
+        tag.textContent = `Assignment: ${st.assignment}`;
+        wrap.appendChild(tag);
+
+        const moraleText = document.createElement("div");
+        moraleText.className = "tiny";
+        moraleText.textContent = `Morale: ${st.morale}${st.refusedThisTurn ? " (Refusing this turn)" : ""}`;
+        wrap.appendChild(moraleText);
+
+        const moraleWrap = document.createElement("div");
+        moraleWrap.className = "morale-wrap";
+        const moraleFill = document.createElement("div");
+        moraleFill.className = "morale-fill";
+        moraleFill.style.width = `${st.morale}%`;
+        moraleWrap.appendChild(moraleFill);
+        wrap.appendChild(moraleWrap);
+
+        const info = document.createElement("div");
+        info.className = "tiny";
+        info.textContent = `${queen.powerName}: ${queen.summary}`;
+        wrap.appendChild(info);
+
+        const assignRow = document.createElement("div");
+        assignRow.className = "row";
+        for (const mode of ["court", "war", "intrigue"]) {
+          const assignBtn = document.createElement("button");
+          assignBtn.textContent = mode[0].toUpperCase() + mode.slice(1);
+          assignBtn.disabled = !isHumanTurn || st.assignment === mode;
+          assignBtn.addEventListener("click", () => {
+            st.assignment = mode;
+            addLog(`${queen.title} is now assigned to ${mode}.`);
+            render();
+          });
+          assignRow.appendChild(assignBtn);
+        }
+        wrap.appendChild(assignRow);
+
+        const supportBtn = document.createElement("button");
+        supportBtn.textContent = "Hold Court (+8 Morale)";
+        supportBtn.disabled = !isHumanTurn || st.tendUsedThisTurn;
+        supportBtn.addEventListener("click", () => {
+          st.morale = Math.min(100, st.morale + 8);
+          st.tendUsedThisTurn = true;
+          addLog(`${queen.title} gains morale from court attention.`);
+          render();
+        });
+        wrap.appendChild(supportBtn);
+
+        const btn = document.createElement("button");
+        btn.textContent = pendingQueenFaction === queenFaction ? "Selected" : "Deploy";
+        btn.disabled = !isHumanTurn || queenUsedThisTurn || st.refusedThisTurn;
+        btn.addEventListener("click", () => {
+          pendingUnitQueenFaction = null;
+          pendingQueenFaction = queenFaction;
+          selectedTile = null;
+          addLog(`${queen.title} is ready. Click one of your tiles to deploy.`);
+          render();
+        });
+        wrap.appendChild(btn);
+
+        const unitInfo = document.createElement("div");
+        unitInfo.className = "tiny";
+        unitInfo.textContent = unit
+          ? `${queen.unitName} active at (${unit.q},${unit.r}) mode=${unit.mode}`
+          : `${queen.unitName} not deployed`;
+        wrap.appendChild(unitInfo);
+
+        const unitRow = document.createElement("div");
+        unitRow.className = "row";
+
+        const recruitBtn = document.createElement("button");
+        recruitBtn.textContent = pendingUnitQueenFaction === queenFaction ? "Placement..." : "Recruit Unit";
+        recruitBtn.disabled = !isHumanTurn || st.refusedThisTurn || Boolean(unit);
+        recruitBtn.addEventListener("click", () => {
+          pendingQueenFaction = null;
+          pendingUnitQueenFaction = queenFaction;
+          selectedTile = null;
+          addLog(`Choose one of your tiles to deploy ${queen.unitName}.`);
+          render();
+        });
+        unitRow.appendChild(recruitBtn);
+
+        if (unit) {
+          const toggleModeBtn = document.createElement("button");
+          toggleModeBtn.textContent = unit.mode === "fight" ? "Set Serve Mode" : "Set Fight Mode";
+          toggleModeBtn.disabled = !isHumanTurn;
+          toggleModeBtn.addEventListener("click", () => {
+            unit.mode = unit.mode === "fight" ? "serve" : "fight";
+            addLog(`${queen.unitName} switched to ${unit.mode} mode.`);
+            render();
+          });
+          unitRow.appendChild(toggleModeBtn);
+        }
+        wrap.appendChild(unitRow);
+        grid.appendChild(wrap);
+      }
+      haremPanelEl.appendChild(grid);
+    }
+
+    function distance2(x1, y1, x2, y2) {
+      const dx = x1 - x2;
+      const dy = y1 - y2;
+      return dx * dx + dy * dy;
+    }
+
+    function tileAtPoint(x, y) {
+      let best = null;
+      let bestD = Infinity;
+      for (const tile of tiles) {
+        const d = distance2(x, y, tile.cx, tile.cy);
+        if (d < bestD) {
+          bestD = d;
+          best = tile;
+        }
+      }
+      return Math.sqrt(bestD) <= hexSize * 0.94 ? best : null;
+    }
+
+    function resolveMove(fromTile, toTile, factionId, forceAmount = null, attackBonus = 0) {
+      if (fromTile.terrain === "ocean" || toTile.terrain === "ocean") return null;
+      const amount = forceAmount ?? Math.floor(fromTile.troops / 2);
+      if (amount < 1) return null;
+      if (toTile.owner === factionId) {
+        fromTile.troops -= amount;
+        toTile.troops += amount;
+        return {
+          mode: "reinforce",
+          amount,
+          effective: amount,
+          captured: false,
+          defenderId: factionId,
+          beforeTroops: toTile.troops - amount,
+          targetWasCapital: false,
+        };
+      }
+
+      const defenderId = toTile.owner;
+      const beforeTroops = toTile.troops;
+      const targetWasCapital = toTile.capital;
+      const effective = amount + attackBonus;
+      fromTile.troops -= amount;
+      if (effective > toTile.troops) {
+        const remain = effective - toTile.troops;
+        toTile.owner = factionId;
+        toTile.troops = remain;
+        if (targetWasCapital && defenderId !== factionId) {
+          onCapitalTaken(defenderId, factionId);
+          toTile.capital = false;
+        }
+      } else {
+        toTile.troops = Math.max(0, toTile.troops - effective);
+      }
+      if (fromTile.troops < 1) fromTile.troops = 1;
+      return {
+        mode: "attack",
+        amount,
+        effective,
+        captured: toTile.owner === factionId,
+        defenderId,
+        beforeTroops,
+        targetWasCapital,
+      };
+    }
+
+    function onCapitalTaken(defenderId, winnerId) {
+      if (leaderState[defenderId].defeated) return;
+      leaderState[defenderId].defeated = true;
+      leaderState[defenderId].active = false;
+      const loser = factionById(defenderId);
+      const winner = factionById(winnerId);
+      addLog(`${winner.name} defeated ${loser.leader}.`);
+
+      if (winnerId === 0 && QUEEN_POWERS[defenderId] && !capturedQueens.includes(defenderId)) {
+        capturedQueens.push(defenderId);
+        queenEntry(defenderId);
+        const queen = QUEEN_POWERS[defenderId];
+        addLog(`${queen.title} has joined your harem.`);
+      }
+
+      for (const tile of tiles) {
+        if (tile.owner === defenderId) {
+          tile.owner = winnerId;
+          tile.capital = false;
+          tile.troops = Math.max(1, tile.troops);
+        }
+      }
+
+      if (defenderId === 0) {
+        gameOver = true;
+        endTurnBtn.disabled = true;
+        addLog("Your leader has fallen. Defeat.");
+      }
+
+      cleanupUnits();
+    }
+
+    function deployQueenPower(queenFaction, tile) {
+      if (tile.owner !== 0) {
+        addLog("Queen powers require one of your tiles.");
+        return false;
+      }
+
+      const st = queenEntry(queenFaction);
+      if (st.refusedThisTurn) {
+        addLog("That queen refuses to deploy this turn.");
+        return false;
+      }
+      const tier = moraleTierBonus(st.morale);
+      const abilityType = QUEEN_POWERS[queenFaction].abilityType;
+
+      if (abilityType === "edict") {
+        const gain = Math.max(2, 3 + tier);
+        tile.troops += gain;
+        st.morale = Math.max(0, st.morale - 1);
+        addLog(`${QUEEN_POWERS[queenFaction].title} issues ${QUEEN_POWERS[queenFaction].powerName}: +${gain} troops.`);
+        return true;
+      }
+
+      if (abilityType === "banner") {
+        const gain = Math.max(2, 4 + tier);
+        tile.troops += gain;
+        st.morale = Math.max(0, st.morale - 2);
+        addLog(`${QUEEN_POWERS[queenFaction].title} deploys ${QUEEN_POWERS[queenFaction].powerName}: +${gain} troops.`);
+        return true;
+      }
+
+      if (abilityType === "raid") {
+        let hit = 0;
+        const damage = Math.max(1, 2 + tier);
+        for (const n of neighbors(tile)) {
+          if (n.owner > 0) {
+            n.troops = Math.max(0, n.troops - damage);
+            if (n.troops === 0) n.owner = NEUTRAL;
+            hit += 1;
+          }
+        }
+        if (hit === 0) {
+          addLog("Night Raid needs enemy tiles next to the chosen tile.");
+          return false;
+        }
+        st.morale = Math.max(0, st.morale - 2);
+        addLog(`${QUEEN_POWERS[queenFaction].title} deploys ${QUEEN_POWERS[queenFaction].powerName} (${damage}) on ${hit} neighboring enemy tiles.`);
+        cleanupUnits();
+        return true;
+      }
+
+      if (abilityType === "hex") {
+        let hit = 0;
+        const damage = Math.max(1, 1 + tier);
+        for (const n of neighbors(tile)) {
+          if (n.owner > 0) {
+            n.troops = Math.max(0, n.troops - damage);
+            if (n.troops === 0) n.owner = NEUTRAL;
+            hit += 1;
+          }
+        }
+        tile.troops += Math.max(1, 1 + tier);
+        if (hit === 0) {
+          addLog("Veil Hex needs enemy tiles next to the chosen tile.");
+          return false;
+        }
+        st.morale = Math.max(0, st.morale - 2);
+        addLog(`${QUEEN_POWERS[queenFaction].title} casts ${QUEEN_POWERS[queenFaction].powerName}, weakening ${hit} adjacent enemy tiles.`);
+        cleanupUnits();
+        return true;
+      }
+
+      if (abilityType === "tithe") {
+        const gain = Math.max(3, 4 + tier);
+        tile.troops += gain;
+        st.morale = Math.min(100, st.morale + 2);
+        addLog(`${QUEEN_POWERS[queenFaction].title} levies ${QUEEN_POWERS[queenFaction].powerName}: +${gain} troops and +2 morale.`);
+        return true;
+      }
+
+      if (abilityType === "storm") {
+        const gain = Math.max(2, 2 + tier);
+        tile.troops += gain;
+        for (const n of neighbors(tile)) {
+          if (n.owner === 0) n.troops += 1;
+        }
+        st.morale = Math.max(0, st.morale - 2);
+        addLog(`${QUEEN_POWERS[queenFaction].title} unleashes ${QUEEN_POWERS[queenFaction].powerName}: +${gain} troops here and drills nearby allies.`);
+        return true;
+      }
+
+      return false;
+    }
+
+    function deployQueenUnit(queenFaction, tile) {
+      if (tile.owner !== 0) {
+        addLog("Units must deploy on one of your tiles.");
+        return false;
+      }
+      if (getUnitAtTile(tile)) {
+        addLog("That tile already has a unit.");
+        return false;
+      }
+      if (queenUnitForFaction(queenFaction)) {
+        addLog("That queen already has an active unit.");
+        return false;
+      }
+      const st = queenEntry(queenFaction);
+      if (st.refusedThisTurn) {
+        addLog("That queen refuses to deploy a unit this turn.");
+        return false;
+      }
+      queenUnits.push({
+        id: nextUnitId++,
+        queenFaction,
+        owner: 0,
+        q: tile.q,
+        r: tile.r,
+        mode: "fight",
+        usedThisTurn: false,
+      });
+      st.morale = Math.max(0, st.morale - 1);
+      addLog(`${QUEEN_POWERS[queenFaction].unitName} deployed at (${tile.q},${tile.r}).`);
+      return true;
+    }
+
+    function isNeighbor(a, b) {
+      return neighbors(a).some(n => n === b);
+    }
+
+    function maybeFinishGame() {
+      const alive = activeFactions();
+      if (alive.length === 1 && dormantQueens().length === 0) {
+        gameOver = true;
+        endTurnBtn.disabled = true;
+        addLog(`${alive[0].name} wins the map.`);
+        render();
+      }
+    }
+
+    function cycleTurn() {
+      if (gameOver) return;
+      selectedTile = null;
+      const aliveIds = activeFactions().map(f => f.id);
+      if (aliveIds.length <= 1) {
+        maybeFinishGame();
+        return;
+      }
+
+      let tries = 0;
+      do {
+        currentFactionIndex = (currentFactionIndex + 1) % FACTIONS.length;
+        if (currentFactionIndex === 0) {
+          round += 1;
+          triggerWorldEvents();
+        }
+        tries += 1;
+      } while (!aliveIds.includes(FACTIONS[currentFactionIndex].id) && tries < 10);
+
+      startTurn(FACTIONS[currentFactionIndex].id);
+    }
+
+    function handleHumanClick(tile) {
+      const humanId = FACTIONS[currentFactionIndex].id;
+      if (gameOver) return;
+      if (!FACTIONS[currentFactionIndex].isHuman) {
+        addLog("Wait for your turn.");
+        return;
+      }
+      if (tile.terrain === "ocean") {
+        addLog("Ocean tile is impassable.");
+        return;
+      }
+
+      if (pendingQueenFaction !== null) {
+        const ok = deployQueenPower(pendingQueenFaction, tile);
+        if (ok) {
+          queenUsedThisTurn = true;
+          pendingQueenFaction = null;
+          maybeFinishGame();
+          render();
+        }
+        return;
+      }
+
+      if (pendingUnitQueenFaction !== null) {
+        const ok = deployQueenUnit(pendingUnitQueenFaction, tile);
+        if (ok) {
+          pendingUnitQueenFaction = null;
+          render();
+        }
+        return;
+      }
+
+      if (!selectedTile) {
+        if (tile.owner === humanId && tile.troops > 1) {
+          selectedTile = tile;
+        } else if (tile.owner !== humanId) {
+          addLog("That is not your tile.");
+        } else {
+          addLog("Need at least 2 troops to move from that tile.");
+        }
+        render();
+        return;
+      }
+
+      if (tile === selectedTile) {
+        selectedTile = null;
+        render();
+        return;
+      }
+
+      if (!isNeighbor(selectedTile, tile)) {
+        if (tile.owner === humanId && tile.troops > 1) {
+          selectedTile = tile;
+          render();
+        }
+        return;
+      }
+
+      if (selectedTile.troops <= 1) {
+        selectedTile = null;
+        render();
+        return;
+      }
+
+      const beforeOwner = tile.owner;
+      const send = Math.floor(selectedTile.troops / 2);
+      const selectedUnit = getUnitAtTile(selectedTile);
+      let unitBonus = 0;
+      if (selectedUnit && selectedUnit.mode === "fight" && !selectedUnit.usedThisTurn && beforeOwner !== humanId) {
+        const st = queenEntry(selectedUnit.queenFaction);
+        const base = QUEEN_POWERS[selectedUnit.queenFaction].unitFightBonus;
+        unitBonus = Math.max(1, base + moraleTierBonus(st.morale));
+      }
+      const attackBonus = beforeOwner === humanId ? 0 : passiveWarBonus() + unitBonus;
+      const result = resolveMove(selectedTile, tile, humanId, null, attackBonus);
+      if (!result) return;
+      if (beforeOwner !== humanId && unitBonus > 0 && selectedUnit) {
+        selectedUnit.usedThisTurn = true;
+      }
+      if (beforeOwner === humanId) {
+        addLog(`You reinforced (${tile.q},${tile.r}) with ${send}.`);
+      } else if (tile.owner === humanId) {
+        addLog(`You captured (${tile.q},${tile.r}) with ${tile.troops} left.`);
+      } else {
+        if (attackBonus > 0) {
+          addLog(`You attacked (${tile.q},${tile.r}) for ${result.effective} (${send}+${attackBonus}).`);
+        } else {
+          addLog(`You attacked (${tile.q},${tile.r}) for ${send} damage.`);
+        }
+      }
+
+      if (selectedTile.troops <= 1) selectedTile = null;
+      cleanupUnits();
+      maybeFinishGame();
+      if (!gameOver) {
+        humanMovesRemaining = Math.max(0, humanMovesRemaining - 1);
+        if (humanMovesRemaining === 0) {
+          addLog("You used all 5 moves. Turn ended.");
+          render();
+          cycleTurn();
+          return;
+        }
+      }
+      render();
+    }
+
+    function aiPickAction(factionId) {
+      const sources = ownedTiles(factionId)
+        .filter(t => t.troops > 1)
+        .sort((a, b) => b.troops - a.troops);
+
+      for (const src of sources) {
+        const neigh = neighbors(src);
+
+        const enemyTargets = neigh
+          .filter(n => n.terrain === "land" && n.owner !== factionId)
+          .sort((a, b) => {
+            const scoreA = (a.capital ? 20 : 0) + (a.estate === "town" ? 8 : 0) + (a.estate === "port" ? 6 : 0) - a.troops;
+            const scoreB = (b.capital ? 20 : 0) + (b.estate === "town" ? 8 : 0) + (b.estate === "port" ? 6 : 0) - b.troops;
+            return scoreB - scoreA;
+          });
+
+        if (enemyTargets.length) {
+          const target = enemyTargets[0];
+          const send = Math.floor(src.troops / 2);
+          if (send > target.troops || Math.random() < 0.35) {
+            return { src, target, send };
+          }
+        }
+
+        const allyTargets = neigh
+          .filter(n => n.terrain === "land" && n.owner === factionId)
+          .sort((a, b) => a.troops - b.troops);
+
+        if (allyTargets.length && Math.random() < 0.2) {
+          return { src, target: allyTargets[0], send: Math.floor(src.troops / 2) };
+        }
+      }
+
+      return null;
+    }
+
+    function runAiTurn(factionId) {
+      let actions = 0;
+      while (actions < HUMAN_MOVES_PER_TURN) {
+        const pick = aiPickAction(factionId);
+        if (!pick) break;
+
+        const beforeOwner = pick.target.owner;
+        const beforeTroops = pick.target.troops;
+        const result = resolveMove(pick.src, pick.target, factionId, pick.send, 0);
+        if (!result) break;
+
+        const fac = factionById(factionId);
+        if (beforeOwner === factionId) {
+          addLog(`${fac.name} reinforces (${pick.target.q},${pick.target.r}).`);
+        } else if (pick.target.owner === factionId) {
+          addLog(`${fac.name} captures (${pick.target.q},${pick.target.r}) with ${pick.target.troops} left.`);
+        } else {
+          addLog(`${fac.name} attacks (${pick.target.q},${pick.target.r}).`);
+        }
+
+        actions += 1;
+      }
+
+      cleanupUnits();
+      maybeFinishGame();
+      render();
+      setTimeout(cycleTurn, 420);
+    }
+
+    canvas.addEventListener("click", (ev) => {
+      if (dragMoved) {
+        dragMoved = false;
+        return;
+      }
+      const pt = pointerToBoard(ev);
+      const x = pt.x;
+      const y = pt.y;
+      const tile = tileAtPoint(x, y);
+      if (!tile) return;
+      handleHumanClick(tile);
+    });
+
+    canvas.addEventListener("mousemove", (ev) => {
+      if (isDraggingBoard) return;
+      const pt = pointerToBoard(ev);
+      const x = pt.x;
+      const y = pt.y;
+      const tile = tileAtPoint(x, y);
+      if (tile !== hoveredTile) {
+        hoveredTile = tile;
+        render();
+      }
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      if (hoveredTile !== null) {
+        hoveredTile = null;
+        render();
+      }
+    });
+
+    boardWrapEl.addEventListener("wheel", (ev) => {
+      // Mouse wheel always controls map zoom.
+      ev.preventDefault();
+      const step = ev.deltaY > 0 ? -0.1 : 0.1;
+      zoomBoard(boardScale + step, ev.clientX, ev.clientY);
+    }, { passive: false });
+
+    function onBoardPointerDown(ev) {
+      if (ev.button !== 0) return;
+      isDraggingBoard = true;
+      dragMoved = false;
+      dragPointerId = ev.pointerId;
+      dragLastX = ev.clientX;
+      dragLastY = ev.clientY;
+      if (ev.currentTarget && ev.currentTarget.setPointerCapture) {
+        ev.currentTarget.setPointerCapture(ev.pointerId);
+      }
+      boardWrapEl.style.cursor = "grabbing";
+      ev.preventDefault();
+    }
+
+    function onBoardPointerMove(ev) {
+      if (!isDraggingBoard || ev.pointerId !== dragPointerId) return;
+      const dx = ev.clientX - dragLastX;
+      const dy = ev.clientY - dragLastY;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) dragMoved = true;
+      boardWrapEl.scrollLeft -= dx;
+      boardWrapEl.scrollTop -= dy;
+      dragLastX = ev.clientX;
+      dragLastY = ev.clientY;
+      ev.preventDefault();
+    }
+
+    function stopBoardDrag(ev) {
+      if (!isDraggingBoard) return;
+      if (ev && dragPointerId !== null && ev.pointerId !== dragPointerId) return;
+      isDraggingBoard = false;
+      dragPointerId = null;
+      boardWrapEl.style.cursor = "grab";
+    }
+
+    for (const el of [boardWrapEl, canvas]) {
+      el.addEventListener("pointerdown", onBoardPointerDown);
+      el.addEventListener("pointermove", onBoardPointerMove);
+      el.addEventListener("pointerup", stopBoardDrag);
+      el.addEventListener("pointercancel", stopBoardDrag);
+    }
+
+    tabOverviewBtn.addEventListener("click", () => setMenuTab("overview"));
+    tabLeadersBtn.addEventListener("click", () => setMenuTab("leaders"));
+    tabHaremBtn.addEventListener("click", () => setMenuTab("harem"));
+    modalCloseBtn.addEventListener("click", () => setMenuTab("overview"));
+    modalOverlayEl.addEventListener("click", (ev) => {
+      if (ev.target === modalOverlayEl) setMenuTab("overview");
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && modalOverlayEl.classList.contains("open")) {
+        setMenuTab("overview");
+      }
+    });
+
+    endTurnBtn.addEventListener("click", () => {
+      if (gameOver) return;
+      if (!FACTIONS[currentFactionIndex].isHuman) return;
+      cycleTurn();
+    });
+
+    restartBtn.addEventListener("click", buildMap);
+
+    setMenuTab(activeMenuTab);
+    boardWrapEl.style.cursor = "grab";
+    loadHexAssets();
+    buildMap();
+  </script>
+</body>
+</html>
