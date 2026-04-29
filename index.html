@@ -14,6 +14,8 @@
     <button id="tabLeadersBtn">Leaders</button>
     <button id="tabDiplomacyBtn">Diplomacy</button>
     <button id="tabHaremBtn">Harem</button>
+    <button id="tabUnderworldBtn">Underworld</button>
+    <button id="tabDevBtn">Dev Mode</button>
     <button id="sendModeBtn">Send: 50%</button>
     <button id="autoTurnBtn">Auto Turn</button>
     <button id="resistanceBtn">Resistance</button>
@@ -81,6 +83,16 @@
           <div id="haremPanel" class="help"></div>
         </section>
 
+        <section id="underworldTab" class="tab-pane">
+          <div><strong>Criminal Underworld</strong></div>
+          <div id="underworldPanel" class="help"></div>
+        </section>
+
+        <section id="devTab" class="tab-pane">
+          <div><strong>Developer Mode</strong></div>
+          <div id="devPanel" class="help"></div>
+        </section>
+
         <section id="eventTab" class="tab-pane">
           <div id="eventPanel" class="help"></div>
         </section>
@@ -135,6 +147,10 @@
   </div>
 
   <audio id="menuMusic" src="main menu.mp3" loop preload="auto" autoplay></audio>
+  <audio id="dayAmbience" src="Day Time.mp3" loop preload="auto"></audio>
+  <audio id="nightAmbience" src="Night time.mp3" loop preload="auto"></audio>
+  <audio id="rainAmbience" src="Raining.mp3" loop preload="auto"></audio>
+  <audio id="bloodMoonAmbience" src="Blood Moon.mp3" loop preload="auto"></audio>
 
   <script src="src/factions.js"></script>
   <script src="src/map.js"></script>

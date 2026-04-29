@@ -301,6 +301,8 @@ const BASE_FACTIONS = [
     const tabLeadersBtn = document.getElementById("tabLeadersBtn");
     const tabDiplomacyBtn = document.getElementById("tabDiplomacyBtn");
     const tabHaremBtn = document.getElementById("tabHaremBtn");
+    const tabUnderworldBtn = document.getElementById("tabUnderworldBtn");
+    const tabDevBtn = document.getElementById("tabDevBtn");
     const sendModeBtn = document.getElementById("sendModeBtn");
     const autoTurnBtn = document.getElementById("autoTurnBtn");
     const resistanceBtn = document.getElementById("resistanceBtn");
@@ -321,16 +323,24 @@ const BASE_FACTIONS = [
     const loadingTextEl = document.getElementById("loadingText");
     const loadingFillEl = document.getElementById("loadingFill");
     const menuMusicEl = document.getElementById("menuMusic");
+    const dayAmbienceEl = document.getElementById("dayAmbience");
+    const nightAmbienceEl = document.getElementById("nightAmbience");
+    const rainAmbienceEl = document.getElementById("rainAmbience");
+    const bloodMoonAmbienceEl = document.getElementById("bloodMoonAmbience");
     const logEl = document.getElementById("log");
     const saveStatusEl = document.getElementById("saveStatus");
     const leaderStatusEl = document.getElementById("leaderStatus");
     const diplomacyPanelEl = document.getElementById("diplomacyPanel");
     const haremPanelEl = document.getElementById("haremPanel");
+    const underworldPanelEl = document.getElementById("underworldPanel");
+    const devPanelEl = document.getElementById("devPanel");
     const eventPanelEl = document.getElementById("eventPanel");
     const overviewTabEl = document.getElementById("overviewTab");
     const leadersTabEl = document.getElementById("leadersTab");
     const diplomacyTabEl = document.getElementById("diplomacyTab");
     const haremTabEl = document.getElementById("haremTab");
+    const underworldTabEl = document.getElementById("underworldTab");
+    const devTabEl = document.getElementById("devTab");
     const eventTabEl = document.getElementById("eventTab");
     const modalOverlayEl = document.getElementById("modalOverlay");
     const modalWindowEl = modalOverlayEl.querySelector(".modal-window");
@@ -371,9 +381,18 @@ const BASE_FACTIONS = [
       autosaves: 0,
       lastSaveAt: null,
     };
+    let developerState = {
+      enabled: false,
+      selectedQueenFaction: 0,
+      sceneDraft: null,
+      sceneHistory: [],
+      freeEdit: false,
+    };
     let audioSettings = {
       volume: 0.55,
       muted: false,
+      ambienceEnabled: true,
+      activeTrack: "menu",
     };
     let resistanceState = {
       built: false,
@@ -408,6 +427,15 @@ const BASE_FACTIONS = [
     let visualTick = 0;
     let dayNightPhase = 0.18;
     let dayNightTimer = null;
+    let weatherState = {
+      kind: "clear",
+      timer: 0,
+      wind: 0.18,
+      cloudSeed: 0,
+      fronts: [],
+      bloodMoon: false,
+      bloodMoonCheckedNight: -1,
+    };
     let landBackdropCanvas = null;
     let oceanBackdropCanvas = null;
     let staticBoardCanvas = null;
@@ -479,7 +507,8 @@ const BASE_FACTIONS = [
       }
       mapImages.push(hexAssets.city, hexAssets.port);
       const portraitSources = Object.values(QUEEN_PORTRAITS);
-      const total = mapImages.length + portraitSources.length + 4;
+      const ambienceTracks = [menuMusicEl, dayAmbienceEl, nightAmbienceEl, rainAmbienceEl, bloodMoonAmbienceEl];
+      const total = mapImages.length + portraitSources.length + ambienceTracks.length + 3;
       let done = 0;
       const step = (label) => {
         done += 1;
@@ -497,21 +526,21 @@ const BASE_FACTIONS = [
         step("Gathering queen portraits...");
       }));
 
-      await new Promise((resolve) => {
+      await Promise.all(ambienceTracks.map((audio) => new Promise((resolve) => {
         const doneAudio = () => {
-          menuMusicEl.removeEventListener("canplaythrough", doneAudio);
-          menuMusicEl.removeEventListener("error", doneAudio);
+          audio.removeEventListener("canplaythrough", doneAudio);
+          audio.removeEventListener("error", doneAudio);
           step("Tuning the court musicians...");
           resolve();
         };
-        if (menuMusicEl.readyState >= 4) {
+        if (audio.readyState >= 4) {
           doneAudio();
           return;
         }
-        menuMusicEl.addEventListener("canplaythrough", doneAudio);
-        menuMusicEl.addEventListener("error", doneAudio);
-        menuMusicEl.load();
-      });
+        audio.addEventListener("canplaythrough", doneAudio);
+        audio.addEventListener("error", doneAudio);
+        audio.load();
+      })));
 
       await new Promise((resolve) => {
         setLoadingProgress(92, "Raising the realm...");
@@ -531,7 +560,9 @@ const BASE_FACTIONS = [
       if (dayNightTimer) clearInterval(dayNightTimer);
       dayNightTimer = setInterval(() => {
         if (!gameBooted) return;
+        visualTick += 1;
         dayNightPhase = (dayNightPhase + 0.0012) % 1;
+        advanceWeather();
         scheduleBoardRender();
       }, 900);
     }
@@ -569,11 +600,23 @@ const BASE_FACTIONS = [
           lastRequestTurn: -1,
           lastTradeTurn: -1,
           lastFlirtTurn: -1,
+          lastAffairTurn: -1,
           lastTreatyTurn: -1,
           lastMarriageTurn: -1,
           talkAffinity: 0,
           flirtAffinity: 0,
           joinOfferPending: false,
+          affair: false,
+          affairLevel: 0,
+          affairOfferPending: false,
+          elopeOfferPending: false,
+          underworldAssigned: false,
+          underworldUsedThisTurn: false,
+          underworldRomanceUsedThisTurn: false,
+          lastUnderworldAidTurn: -1,
+          lastUnderworldRomanceTurn: -1,
+          lastUnderworldRiseTurn: -1,
+          underworldRiseSupport: 0,
           lastAudienceTurn: -1,
           overlordClaimed: false,
           forbiddenThisTurn: false,
@@ -583,9 +626,47 @@ const BASE_FACTIONS = [
       return queenState[queenFaction];
     }
 
+    function developerQueenOptions() {
+      return capturedQueens
+        .filter((id) => QUEEN_POWERS[id])
+        .map((id) => ({ id, title: QUEEN_POWERS[id].title }));
+    }
+
+    function defaultSceneDraft(queenFaction = developerState.selectedQueenFaction || capturedQueens[0] || 0) {
+      const queen = QUEEN_POWERS[queenFaction] || QUEEN_POWERS[0];
+      return {
+        queenFaction,
+        title: `Private Time With ${queen.title}`,
+        summary: `${queen.title} requests a quieter audience beyond the war room.\n\nUse this scene draft to prototype intimacy branches, rewards, and future narrative beats.`,
+        optionA: "Tender Night",
+        optionAText: "A slow, affectionate scene that builds trust and emotional intimacy.",
+        optionAMorale: 8,
+        optionATrust: 6,
+        optionARomance: 7,
+        optionAAttraction: 4,
+        optionB: "Hungry Encounter",
+        optionBText: "A sharper, more dangerous scene that spikes attraction and passion.",
+        optionBMorale: 4,
+        optionBTrust: 2,
+        optionBRomance: 4,
+        optionBAttraction: 9,
+        aftercare: "The queen leaves the chamber changed, and the next branch can build from the consequences recorded here.",
+      };
+    }
+
+    function ensureSceneDraft(queenFaction = developerState.selectedQueenFaction || capturedQueens[0] || 0) {
+      if (!developerState.sceneDraft) {
+        developerState.sceneDraft = defaultSceneDraft(queenFaction);
+      }
+      if (developerState.sceneDraft.queenFaction === undefined || developerState.sceneDraft.queenFaction === null) {
+        developerState.sceneDraft.queenFaction = queenFaction;
+      }
+      return developerState.sceneDraft;
+    }
+
     function setMenuTab(tabName) {
       activeMenuTab = tabName;
-      if (tabName === "leaders" || tabName === "diplomacy" || tabName === "harem" || tabName === "event") {
+      if (tabName === "leaders" || tabName === "diplomacy" || tabName === "harem" || tabName === "underworld" || tabName === "dev" || tabName === "event") {
         modalOverlayEl.classList.add("open");
         modalOverlayEl.classList.toggle("event-mode", tabName === "event");
         modalWindowEl.classList.toggle("event-mode", tabName === "event");
@@ -593,15 +674,21 @@ const BASE_FACTIONS = [
         leadersTabEl.classList.toggle("active", tabName === "leaders");
         diplomacyTabEl.classList.toggle("active", tabName === "diplomacy");
         haremTabEl.classList.toggle("active", tabName === "harem");
+        underworldTabEl.classList.toggle("active", tabName === "underworld");
+        devTabEl.classList.toggle("active", tabName === "dev");
         eventTabEl.classList.toggle("active", tabName === "event");
         modalTitleEl.textContent =
           tabName === "leaders" ? "Enemy Leaders" :
           (tabName === "diplomacy" ? "Diplomacy" :
-          (tabName === "harem" ? "Harem Management" : "Major Event"));
+          (tabName === "harem" ? "Harem Management" :
+          (tabName === "underworld" ? "Criminal Underworld" :
+          (tabName === "dev" ? "Developer Mode" : "Major Event"))));
         modalCloseBtn.textContent = tabName === "event" ? "Continue" : "Close";
         if (tabName === "leaders") renderLeaderPanel();
         if (tabName === "diplomacy") renderDiplomacyPanel();
         if (tabName === "harem") renderHaremPanel();
+        if (tabName === "underworld") renderUnderworldPanel();
+        if (tabName === "dev") renderDevPanel();
         if (tabName === "event") renderEventPanel();
       } else {
         modalOverlayEl.classList.remove("open");
@@ -611,6 +698,8 @@ const BASE_FACTIONS = [
         leadersTabEl.classList.remove("active");
         diplomacyTabEl.classList.remove("active");
         haremTabEl.classList.remove("active");
+        underworldTabEl.classList.remove("active");
+        devTabEl.classList.remove("active");
         eventTabEl.classList.remove("active");
         modalCloseBtn.textContent = "Close";
       }
@@ -619,6 +708,8 @@ const BASE_FACTIONS = [
       tabLeadersBtn.classList.toggle("active-tab", tabName === "leaders");
       tabDiplomacyBtn.classList.toggle("active-tab", tabName === "diplomacy");
       tabHaremBtn.classList.toggle("active-tab", tabName === "harem");
+      tabUnderworldBtn.classList.toggle("active-tab", tabName === "underworld");
+      tabDevBtn.classList.toggle("active-tab", tabName === "dev");
     }
 
     function loadImage(src) {
@@ -680,6 +771,7 @@ const BASE_FACTIONS = [
         beginDayNightCycle();
         menuMusicEl.pause();
         menuMusicEl.currentTime = 0;
+        syncAmbienceTrack();
         bootOverlayEl.classList.add("boot-hidden");
       } catch (err) {
         console.error(err);
@@ -693,22 +785,255 @@ const BASE_FACTIONS = [
     }
 
     function toggleMenuMusic() {
-      if (menuMusicEl.paused) {
-        menuMusicEl.play().catch(() => {});
-        menuMusicBtn.textContent = "Pause Theme";
+      audioSettings.ambienceEnabled = !audioSettings.ambienceEnabled;
+      if (audioSettings.ambienceEnabled) {
+        syncAmbienceTrack();
       } else {
-        menuMusicEl.pause();
-        menuMusicBtn.textContent = "Play Theme";
+        stopAllAmbience();
+      }
+      updateAmbienceButtonLabel();
+    }
+
+    function allAmbienceTracks() {
+      return [menuMusicEl, dayAmbienceEl, nightAmbienceEl, rainAmbienceEl, bloodMoonAmbienceEl];
+    }
+
+    function stopAllAmbience(except = null) {
+      for (const track of allAmbienceTracks()) {
+        if (!track || track === except) continue;
+        track.pause();
+        if (track !== menuMusicEl) track.currentTime = 0;
+      }
+    }
+
+    function activeAmbienceTrackInfo() {
+      if (!gameBooted) return { key: "menu", el: menuMusicEl, label: "Theme" };
+      if (weatherState.bloodMoon && isNightTime()) return { key: "bloodMoon", el: bloodMoonAmbienceEl, label: "Blood Moon" };
+      if (weatherState.kind === "rain") return { key: "rain", el: rainAmbienceEl, label: "Rain" };
+      if (isNightTime()) return { key: "night", el: nightAmbienceEl, label: "Night" };
+      return { key: "day", el: dayAmbienceEl, label: "Day" };
+    }
+
+    function updateAmbienceButtonLabel() {
+      const info = activeAmbienceTrackInfo();
+      menuMusicBtn.textContent = audioSettings.ambienceEnabled
+        ? `Mute ${info.label}`
+        : `Play ${info.label}`;
+    }
+
+    function syncAmbienceTrack() {
+      applyAudioSettings();
+      const info = activeAmbienceTrackInfo();
+      audioSettings.activeTrack = info.key;
+      if (!audioSettings.ambienceEnabled || audioSettings.muted) {
+        stopAllAmbience();
+        updateAmbienceButtonLabel();
+        return;
+      }
+      stopAllAmbience(info.el);
+      if (info.el && info.el.paused) {
+        info.el.play().catch(() => {});
+      }
+      updateAmbienceButtonLabel();
+    }
+
+    function isNightTime() {
+      return dayNightPhase >= 0.58;
+    }
+
+    function weatherPalette(kind) {
+      if (kind === "cloudy") return { alpha: 0.22, shade: "rgba(255,255,255,0.92)", mist: 0.04, rain: 0 };
+      if (kind === "mist") return { alpha: 0.16, shade: "rgba(245,250,255,0.86)", mist: 0.1, rain: 0 };
+      if (kind === "rain") return { alpha: 0.26, shade: "rgba(232,240,248,0.9)", mist: 0.08, rain: 0.18 };
+      return { alpha: 0.1, shade: "rgba(255,255,255,0.84)", mist: 0.02, rain: 0 };
+    }
+
+    function seedWeatherFronts() {
+      const count = Math.max(5, Math.floor((canvas.width + canvas.height) / 320));
+      weatherState.fronts = [];
+      for (let i = 0; i < count; i++) {
+        const rx = 56 + ((i * 19) % 52);
+        const ry = 20 + ((i * 11) % 18);
+        const puffCount = 4 + (i % 4);
+        const puffs = [];
+        for (let p = 0; p < puffCount; p++) {
+          puffs.push({
+            ox: ((p * 31 + i * 9) % Math.max(18, Math.floor(rx * 1.25))) - rx * 0.62,
+            oy: ((p * 17 + i * 7) % Math.max(10, Math.floor(ry * 0.9))) - ry * 0.42,
+            rx: rx * (0.24 + ((p * 11 + i * 3) % 18) / 100),
+            ry: ry * (0.48 + ((p * 13 + i * 5) % 20) / 100),
+            alpha: 0.72 + ((p * 7 + i * 5) % 18) / 100,
+          });
+        }
+        weatherState.fronts.push({
+          x: ((i * 173 + 97) % Math.max(canvas.width, 1)),
+          y: ((i * 127 + 41) % Math.max(canvas.height, 1)),
+          rx,
+          ry,
+          speed: weatherState.wind + ((i % 4) * 0.03),
+          wobble: (i * 0.7) % (Math.PI * 2),
+          depth: 0.65 + ((i * 13) % 25) / 100,
+          puffs,
+        });
+      }
+    }
+
+    function randomizeWeather(force = false) {
+      if (!force && weatherState.timer > 0) return;
+      const kinds = ["clear", "cloudy", "mist", "rain"];
+      const weights = weatherState.kind === "rain"
+        ? [0.4, 0.28, 0.18, 0.14]
+        : [0.34, 0.34, 0.18, 0.14];
+      const roll = Math.random();
+      let cursor = 0;
+      let chosen = "clear";
+      for (let i = 0; i < kinds.length; i++) {
+        cursor += weights[i];
+        if (roll <= cursor) {
+          chosen = kinds[i];
+          break;
+        }
+      }
+      weatherState.kind = chosen;
+      weatherState.timer = randomBetween(18, 42);
+      weatherState.wind = randomBetween(0.12, chosen === "rain" ? 0.4 : 0.28);
+      weatherState.cloudSeed = Math.random() * Math.PI * 2;
+      if (chosen === "rain") weatherState.bloodMoon = false;
+      seedWeatherFronts();
+      syncAmbienceTrack();
+    }
+
+    function advanceWeather() {
+      if (!weatherState.fronts.length && canvas.width && canvas.height) {
+        randomizeWeather(true);
+      }
+      weatherState.timer -= 1;
+      if (weatherState.timer <= 0) {
+        randomizeWeather(true);
+      }
+      if (isNightTime()) {
+        if (weatherState.bloodMoonCheckedNight !== round) {
+          weatherState.bloodMoonCheckedNight = round;
+          weatherState.bloodMoon = weatherState.kind !== "rain" && Math.random() < 0.1;
+          syncAmbienceTrack();
+        }
+      } else if (weatherState.bloodMoon) {
+        weatherState.bloodMoon = false;
+        syncAmbienceTrack();
+      }
+      for (const front of weatherState.fronts) {
+        front.x += front.speed * front.depth * 8;
+        front.y += Math.sin(visualTick * 0.015 + front.wobble) * 0.18;
+        if (front.x - front.rx > canvas.width + 24) {
+          front.x = -front.rx - randomBetween(12, 80);
+          front.y = randomBetween(0, canvas.height);
+        }
+      }
+    }
+
+    function drawWeatherOverlay() {
+      const palette = weatherPalette(weatherState.kind);
+      if (!weatherState.fronts.length) return;
+
+      ctx.save();
+      for (const front of weatherState.fronts) {
+        const driftY = Math.sin(visualTick * 0.012 + front.wobble) * 4;
+        const baseAlpha = palette.alpha * front.depth;
+
+        ctx.save();
+        ctx.shadowColor = `rgba(84, 98, 118, ${Math.min(0.18, baseAlpha * 0.85)})`;
+        ctx.shadowBlur = 14;
+        ctx.shadowOffsetY = 6;
+
+        for (const puff of front.puffs || []) {
+          const px = front.x + puff.ox;
+          const py = front.y + driftY + puff.oy;
+          const grad = ctx.createRadialGradient(
+            px - puff.rx * 0.18,
+            py - puff.ry * 0.34,
+            puff.rx * 0.08,
+            px,
+            py,
+            puff.rx
+          );
+          grad.addColorStop(0, `rgba(255,255,255,${Math.min(0.9, baseAlpha * 1.7 * puff.alpha)})`);
+          grad.addColorStop(0.45, `rgba(244,248,252,${Math.min(0.72, baseAlpha * 1.1 * puff.alpha)})`);
+          grad.addColorStop(0.8, `rgba(210,220,232,${Math.min(0.34, baseAlpha * 0.7)})`);
+          grad.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.ellipse(px, py, puff.rx, puff.ry, Math.sin(front.wobble) * 0.08, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        const underside = ctx.createLinearGradient(
+          front.x,
+          front.y - front.ry * 0.4,
+          front.x,
+          front.y + front.ry * 1.2
+        );
+        underside.addColorStop(0, `rgba(255,255,255,0)`);
+        underside.addColorStop(0.55, `rgba(198,210,224,${Math.min(0.16, baseAlpha * 0.7)})`);
+        underside.addColorStop(1, `rgba(146,160,178,${Math.min(0.13, baseAlpha * 0.9)})`);
+        ctx.fillStyle = underside;
+        ctx.beginPath();
+        ctx.ellipse(front.x, front.y + driftY + front.ry * 0.18, front.rx * 0.88, front.ry * 0.92, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const highlight = ctx.createLinearGradient(
+          front.x,
+          front.y - front.ry,
+          front.x,
+          front.y
+        );
+        highlight.addColorStop(0, `rgba(255,255,255,${Math.min(0.22, baseAlpha * 0.95)})`);
+        highlight.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = highlight;
+        ctx.beginPath();
+        ctx.ellipse(front.x - front.rx * 0.08, front.y + driftY - front.ry * 0.12, front.rx * 0.68, front.ry * 0.5, -0.04, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      if (palette.mist > 0) {
+        const mist = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        mist.addColorStop(0, `rgba(220,230,242,${palette.mist * 0.28})`);
+        mist.addColorStop(0.4, `rgba(240,246,252,${palette.mist})`);
+        mist.addColorStop(1, `rgba(216,226,236,${palette.mist * 0.5})`);
+        ctx.fillStyle = mist;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (palette.rain > 0) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(206,224,244,${palette.rain})`;
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 70; i++) {
+          const x = ((i * 97 + visualTick * 13) % (canvas.width + 80)) - 40;
+          const y = ((i * 59 + visualTick * 17) % (canvas.height + 90)) - 45;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x - 8, y + 18);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     }
 
     function applyAudioSettings() {
       const level = audioSettings.muted ? 0 : clamp(audioSettings.volume, 0, 1);
-      menuMusicEl.volume = level;
+      for (const track of allAmbienceTracks()) {
+        if (track) track.volume = level;
+      }
       if (audioVolumeRange) audioVolumeRange.value = `${Math.round(audioSettings.volume * 100)}`;
       if (menuVolumeRange) menuVolumeRange.value = `${Math.round(audioSettings.volume * 100)}`;
       if (audioMuteBtn) audioMuteBtn.textContent = audioSettings.muted ? "Unmute" : "Mute";
       if (menuMuteBtn) menuMuteBtn.textContent = audioSettings.muted ? "Unmute Theme" : "Mute Theme";
+      updateAmbienceButtonLabel();
     }
 
     function serializeTiles() {
@@ -796,6 +1121,8 @@ const BASE_FACTIONS = [
           boardScale,
           dayNightPhase,
           campaignStats,
+          developerState,
+          weatherState,
           audioSettings,
         },
       };
@@ -850,8 +1177,11 @@ const BASE_FACTIONS = [
       boardScale = snapshot.boardScale || 1;
       dayNightPhase = snapshot.dayNightPhase || 0.18;
       campaignStats = snapshot.campaignStats || campaignStats;
+      developerState = snapshot.developerState || developerState;
+      weatherState = snapshot.weatherState || weatherState;
       audioSettings = snapshot.audioSettings || audioSettings;
       applyAudioSettings();
+      syncAmbienceTrack();
       buildTerrainBackdrops();
       ensureStaticBoardCanvas();
       syncCanvasDisplaySize();
@@ -1298,6 +1628,22 @@ const BASE_FACTIONS = [
         autosaves: 0,
         lastSaveAt: null,
       };
+      developerState = {
+        enabled: developerState.enabled,
+        selectedQueenFaction: 0,
+        sceneDraft: defaultSceneDraft(0),
+        sceneHistory: [],
+        freeEdit: false,
+      };
+      weatherState = {
+        kind: "clear",
+        timer: 0,
+        wind: 0.18,
+        cloudSeed: 0,
+        fronts: [],
+        bloodMoon: false,
+        bloodMoonCheckedNight: -1,
+      };
       resistanceState = {
         built: false,
         strength: 0,
@@ -1335,6 +1681,8 @@ const BASE_FACTIONS = [
       addLog("New game started.");
       addLog("Queen Elara, your native queen, starts in your harem.");
       addLog("Tip: select one of your green tiles with 2+ troops, then click an adjacent tile.");
+      randomizeWeather(true);
+      syncAmbienceTrack();
       updateSaveStatus("Fresh campaign. No manual save yet.", "warn");
       startTurn(FACTIONS[currentFactionIndex].id);
       render();
@@ -2021,12 +2369,15 @@ const BASE_FACTIONS = [
         ctx.fillStyle = horizonGlow;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
+      drawWeatherOverlay();
     }
 
     function renderPanels() {
       if (activeMenuTab === "leaders") renderLeaderPanel();
       if (activeMenuTab === "diplomacy") renderDiplomacyPanel();
       if (activeMenuTab === "harem") renderHaremPanel();
+      if (activeMenuTab === "underworld") renderUnderworldPanel();
+      if (activeMenuTab === "dev") renderDevPanel();
       if (activeMenuTab === "event") renderEventPanel();
     }
 
@@ -2525,6 +2876,8 @@ const BASE_FACTIONS = [
           st.refusedThisTurn = false;
           st.forbiddenThisTurn = false;
           st.summonedThisTurn = false;
+          st.underworldUsedThisTurn = false;
+          st.underworldRomanceUsedThisTurn = false;
           if (st.assignment === "court") st.morale = Math.min(100, st.morale + 3 + rank.serveBonus);
           if (st.assignment === "war") st.morale = Math.max(0, st.morale - Math.max(1, 2 - rank.warBonus));
           if (st.assignment === "intrigue") {
@@ -2549,6 +2902,7 @@ const BASE_FACTIONS = [
         for (const queenFaction of diplomacyTargetQueens()) {
           updateDiplomacyPressure(queenFaction);
           maybeQueueJoinOffer(queenFaction);
+          maybeQueueAffairOffer(queenFaction);
         }
         for (const unit of queenUnits) {
           if (unit.owner !== factionId) continue;
@@ -2588,7 +2942,7 @@ const BASE_FACTIONS = [
         turnInfo.textContent += ` • Moves: ${humanMovesRemaining}/${HUMAN_MOVES_PER_TURN}`;
         turnInfo.textContent += ` • Send: ${Math.round(SEND_OPTIONS[sendModeIndex] * 100)}%`;
       }
-      turnInfo.textContent += ` • ${dayPhaseLabel()}`;
+      turnInfo.textContent += ` • ${dayPhaseLabel()} • ${weatherState.bloodMoon ? "Blood Moon" : weatherState.kind[0].toUpperCase() + weatherState.kind.slice(1)}`;
       if (gameOver) {
         turnInfo.textContent += " • Game Over";
       }
@@ -2721,6 +3075,139 @@ const BASE_FACTIONS = [
       addLog(`${faction.leader}: ${label}.`);
     }
 
+    function affairStatusLabel(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (st.elopeOfferPending) return "Ready To Elope";
+      if (st.affairLevel >= 3 || st.affair) return "Secret Affair";
+      if (st.affairLevel === 2) return "Private Lovers";
+      if (st.affairLevel === 1) return "Secret Courtship";
+      return "No Affair";
+    }
+
+    function maybeQueueAffairOffer(queenFaction) {
+      const st = updateDiplomacyPressure(queenFaction);
+      if (capturedQueens.includes(queenFaction) || leaderState[queenFaction]?.defeated || !leaderState[queenFaction]?.active) return;
+      if (st.joinOfferPending || st.affairOfferPending || st.elopeOfferPending) return;
+      if (st.lastAffairTurn === diplomacyTurnNumber) return;
+      const faction = factionById(queenFaction);
+
+      if (st.affairLevel >= 2 && st.romance >= 74 && st.trust >= 52 && st.attraction >= 84) {
+        st.elopeOfferPending = true;
+        queueEventModal({
+          label: "Secret Elopement",
+          title: `${faction.leader} Wants To Run Away With You`,
+          body: `${faction.leader} sends a sealed note through trusted hands.\n\nShe offers to flee her court in secret, abandon the throne, and reach your arms before dawn if you will claim her when she arrives.`,
+          portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+          actions: [
+            {
+              label: "Prepare The Escape",
+              onClick: () => {
+                dismissEventModal();
+                st.elopeOfferPending = false;
+                st.affair = true;
+                submitQueenToPlayer(
+                  queenFaction,
+                  `${faction.leader} slips out of her own palace under moonlight, abandons her old crown, and elopes to your side in secret before her court realizes she is gone.`,
+                  "Secret Elopement"
+                );
+              },
+            },
+            {
+              label: "Tell Her Not Yet",
+              onClick: () => {
+                st.elopeOfferPending = false;
+                st.trust = Math.max(-100, st.trust - 4);
+                st.romance = Math.max(0, st.romance - 3);
+                dismissEventModal();
+              },
+            },
+          ],
+        });
+        return;
+      }
+
+      if (!st.affair && st.romance >= 40 && st.trust >= 24 && st.attraction >= 54) {
+        st.affairOfferPending = true;
+        queueEventModal({
+          label: "Secret Date",
+          title: `${faction.leader} Invites You In Secret`,
+          body: `${faction.leader} arranges a hidden meeting away from court eyes.\n\nNo heralds, no treaty table, no public oath. Only a quiet night, guarded doors, and the promise of something more dangerous than diplomacy.`,
+          portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+          actions: [
+            {
+              label: "Meet Her Quietly",
+              onClick: () => {
+                st.affairOfferPending = false;
+                st.affair = true;
+                st.affairLevel = Math.max(1, st.affairLevel);
+                st.trust = Math.min(100, st.trust + 7);
+                st.romance = Math.min(100, st.romance + 8);
+                st.attraction = Math.min(100, st.attraction + 5);
+                st.lastAffairTurn = diplomacyTurnNumber;
+                dismissEventModal();
+                queueDiplomacyReaction(
+                  queenFaction,
+                  `${faction.leader} Keeps Your Secret`,
+                  "Midnight Tryst",
+                  `${faction.leader} meets you in private and leaves flushed, softer, and more willing to risk herself for what grows between you.`
+                );
+              },
+            },
+            {
+              label: "Stay Away",
+              onClick: () => {
+                st.affairOfferPending = false;
+                st.romance = Math.max(0, st.romance - 2);
+                st.trust = Math.max(-100, st.trust - 1);
+                dismissEventModal();
+              },
+            },
+          ],
+        });
+        return;
+      }
+
+      if (st.affair && st.affairLevel <= 2 && st.romance >= 58 && st.trust >= 34 && st.attraction >= 70) {
+        st.affairOfferPending = true;
+        queueEventModal({
+          label: "Secret Intimacy",
+          title: `${faction.leader} Wants You Behind Closed Doors`,
+          body: `${faction.leader} sends word that she cannot bear another formal audience.\n\nShe wants you in private, under cover of darkness, where desire can speak more openly than politics ever could.`,
+          portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+          actions: [
+            {
+              label: "Go To Her",
+              onClick: () => {
+                st.affairOfferPending = false;
+                st.affairLevel = Math.min(3, st.affairLevel + 1);
+                st.trust = Math.min(100, st.trust + 5);
+                st.romance = Math.min(100, st.romance + 10);
+                st.attraction = Math.min(100, st.attraction + 8);
+                st.hate = Math.max(0, st.hate - 4);
+                st.lastAffairTurn = diplomacyTurnNumber;
+                dismissEventModal();
+                queueDiplomacyReaction(
+                  queenFaction,
+                  `${faction.leader} Gives In To You`,
+                  "Secret Lovers",
+                  `${faction.leader} yields to private hunger and comes away from the night more deeply entangled with you than before.`
+                );
+              },
+            },
+            {
+              label: "Leave Her Wanting",
+              onClick: () => {
+                st.affairOfferPending = false;
+                st.attraction = Math.min(100, st.attraction + 2);
+                st.hate = Math.min(100, st.hate + 1);
+                dismissEventModal();
+              },
+            },
+          ],
+        });
+      }
+    }
+
     function askQueenIntentions(queenFaction) {
       const faction = factionById(queenFaction);
       const st = updateDiplomacyPressure(queenFaction);
@@ -2732,6 +3219,9 @@ const BASE_FACTIONS = [
       if (st.hate >= 78) {
         label = "Ruthless Hostility";
         body = `${faction.leader} wants you broken publicly and decisively.\n\nShe would rather see you dragged in chains through her court, silenced, and reduced to a warning for every rival who imagines defying her.`;
+      } else if (st.affairLevel >= 2 && st.romance >= 60) {
+        label = "Secret Longing";
+        body = `${faction.leader} wants you in private, away from banners and witnesses.\n\nWhat has grown between you is no longer just flirtation. She is weighing stolen nights, hidden meetings, and whether she would dare burn her own future for you.`;
       } else if (st.hate >= 58) {
         label = "Punishment";
         body = `${faction.leader} wants to punish you, humble you, and grind your banner into the dirt.\n\nIf she defeats you, she intends to keep you close enough to witness her triumph and remember your failure.`;
@@ -2797,8 +3287,11 @@ const BASE_FACTIONS = [
       capturedQueens.push(queenFaction);
       const st = queenEntry(queenFaction);
       st.joinOfferPending = false;
+      st.affairOfferPending = false;
+      st.elopeOfferPending = false;
       st.treaty = "alliance";
       st.trade = false;
+      st.affair = false;
       for (const tile of tiles) {
         if (tile.owner === queenFaction) {
           tile.owner = playerId;
@@ -2823,7 +3316,7 @@ const BASE_FACTIONS = [
 
     function maybeQueueJoinOffer(queenFaction) {
       const st = updateDiplomacyPressure(queenFaction);
-      if (st.joinOfferPending || capturedQueens.includes(queenFaction) || leaderState[queenFaction]?.defeated) return;
+      if (st.joinOfferPending || st.affairOfferPending || st.elopeOfferPending || capturedQueens.includes(queenFaction) || leaderState[queenFaction]?.defeated) return;
       if (st.romance < 68 || st.trust < 40 || st.attraction < 82) return;
       if (!leaderState[queenFaction]?.active) return;
       st.joinOfferPending = true;
@@ -2977,6 +3470,54 @@ const BASE_FACTIONS = [
           );
         }
         maybeQueueJoinOffer(queenFaction);
+        maybeQueueAffairOffer(queenFaction);
+        return;
+      }
+      if (kind === "affair") {
+        const score =
+          st.trust * 0.42 +
+          st.romance * 0.58 +
+          st.attraction * 0.46 +
+          st.flirtAffinity * 4 +
+          queenDiplomacyBias(queenFaction, "flirt") -
+          st.hate * 0.65 +
+          randomBetween(-30, 30);
+        st.lastAffairTurn = diplomacyTurnNumber;
+        if (score >= 52) {
+          st.affair = true;
+          st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+          st.trust = Math.min(100, st.trust + 8);
+          st.romance = Math.min(100, st.romance + 12);
+          st.attraction = Math.min(100, st.attraction + 7);
+          st.hate = Math.max(0, st.hate - 4);
+          queueDiplomacyReaction(
+            queenFaction,
+            `${faction.leader} Risks A Secret Affair`,
+            "She Sneaks Away To You",
+            `${faction.leader} agrees to a hidden meeting and crosses the line from temptation into secrecy. Whatever this becomes, it is no longer innocent.`
+          );
+        } else if (score >= 10) {
+          st.trust = Math.min(100, st.trust + 2);
+          st.romance = Math.min(100, st.romance + 4);
+          st.attraction = Math.min(100, st.attraction + 5);
+          queueDiplomacyReaction(
+            queenFaction,
+            `${faction.leader} Is Tempted`,
+            "She Considers It",
+            `${faction.leader} does not commit, but the idea clearly lingers in her mind. A secret affair is no longer unthinkable.`
+          );
+        } else {
+          st.trust = Math.max(-100, st.trust - 4);
+          st.hate = Math.min(100, st.hate + 4);
+          queueDiplomacyReaction(
+            queenFaction,
+            `${faction.leader} Rejects The Risk`,
+            "She Draws Back",
+            `${faction.leader} refuses to endanger herself that openly. She wants distance from the suggestion, at least for now.`
+          );
+        }
+        maybeQueueAffairOffer(queenFaction);
+        maybeQueueJoinOffer(queenFaction);
         return;
       }
       if (kind === "treaty") {
@@ -3095,6 +3636,151 @@ const BASE_FACTIONS = [
 
     function claimedServiceHaremQueens() {
       return serviceHaremQueens().filter(id => queenEntry(id).overlordClaimed);
+    }
+
+    function factionCapitalTile(factionId) {
+      return tiles.find(t => t.owner === factionId && t.capital && t.terrain === "land")
+        || tiles.find(t => t.owner === factionId && t.terrain === "land")
+        || null;
+    }
+
+    function eligibleUnderworldQueens() {
+      return capturedQueens.filter(id => QUEEN_POWERS[id] && !queenUnitForFaction(id) && haremQueenUsable(id));
+    }
+
+    function underworldRebelQueens() {
+      return diplomacyTargetQueens().filter(f => {
+        const rebelAgainst = leaderState[f.id]?.rebelAgainst;
+        return rebelAgainst !== null && rebelAgainst !== undefined;
+      });
+    }
+
+    function kingdomlessUnderworldQueens() {
+      return dormantQueens().filter(f => !capturedQueens.includes(f.id));
+    }
+
+    function toggleUnderworldQueen(queenFaction) {
+      const st = queenEntry(queenFaction);
+      st.underworldAssigned = !st.underworldAssigned;
+      addLog(`${QUEEN_POWERS[queenFaction].title} ${st.underworldAssigned ? "slips into" : "withdraws from"} the underworld network.`);
+      render();
+    }
+
+    function conspireWithQueen(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (st.underworldUsedThisTurn) return;
+      if (gameMode === "servitude") {
+        if (!resistanceState.built) buildHiddenResistance();
+        resistanceState.strength = Math.min(99, resistanceState.strength + 5);
+        resistanceState.exposure = Math.min(100, resistanceState.exposure + 2);
+      } else {
+        const cap = playerCapitalTile();
+        if (cap) cap.troops += 2;
+      }
+      st.trust = Math.min(100, st.trust + 3);
+      st.romance = Math.min(100, st.romance + 2);
+      st.underworldUsedThisTurn = true;
+      addLog(`${QUEEN_POWERS[queenFaction].title} helps your underworld plot in secret.`);
+      render();
+    }
+
+    function romanceUnderworldQueen(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (st.underworldRomanceUsedThisTurn) return;
+      st.morale = Math.min(100, st.morale + 8);
+      st.trust = Math.min(100, st.trust + 5);
+      st.romance = Math.min(100, st.romance + 8);
+      st.attraction = Math.min(100, st.attraction + 5);
+      st.affair = true;
+      st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+      st.underworldRomanceUsedThisTurn = true;
+      addLog(`${QUEEN_POWERS[queenFaction].title} meets you in the underworld for a secret night together.`);
+      render();
+    }
+
+    function sendArmyToRebelQueen(queenFaction, amount = 4) {
+      const cap = playerCapitalTile();
+      const rebelCap = factionCapitalTile(queenFaction);
+      const st = queenEntry(queenFaction);
+      if (!cap || cap.troops <= amount) {
+        addLog("You lack the spare troops to smuggle a levy through the underworld.");
+        return;
+      }
+      if (!rebelCap) {
+        addLog("That rebel queen has no throne to reinforce.");
+        return;
+      }
+      if (st.lastUnderworldAidTurn === diplomacyTurnNumber) return;
+      cap.troops -= amount;
+      rebelCap.troops += amount;
+      st.lastUnderworldAidTurn = diplomacyTurnNumber;
+      st.trust = Math.min(100, st.trust + 6);
+      st.romance = Math.min(100, st.romance + 2);
+      addLog(`You transfer ${amount} troops through smugglers to ${factionById(queenFaction).leader}'s capital.`);
+      render();
+    }
+
+    function romanceRebelQueenInUnderworld(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (st.lastUnderworldRomanceTurn === diplomacyTurnNumber) return;
+      st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
+      st.affair = true;
+      st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+      st.trust = Math.min(100, st.trust + 7);
+      st.romance = Math.min(100, st.romance + 9);
+      st.attraction = Math.min(100, st.attraction + 6);
+      st.hate = Math.max(0, st.hate - 2);
+      queueDiplomacyReaction(
+        queenFaction,
+        `${factionById(queenFaction).leader} Meets You Beneath The City`,
+        "Underworld Rendezvous",
+        `${factionById(queenFaction).leader} steals into the criminal underworld to meet you where spies and nobles alike cannot see.\n\nThe meeting leaves her more bound to you than before, and more willing to gamble her rebellion on your protection.`
+      );
+      render();
+    }
+
+    function fundKingdomlessQueen(queenFaction, amount = 3) {
+      const st = queenEntry(queenFaction);
+      const cap = playerCapitalTile();
+      if (!cap || cap.troops <= amount) {
+        addLog("You lack the spare troops and coin to bankroll a landless queen.");
+        return;
+      }
+      if (st.lastUnderworldRiseTurn === diplomacyTurnNumber) return;
+      cap.troops -= amount;
+      st.lastUnderworldRiseTurn = diplomacyTurnNumber;
+      st.underworldRiseSupport += 1;
+      st.trust = Math.min(100, st.trust + 6);
+      st.romance = Math.min(100, st.romance + 3);
+      st.attraction = Math.min(100, st.attraction + 2);
+      addLog(`You funnel men, money, and smugglers to ${factionById(queenFaction).leader}.`);
+      if (st.underworldRiseSupport >= 2 && Math.random() < 0.65) {
+        if (spawnFrontierQueen(queenFaction)) {
+          st.underworldRiseSupport = 0;
+          st.trust = Math.min(100, st.trust + 4);
+          st.affair = st.affair || st.romance >= 30;
+          addLog(`${factionById(queenFaction).leader} uses your criminal backing to seize a hidden foothold.`);
+        }
+      }
+      render();
+    }
+
+    function romanceKingdomlessQueen(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (st.lastUnderworldRomanceTurn === diplomacyTurnNumber) return;
+      st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
+      st.affair = true;
+      st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+      st.trust = Math.min(100, st.trust + 8);
+      st.romance = Math.min(100, st.romance + 10);
+      st.attraction = Math.min(100, st.attraction + 7);
+      queueDiplomacyReaction(
+        queenFaction,
+        `${factionById(queenFaction).leader} Comes To You In Exile`,
+        "Underworld Courtship",
+        `${factionById(queenFaction).leader} has no kingdom left to shelter her, so she meets you in hidden rooms and criminal safehouses instead.\n\nExile makes her hungry for both power and intimacy, and she leaves the night more attached to you than before.`
+      );
+      render();
     }
 
     function haremAutonomyScore() {
@@ -3728,6 +4414,7 @@ const BASE_FACTIONS = [
         info.textContent =
           `Trust ${st.trust} • Hate ${st.hate} • Romance ${st.romance} • Attraction ${st.attraction} • Fear ${st.fear}` +
           ` • Talk Taste ${st.talkAffinity} • Flirt Taste ${st.flirtAffinity}` +
+          ` • Affair ${affairStatusLabel(f.id)}` +
           ` • Style ${describePersonality(f.personality || fallbackPersonality(f.id))}` +
           `${st.trade ? " • Trade Active" : ""}` +
           `${rebelAgainst !== null && rebelAgainst !== undefined ? ` • Rebelling against ${factionById(rebelAgainst)?.leader || "a rival"}` : ""}`;
@@ -3754,6 +4441,7 @@ const BASE_FACTIONS = [
         const actionsB = [
           ["Offer Truce", st.lastTreatyTurn !== diplomacyTurnNumber && st.treaty === "none", () => { diplomacyRoll(f.id, "treaty"); render(); }],
           ["Flirt", st.lastFlirtTurn !== diplomacyTurnNumber, () => { diplomacyRoll(f.id, "flirt"); render(); }],
+          ["Secret Letter", st.lastAffairTurn !== diplomacyTurnNumber && st.romance >= 25 && st.attraction >= 35, () => { diplomacyRoll(f.id, "affair"); render(); }],
           ["Propose Marriage", st.lastMarriageTurn !== diplomacyTurnNumber && st.romance >= 55 && st.trust >= 25, () => { diplomacyRoll(f.id, "marriage"); render(); }],
         ];
         for (const [label, enabled, fn] of actionsB) {
@@ -3832,6 +4520,377 @@ const BASE_FACTIONS = [
         grid.appendChild(wrap);
       }
       leaderStatusEl.appendChild(grid);
+    }
+
+    function renderUnderworldPanel() {
+      underworldPanelEl.innerHTML = "";
+      const shell = document.createElement("div");
+      shell.className = "underworld-shell";
+
+      const summary = document.createElement("div");
+      summary.className = "underworld-note";
+      const rebelCount = underworldRebelQueens().length;
+      const kingdomlessCount = kingdomlessUnderworldQueens().length;
+      const operatives = eligibleUnderworldQueens().filter(id => queenEntry(id).underworldAssigned).length;
+      summary.textContent = gameMode === "servitude"
+        ? `Hidden network: ${resistanceState.built ? `Strength ${resistanceState.strength} • Exposure ${resistanceState.exposure}` : "Not yet established"} • Underworld operatives ${operatives} • Rebel contacts ${rebelCount} • Kingdomless contacts ${kingdomlessCount}.`
+        : `Your criminal web now handles smuggling, private romance, and rebel contacts abroad. Operatives ${operatives} • Rebel contacts ${rebelCount} • Kingdomless contacts ${kingdomlessCount}.`;
+      shell.appendChild(summary);
+
+      if (gameMode === "servitude" && !resistanceState.built) {
+        const buildCard = document.createElement("div");
+        buildCard.className = "gallery-card";
+        const btn = document.createElement("button");
+        btn.textContent = "Found Hidden Underworld";
+        btn.addEventListener("click", () => buildHiddenResistance());
+        buildCard.appendChild(btn);
+        shell.appendChild(buildCard);
+      }
+
+      const domesticCard = document.createElement("div");
+      domesticCard.className = "gallery-card";
+      const domesticHead = document.createElement("div");
+      domesticHead.className = "gallery-head";
+      domesticHead.textContent = "Off-Field Queens";
+      domesticCard.appendChild(domesticHead);
+      const domesticSub = document.createElement("div");
+      domesticSub.className = "gallery-sub";
+      domesticSub.textContent = "Queens without deployed units can gather in the underworld to conspire, romance, and help rebellion plots.";
+      domesticCard.appendChild(domesticSub);
+
+      const domesticGrid = document.createElement("div");
+      domesticGrid.className = "gallery-grid";
+      const underworldQueens = eligibleUnderworldQueens();
+      if (!underworldQueens.length) {
+        const none = document.createElement("div");
+        none.className = "tiny";
+        none.textContent = "No eligible queens are off-field right now.";
+        domesticCard.appendChild(none);
+      } else {
+        for (const queenFaction of underworldQueens) {
+          const queen = QUEEN_POWERS[queenFaction];
+          const st = queenEntry(queenFaction);
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${queen.title}</div>
+            <div class="gallery-sub">${st.underworldAssigned ? "Assigned To The Underworld" : "Available For Conspiracy"} • Affair ${affairStatusLabel(queenFaction)}</div>
+            <div class="tiny">Morale ${st.morale} • Trust ${st.trust} • Romance ${st.romance} • Attraction ${st.attraction}</div>
+          `;
+          if (queenPortraits[queenFaction]) {
+            const img = document.createElement("img");
+            img.className = "leader-portrait";
+            img.src = queenPortraits[queenFaction];
+            img.alt = `${queen.title} portrait`;
+            card.appendChild(img);
+          }
+          const row = document.createElement("div");
+          row.className = "row";
+          const assignBtn = document.createElement("button");
+          assignBtn.textContent = st.underworldAssigned ? "Withdraw" : "Assign";
+          assignBtn.addEventListener("click", () => toggleUnderworldQueen(queenFaction));
+          row.appendChild(assignBtn);
+          const conspireBtn = document.createElement("button");
+          conspireBtn.textContent = "Conspire";
+          conspireBtn.disabled = !st.underworldAssigned || st.underworldUsedThisTurn;
+          conspireBtn.addEventListener("click", () => conspireWithQueen(queenFaction));
+          row.appendChild(conspireBtn);
+          const romanceBtn = document.createElement("button");
+          romanceBtn.textContent = "Underworld Date";
+          romanceBtn.disabled = !st.underworldAssigned || st.underworldRomanceUsedThisTurn;
+          romanceBtn.addEventListener("click", () => romanceUnderworldQueen(queenFaction));
+          row.appendChild(romanceBtn);
+          card.appendChild(row);
+          domesticGrid.appendChild(card);
+        }
+        domesticCard.appendChild(domesticGrid);
+      }
+      shell.appendChild(domesticCard);
+
+      const rebelCard = document.createElement("div");
+      rebelCard.className = "gallery-card";
+      const rebelHead = document.createElement("div");
+      rebelHead.className = "gallery-head";
+      rebelHead.textContent = "Rebel Queens";
+      rebelCard.appendChild(rebelHead);
+      const rebelSub = document.createElement("div");
+      rebelSub.className = "gallery-sub";
+      rebelSub.textContent = "Support active rebel queens with soldiers, money routes, safehouses, and secret romance.";
+      rebelCard.appendChild(rebelSub);
+      const rebelGrid = document.createElement("div");
+      rebelGrid.className = "gallery-grid";
+      const rebels = underworldRebelQueens();
+      if (!rebels.length) {
+        const none = document.createElement("div");
+        none.className = "tiny";
+        none.textContent = "No rebel queens currently need underworld support.";
+        rebelCard.appendChild(none);
+      } else {
+        for (const faction of rebels) {
+          const st = queenEntry(faction.id);
+          const cap = factionCapitalTile(faction.id);
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${faction.leader}</div>
+            <div class="gallery-sub">${faction.name} • Rebelling against ${factionById(leaderState[faction.id]?.rebelAgainst)?.leader || "a rival"}</div>
+            <div class="tiny">Trust ${st.trust} • Romance ${st.romance} • Attraction ${st.attraction} • Affair ${affairStatusLabel(faction.id)}${cap ? ` • Capital troops ${cap.troops}` : ""}</div>
+          `;
+          if (queenPortraits[faction.id]) {
+            const img = document.createElement("img");
+            img.className = "leader-portrait";
+            img.src = queenPortraits[faction.id];
+            img.alt = `${faction.leader} portrait`;
+            card.appendChild(img);
+          }
+          const row = document.createElement("div");
+          row.className = "row";
+          const aidBtn = document.createElement("button");
+          aidBtn.textContent = "Send 4 Troops";
+          aidBtn.disabled = st.lastUnderworldAidTurn === diplomacyTurnNumber;
+          aidBtn.addEventListener("click", () => sendArmyToRebelQueen(faction.id, 4));
+          row.appendChild(aidBtn);
+          const romanceBtn = document.createElement("button");
+          romanceBtn.textContent = "Moonlit Rendezvous";
+          romanceBtn.disabled = st.lastUnderworldRomanceTurn === diplomacyTurnNumber;
+          romanceBtn.addEventListener("click", () => romanceRebelQueenInUnderworld(faction.id));
+          row.appendChild(romanceBtn);
+          card.appendChild(row);
+          rebelGrid.appendChild(card);
+        }
+        rebelCard.appendChild(rebelGrid);
+      }
+      shell.appendChild(rebelCard);
+
+      const exileCard = document.createElement("div");
+      exileCard.className = "gallery-card";
+      const exileHead = document.createElement("div");
+      exileHead.className = "gallery-head";
+      exileHead.textContent = "Queens Without A Kingdom";
+      exileCard.appendChild(exileHead);
+      const exileSub = document.createElement("div");
+      exileSub.className = "gallery-sub";
+      exileSub.textContent = "Landless queens can still be cultivated in exile through smugglers, safehouses, and private romance. Back them long enough and they may rise again under your patronage.";
+      exileCard.appendChild(exileSub);
+      const exileGrid = document.createElement("div");
+      exileGrid.className = "gallery-grid";
+      const exiles = kingdomlessUnderworldQueens();
+      if (!exiles.length) {
+        const none = document.createElement("div");
+        none.className = "tiny";
+        none.textContent = "No kingdomless queens are currently moving through the underworld.";
+        exileCard.appendChild(none);
+      } else {
+        for (const faction of exiles) {
+          const st = queenEntry(faction.id);
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${faction.leader}</div>
+            <div class="gallery-sub">${faction.name} • Exiled • Affair ${affairStatusLabel(faction.id)}</div>
+            <div class="tiny">Trust ${st.trust} • Romance ${st.romance} • Attraction ${st.attraction} • Rise support ${st.underworldRiseSupport}</div>
+          `;
+          if (queenPortraits[faction.id]) {
+            const img = document.createElement("img");
+            img.className = "leader-portrait";
+            img.src = queenPortraits[faction.id];
+            img.alt = `${faction.leader} portrait`;
+            card.appendChild(img);
+          }
+          const row = document.createElement("div");
+          row.className = "row";
+          const fundBtn = document.createElement("button");
+          fundBtn.textContent = "Fund Her Claim";
+          fundBtn.disabled = st.lastUnderworldRiseTurn === diplomacyTurnNumber;
+          fundBtn.addEventListener("click", () => fundKingdomlessQueen(faction.id, 3));
+          row.appendChild(fundBtn);
+          const romanceBtn = document.createElement("button");
+          romanceBtn.textContent = "Court In Exile";
+          romanceBtn.disabled = st.lastUnderworldRomanceTurn === diplomacyTurnNumber;
+          romanceBtn.addEventListener("click", () => romanceKingdomlessQueen(faction.id));
+          row.appendChild(romanceBtn);
+          card.appendChild(row);
+          exileGrid.appendChild(card);
+        }
+        exileCard.appendChild(exileGrid);
+      }
+      shell.appendChild(exileCard);
+
+      underworldPanelEl.appendChild(shell);
+    }
+
+    function applySceneChoice(draft, branch) {
+      const queenFaction = Number(draft.queenFaction);
+      const st = queenEntry(queenFaction);
+      const queen = QUEEN_POWERS[queenFaction];
+      const moraleDelta = Number(draft[`option${branch}Morale`] || 0);
+      const trustDelta = Number(draft[`option${branch}Trust`] || 0);
+      const romanceDelta = Number(draft[`option${branch}Romance`] || 0);
+      const attractionDelta = Number(draft[`option${branch}Attraction`] || 0);
+      st.morale = clamp(st.morale + moraleDelta, 0, 100);
+      st.trust = clamp(st.trust + trustDelta, -100, 100);
+      st.romance = clamp(st.romance + romanceDelta, 0, 100);
+      st.attraction = clamp(st.attraction + attractionDelta, 0, 100);
+      developerState.sceneHistory.unshift({
+        queenFaction,
+        branch,
+        title: draft.title,
+        at: new Date().toISOString(),
+      });
+      developerState.sceneHistory = developerState.sceneHistory.slice(0, 8);
+      addLog(`Dev scene applied to ${queen.title}: ${draft[`option${branch}`]}.`);
+      dismissEventModal(true);
+      render();
+    }
+
+    function previewDevScene() {
+      const draft = ensureSceneDraft();
+      const queenFaction = Number(draft.queenFaction);
+      const queen = QUEEN_POWERS[queenFaction];
+      queueEventModal({
+        label: "Dev Scene",
+        title: draft.title,
+        body: `${draft.summary}\n\nA. ${draft.optionA}: ${draft.optionAText}\n\nB. ${draft.optionB}: ${draft.optionBText}\n\nAftercare: ${draft.aftercare}`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        actions: [
+          { label: draft.optionA, onClick: () => applySceneChoice(draft, "A") },
+          { label: draft.optionB, onClick: () => applySceneChoice(draft, "B") },
+          { label: "Close Preview", onClick: () => dismissEventModal() },
+        ],
+      });
+    }
+
+    function openDevSceneLab(queenFaction) {
+      developerState.enabled = true;
+      developerState.selectedQueenFaction = queenFaction;
+      developerState.sceneDraft = defaultSceneDraft(queenFaction);
+      setMenuTab("dev");
+    }
+
+    function renderDevPanel() {
+      devPanelEl.innerHTML = "";
+      const shell = document.createElement("div");
+      shell.className = "dev-shell";
+
+      const options = developerQueenOptions();
+      if (!options.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "Capture at least one queen first, or use the harem panel after the opening court is available.";
+        devPanelEl.appendChild(empty);
+        return;
+      }
+
+      if (!developerState.selectedQueenFaction || !QUEEN_POWERS[developerState.selectedQueenFaction]) {
+        developerState.selectedQueenFaction = options[0].id;
+      }
+      const draft = ensureSceneDraft(developerState.selectedQueenFaction);
+
+      const toggleCard = document.createElement("div");
+      toggleCard.className = "dev-card";
+      toggleCard.innerHTML = `<label class="dev-toggle"><input type="checkbox" ${developerState.enabled ? "checked" : ""}> Developer mode enabled</label>`;
+      const toggleInput = toggleCard.querySelector("input");
+      toggleInput.addEventListener("change", () => {
+        developerState.enabled = toggleInput.checked;
+        renderDevPanel();
+        if (activeMenuTab === "harem") renderHaremPanel();
+      });
+      shell.appendChild(toggleCard);
+
+      const queenCard = document.createElement("div");
+      queenCard.className = "dev-card";
+      const queenSelect = document.createElement("select");
+      for (const option of options) {
+        const opt = document.createElement("option");
+        opt.value = option.id;
+        opt.textContent = option.title;
+        opt.selected = option.id === Number(draft.queenFaction);
+        queenSelect.appendChild(opt);
+      }
+      queenSelect.addEventListener("change", () => {
+        developerState.selectedQueenFaction = Number(queenSelect.value);
+        developerState.sceneDraft = defaultSceneDraft(developerState.selectedQueenFaction);
+        renderDevPanel();
+      });
+      queenCard.appendChild(queenSelect);
+
+      const quickRow = document.createElement("div");
+      quickRow.className = "dev-inline";
+      for (const [label, mutate] of [
+        ["+10 Morale", () => { const st = queenEntry(Number(queenSelect.value)); st.morale = clamp(st.morale + 10, 0, 100); render(); renderDevPanel(); }],
+        ["+10 Trust", () => { const st = queenEntry(Number(queenSelect.value)); st.trust = clamp(st.trust + 10, -100, 100); render(); renderDevPanel(); }],
+        ["+10 Romance", () => { const st = queenEntry(Number(queenSelect.value)); st.romance = clamp(st.romance + 10, 0, 100); render(); renderDevPanel(); }],
+        ["Reset Draft", () => { developerState.sceneDraft = defaultSceneDraft(Number(queenSelect.value)); renderDevPanel(); }],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", mutate);
+        quickRow.appendChild(btn);
+      }
+      queenCard.appendChild(quickRow);
+      shell.appendChild(queenCard);
+
+      const sceneCard = document.createElement("div");
+      sceneCard.className = "dev-card";
+      const fields = [
+        ["title", "Scene title"],
+        ["summary", "Scene setup"],
+        ["optionA", "Option A label"],
+        ["optionAText", "Option A scene text"],
+        ["optionB", "Option B label"],
+        ["optionBText", "Option B scene text"],
+        ["aftercare", "Aftercare / next hook"],
+      ];
+      for (const [key, label] of fields) {
+        const el = key === "summary" || key.endsWith("Text") || key === "aftercare"
+          ? document.createElement("textarea")
+          : document.createElement("input");
+        el.value = draft[key] || "";
+        el.placeholder = label;
+        el.addEventListener("input", () => { draft[key] = el.value; });
+        sceneCard.appendChild(el);
+      }
+
+      const statGrid = document.createElement("div");
+      statGrid.className = "dev-grid";
+      for (const key of ["optionAMorale", "optionATrust", "optionARomance", "optionAAttraction", "optionBMorale", "optionBTrust", "optionBRomance", "optionBAttraction"]) {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = draft[key];
+        input.placeholder = key;
+        input.addEventListener("input", () => { draft[key] = Number(input.value || 0); });
+        statGrid.appendChild(input);
+      }
+      sceneCard.appendChild(statGrid);
+
+      const actionRow = document.createElement("div");
+      actionRow.className = "dev-inline";
+      for (const [label, fn] of [
+        ["Preview Scene", () => previewDevScene()],
+        ["Open From Harem", () => setMenuTab("harem")],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", fn);
+        actionRow.appendChild(btn);
+      }
+      sceneCard.appendChild(actionRow);
+
+      const exportBlock = document.createElement("div");
+      exportBlock.className = "dev-code";
+      exportBlock.textContent = JSON.stringify(draft, null, 2);
+      sceneCard.appendChild(exportBlock);
+      shell.appendChild(sceneCard);
+
+      if (developerState.sceneHistory.length) {
+        const historyCard = document.createElement("div");
+        historyCard.className = "dev-card";
+        historyCard.innerHTML = developerState.sceneHistory
+          .map((entry) => `${formatTimestamp(entry.at)} - ${QUEEN_POWERS[entry.queenFaction]?.title || "Queen"} - ${entry.title} [${entry.branch}]`)
+          .join("<br>");
+        shell.appendChild(historyCard);
+      }
+
+      devPanelEl.appendChild(shell);
     }
 
     function renderHaremPanel() {
@@ -3983,6 +5042,13 @@ const BASE_FACTIONS = [
         personalRow.appendChild(confideBtn);
 
         wrap.appendChild(personalRow);
+
+        if (developerState.enabled) {
+          const devSceneBtn = document.createElement("button");
+          devSceneBtn.textContent = "Dev Scene Lab";
+          devSceneBtn.addEventListener("click", () => openDevSceneLab(queenFaction));
+          wrap.appendChild(devSceneBtn);
+        }
 
         const btn = document.createElement("button");
         btn.textContent = pendingQueenFaction === queenFaction ? "Selected" : "Deploy";
@@ -4741,6 +5807,8 @@ const BASE_FACTIONS = [
     tabLeadersBtn.addEventListener("click", () => setMenuTab("leaders"));
     tabDiplomacyBtn.addEventListener("click", () => setMenuTab("diplomacy"));
     tabHaremBtn.addEventListener("click", () => setMenuTab("harem"));
+    tabUnderworldBtn.addEventListener("click", () => setMenuTab("underworld"));
+    tabDevBtn.addEventListener("click", () => setMenuTab("dev"));
     modalCloseBtn.addEventListener("click", () => {
       if (activeMenuTab === "event") dismissEventModal();
       else setMenuTab("overview");
@@ -4792,10 +5860,12 @@ const BASE_FACTIONS = [
     if (menuMuteBtn) menuMuteBtn.addEventListener("click", () => {
       audioSettings.muted = !audioSettings.muted;
       applyAudioSettings();
+      syncAmbienceTrack();
     });
     if (audioMuteBtn) audioMuteBtn.addEventListener("click", () => {
       audioSettings.muted = !audioSettings.muted;
       applyAudioSettings();
+      syncAmbienceTrack();
     });
     if (menuVolumeRange) menuVolumeRange.addEventListener("input", () => {
       audioSettings.volume = Number(menuVolumeRange.value) / 100;
@@ -4812,6 +5882,4 @@ const BASE_FACTIONS = [
     applyAudioSettings();
     updateContinueAvailability();
     updateSaveStatus("No campaign loaded.", "warn");
-    menuMusicEl.play().then(() => {
-      menuMusicBtn.textContent = "Pause Theme";
-    }).catch(() => {});
+    syncAmbienceTrack();

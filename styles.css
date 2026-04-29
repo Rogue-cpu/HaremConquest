@@ -629,6 +629,79 @@
       font-weight: 700;
     }
 
+    .dev-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .dev-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff8eb;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .dev-card textarea,
+    .dev-card input,
+    .dev-card select {
+      width: 100%;
+      border: 1px solid #a59467;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      color: var(--text);
+      background: #fffdf6;
+    }
+
+    .dev-card textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    .dev-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .dev-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .dev-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+    }
+
+    .dev-code {
+      border: 1px solid #d0c08e;
+      border-radius: 8px;
+      background: #f7f1df;
+      padding: 10px;
+      white-space: pre-wrap;
+      font-family: Consolas, monospace;
+      font-size: 0.82rem;
+    }
+
+    .underworld-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .underworld-note {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff8eb;
+      padding: 12px;
+    }
+
     @media (max-width: 980px) {
       header {
         gap: 10px;
