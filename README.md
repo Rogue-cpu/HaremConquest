@@ -6,6 +6,8 @@ Harem Conquest is a browser strategy prototype about hex-map conquest, rival que
 
 Expand your realm across a hex map, break rival capitals, capture or court enemy queens, and turn a fragile throne into a dominant court. Between wars, manage morale, diplomacy, tribute, rebellion pressure, and the women already inside your harem.
 
+Play the game here: https://rogue-cpu.github.io/HaremConquest/
+
 ## Controls
 
 - Click one of your land tiles with `2+` troops to select it.
