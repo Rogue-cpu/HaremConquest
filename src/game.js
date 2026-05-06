@@ -247,6 +247,45 @@ if (!window.HCDuchess) {
     isDangerousDuchess: () => false,
   };
 }
+if (!window.HCMatron) {
+  window.HCMatron = {
+    MATRON_PORTRAITS: {},
+    createMatron: (opts) => ({
+      id: opts?.id || "matron_placeholder",
+      name: opts?.name || "Unknown Matron",
+      title: opts?.title || "Matron",
+      archetype: opts?.archetype || "hearth_matron",
+      loyalty: 50,
+      insight: 50,
+      discretion: 50,
+      authority: 50,
+      protectiveness: 50,
+      politicalSkill: 50,
+      streetSense: 50,
+      discipline: 50,
+      nurturing: 50,
+      jealousy: 20,
+      influence: 50,
+      corruption: 10,
+      riskTolerance: 50,
+      status: "active",
+      traits: [],
+      notes: "Matron system not loaded.",
+      trust: 50,
+      accessAuthority: 1,
+      assignedProtection: false,
+    }),
+    normalizeMatron: (matron) => matron,
+    createSampleMatrons: () => [],
+    getMatronArchetypeLabel: (a) => a || "Unknown",
+    createDangerEvent: (input) => input || {},
+    chooseBestMatron: () => null,
+    buildCounsel: () => ({ matronName: "Unknown Matron", dangerLabel: "unknown", betrayalRisk: 50, recommendation: "No matron data loaded.", quote: "No warning available." }),
+    screenTarget: () => ({ category: "Unknown / Inconclusive", certainty: 0, note: "No matron data loaded." }),
+    calculateInterventionChance: () => 0.1,
+    resolveIntervention: () => ({ type: "no_intervention", chance: 0.1, roll: 1, text: "No matron data loaded." }),
+  };
+}
 const {
   createDuchess,
   statusFromDuchess,
@@ -257,7 +296,31 @@ const {
   getArchetypeLabel,
   isDangerousDuchess,
 } = window.HCDuchess;
+const {
+  MATRON_PORTRAITS,
+  createMatron,
+  normalizeMatron,
+  createSampleMatrons,
+  getMatronArchetypeLabel,
+  createDangerEvent,
+  chooseBestMatron,
+  buildCounsel,
+  screenTarget,
+  calculateInterventionChance,
+  resolveIntervention,
+} = window.HCMatron;
 let duchesses = [];
+let matrons = [];
+let matronState = {
+  protectionLevel: 1,
+  assignedMatronId: null,
+  recentIgnoredWarnings: 0,
+  recentPunishments: 0,
+  lastDangerEvent: null,
+  screeningsCompleted: 0,
+  interventionsCompleted: 0,
+  rescuesCompleted: 0,
+};
 const SAVE_VERSION = 1;
 const TILE_UPGRADES = {
   farm: { label: "Farms", cost: 4, max: 2, requires: (tile) => tile.terrain === "land", yield: "+1 troop growth and +1 prosperity per level." },
@@ -459,6 +522,108 @@ const BASE_FACTIONS = [
       ...QUEEN_FILES.slice(6).map((filename, index) => reserveFactionFromFile(index + 6, filename)),
     ];
 
+    const ORIGINAL_QUEEN_FILE_SET = new Set([
+      "_mirko_ai_2_by_nerdlord1_dj826vp-pre.jpg",
+      "android_18_ai_3_by_nerdlord1_dj2f389-pre.jpg",
+      "ashe_ai_by_nerdlord1_dl0jktl-pre.jpg",
+      "ballora_ai_by_nerdlord1_dlp436r-pre.jpg",
+      "blackfire_ai_by_nerdlord1_dl5ywap-pre.jpg",
+      "blue_diamond_ai_by_nerdlord1_djao5f1-pre.jpg",
+      "bulma_briefs_ai_3_by_nerdlord1_dkqp1f4-pre.jpg",
+      "calendar_girl_ai_by_nerdlord1_dlbs91w-pre.jpg",
+      "captain_syrup_ai_by_nerdlord1_dlr9fy9-pre.jpg",
+      "cassandra_ai_by_nerdlord1_dl6kxwl-pre.jpg",
+      "cassidy__pokemon__ai_by_nerdlord1_dln3sch-pre.jpg",
+      "charlie_morningstar_ai_by_nerdlord1_djaa7hz-pre.jpg",
+      "chichi_ai_2_by_nerdlord1_dhg33cz-375w-2x.jpg",
+      "chun_li_ai_by_nerdlord1_djb7033-pre.jpg",
+      "coupe_ai_by_nerdlord1_dlgo1jg-pre.jpg",
+      "daki_ai_by_nerdlord1_djblrrw-pre.jpg",
+      "do_s_ai_by_nerdlord1_dljj9kj-pre.jpg",
+      "dr__amelia_buck_ai_by_nerdlord1_dk54tew-pre.jpg",
+      "elemental_hero_burstinatrix_ai_by_nerdlord1_dlcru77-pre.jpg",
+      "erza_scarlet_ai_by_nerdlord1_dkx3wmh-pre.jpg",
+      "fujiko_mine_ai_by_nerdlord1_dkcmtff-pre.jpg",
+      "holy_joestar_ai_by_nerdlord1_dl4nr6z-pre.jpg",
+      "invisigal_ai_by_nerdlord1_dl7b9z8-pre.jpg",
+      "jessie_ai_3_by_nerdlord1_dlkq91w-pre.jpg",
+      "juri_han_ai_by_nerdlord1_dlefdvu-pre.jpg",
+      "justice_ai_by_nerdlord1_dluqfgq-pre.jpg",
+      "karen_ai_by_nerdlord1_dlf35g2-pre.jpg",
+      "lila_test_ai_by_nerdlord1_dlphfd4-pre.jpg",
+      "malevola_ai_by_nerdlord1_dky16be-pre.jpg",
+      "malice_ai_by_nerdlord1_dlhrwbw-414w-2x.jpg",
+      "megara_ai_by_nerdlord1_dklzzcm-pre.jpg",
+      "mei_terumi_ai_by_nerdlord1_dkw2a12-pre.jpg",
+      "melony_ai_2_by_nerdlord1_dk25zn8-pre.jpg",
+      "mitsuri_kanroji_ai_2_by_nerdlord1_dj576sk-pre.jpg",
+      "modeus_ai__by_nerdlord1_djcxpmd-pre.jpg",
+      "mystique_sonia_ai_by_nerdlord1_dkky5wg-pre.jpg",
+      "nico_robin_ai_2_by_nerdlord1_djcqbz8-pre.jpg",
+      "princess_belle_ai_by_nerdlord1_dka6ito-pre.jpg",
+      "princess_rosalina_ai_2__by_nerdlord1_djclyoe-pre.jpg",
+      "priyanka_maheswaran_ai_by_nerdlord1_dkxtj2d-pre.jpg",
+      "rainbow_mika_ai_by_nerdlord1_djbhhd9-pre.jpg",
+      "rebecca_ai_by_nerdlord1_dl2rl3s-pre.jpg",
+      "rosemon_ai_by_nerdlord1_dl9vjs0-pre.jpg",
+      "sakuyamon_ai_by_nerdlord1_dloi5v4-pre.jpg",
+      "tsunade_ai_by_nerdlord1_dktrr5p-pre.jpg",
+      "ulti_ai_by_nerdlord1_dkngsds-pre.jpg",
+      "vanessa_ai_by_nerdlord1_dlwwslu-pre.jpg",
+      "velvette_ai__by_nerdlord1_djhkqm7-pre.jpg",
+      "white_diamond_ai_by_nerdlord1_dlboas8-pre.jpg",
+      "yor_forger_ai_by_nerdlord1_dkyflm5-pre.jpg",
+      "zangya_ai_by_nerdlord1_dlghf24-pre.jpg",
+    ]);
+    const NEW_QUEEN_FILE_SET = new Set([
+      "mal0_ai_2_by_nerdlord1_dj9y3e0-pre.jpg",
+    ]);
+    const GENERIC_RESTORED_QUEEN_POOL = [
+      "Original Queens/aki_nijou_ai_by_nerdlord1_dkwyetx-pre.jpg",
+      "Original Queens/albedo_ai_by_nerdlord1_dlqaava-pre.jpg",
+      "Original Queens/android_21_ai_by_nerdlord1_dj9qfa2-pre.jpg",
+      "Original Queens/bayonetta_ai_by_nerdlord1_dltzp7k-pre.jpg",
+      "Original Queens/blair_ai_by_nerdlord1_dkvcfdx-pre.jpg",
+      "Original Queens/boa_hancock_ai_by_nerdlord1_dj3o1f1-pre.jpg",
+      "Original Queens/claire_redfield_ai_by_nerdlord1_dlyan0v-pre.jpg",
+      "Original Queens/emma_frost_ai_by_nerdlord1_dk58jz6-pre.jpg",
+      "Original Queens/frieren_ai_by_nerdlord1_dja9uex-pre.jpg",
+      "Original Queens/fubuki_ai_by_nerdlord1_dlfbhpj-pre.jpg",
+      "Original Queens/jill_valentine_ai_2_by_nerdlord1_dlo323e-pre.jpg",
+      "Original Queens/ladydevimon_ai_by_nerdlord1_dlda7iu-pre.jpg",
+      "Original Queens/makima_ai_2_by_nerdlord1_dl2i8hv-pre.jpg",
+      "Original Queens/roberta_ai_by_nerdlord1_dlqhff2-pre.jpg",
+      "Original Queens/starfire_ai_by_nerdlord1_dj58n9l-pre.jpg",
+      "New Queens/carolina_ai_by_nerdlord1_dl6uvao-pre.jpg",
+      "New Queens/jessica_rabbit_ai_by_nerdlord1_dkjkzrb-pre.jpg",
+      "New Queens/martha_ai_by_nerdlord1_dkfopml-pre.jpg",
+      "New Queens/maya_fey_ai_by_nerdlord1_dlmxqo9-414w-2x.jpg",
+      "New Queens/storm_ai_by_nerdlord1_djvokmf-pre.jpg",
+      "New Queens/yoruichi_shihouin_ai_by_nerdlord1_dlyyhvy-pre.jpg",
+    ];
+    const QUEEN_PORTRAIT_OVERRIDES = {
+      1: "Original Queens/Queen Rhea/alcina_dimitrescu_ai_2_by_nerdlord1_dltjdrz-pre.jpg",
+    };
+    const QUEEN_PORTRAIT_OVERRIDES_BY_LEADER = {
+      "Queen Kaida": "Original Queens/fubuki_ai_by_nerdlord1_dlfbhpj-pre.jpg",
+      "Queen Selene": "Original Queens/frieren_ai_by_nerdlord1_dja9uex-pre.jpg",
+      "Queen Isolde": "Original Queens/carmilla__castlevania__ai_by_nerdlord1_dljpexo-pre.jpg",
+      "Queen Morwen": "Original Queens/ladydevimon_ai_by_nerdlord1_dlda7iu-pre.jpg",
+      "Queen Victoria": "Original Queens/makima_ai_2_by_nerdlord1_dl2i8hv-pre.jpg",
+    };
+
+    function resolveQueenPortraitPath(faction) {
+      if (!faction?.portrait) return null;
+      if (QUEEN_PORTRAIT_OVERRIDES[faction.id]) return QUEEN_PORTRAIT_OVERRIDES[faction.id];
+      if (QUEEN_PORTRAIT_OVERRIDES_BY_LEADER[faction.leader]) return QUEEN_PORTRAIT_OVERRIDES_BY_LEADER[faction.leader];
+      if (ORIGINAL_QUEEN_FILE_SET.has(faction.portrait)) return `Original Queens/${faction.portrait}`;
+      if (NEW_QUEEN_FILE_SET.has(faction.portrait)) return `New Queens/${faction.portrait}`;
+      if (GENERIC_RESTORED_QUEEN_POOL.length) {
+        return GENERIC_RESTORED_QUEEN_POOL[faction.id % GENERIC_RESTORED_QUEEN_POOL.length];
+      }
+      return `Queens/${faction.portrait}`;
+    }
+
     const QUEEN_POWERS = Object.fromEntries(
       FACTIONS.map((faction) => {
         const base = QUEEN_ARCHETYPES[faction.archetype];
@@ -477,7 +642,7 @@ const BASE_FACTIONS = [
     const NEUTRAL = -1;
     const HEX_ASSET_BASE = "assets/hexempire_images/";
     const QUEEN_PORTRAITS = Object.fromEntries(
-      FACTIONS.map((faction) => [faction.id, `Queens/${faction.portrait}`])
+      FACTIONS.map((faction) => [faction.id, resolveQueenPortraitPath(faction)])
     );
 
     const canvas = document.getElementById("board");
@@ -731,7 +896,7 @@ const BASE_FACTIONS = [
       }
       mapImages.push(hexAssets.city, hexAssets.port);
       mapImages.push(...Object.values(armyAssets));
-      const portraitSources = Object.values(QUEEN_PORTRAITS);
+      const portraitSources = [...Object.values(QUEEN_PORTRAITS), ...Object.values(MATRON_PORTRAITS || {})].filter(Boolean);
       const ambienceTracks = [menuMusicEl, dayAmbienceEl, nightAmbienceEl, rainAmbienceEl, bloodMoonAmbienceEl];
       const total = mapImages.length + portraitSources.length + ambienceTracks.length + 3;
       let done = 0;
@@ -1514,6 +1679,8 @@ const BASE_FACTIONS = [
         state: {
           tiles: serializeTiles(),
           duchesses,
+          matrons,
+          matronState,
           currentFactionIndex,
           round,
           gameOver,
@@ -1585,6 +1752,18 @@ const BASE_FACTIONS = [
       gameOver = snapshot.gameOver;
       treasury = snapshot.treasury ?? treasury;
       duchesses = snapshot.duchesses || [];
+      matrons = (snapshot.matrons || []).map((matron) => normalizeMatron(matron));
+      matronState = {
+        protectionLevel: 1,
+        assignedMatronId: null,
+        recentIgnoredWarnings: 0,
+        recentPunishments: 0,
+        lastDangerEvent: null,
+        screeningsCompleted: 0,
+        interventionsCompleted: 0,
+        rescuesCompleted: 0,
+        ...(snapshot.matronState || {}),
+      };
       leaderState = snapshot.leaderState || {};
       for (const faction of FACTIONS) {
         leaderState[faction.id] = {
@@ -1624,6 +1803,7 @@ const BASE_FACTIONS = [
       dayNightPhase = snapshot.dayNightPhase || 0.18;
       campaignStats = snapshot.campaignStats || campaignStats;
       developerState = snapshot.developerState || developerState;
+      ensureMatronState();
       weatherState = snapshot.weatherState || weatherState;
       audioSettings = snapshot.audioSettings || audioSettings;
       reconcileDuchessState();
@@ -2474,6 +2654,653 @@ const BASE_FACTIONS = [
       reconcileDuchessState();
     }
 
+    function getMatron(id) {
+      return matrons.find((matron) => matron.id === id) || null;
+    }
+
+    function activeMatrons() {
+      return matrons.filter((matron) => matron.status === "active");
+    }
+
+    function recalculateMatronProtectionLevel() {
+      const authorityScore = activeMatrons().reduce((sum, matron) => sum + (matron.accessAuthority || 0), 0);
+      let level = 1;
+      if (authorityScore >= 4) level = 2;
+      if (authorityScore >= 9) level = 3;
+      if (authorityScore >= 14) level = 4;
+      if (authorityScore >= 20) level = 5;
+      matronState.protectionLevel = level;
+    }
+
+    function initializeMatrons() {
+      matrons = createSampleMatrons().map((matron, index) => {
+        const normalized = normalizeMatron(matron);
+        normalized.assignedProtection = index === 0;
+        if (index === 0) normalized.accessAuthority = Math.max(2, normalized.accessAuthority || 1);
+        return normalized;
+      });
+      matronState = {
+        protectionLevel: 1,
+        assignedMatronId: matrons[0]?.id || null,
+        recentIgnoredWarnings: 0,
+        recentPunishments: 0,
+        lastDangerEvent: null,
+        screeningsCompleted: 0,
+        interventionsCompleted: 0,
+        rescuesCompleted: 0,
+      };
+      recalculateMatronProtectionLevel();
+    }
+
+    function ensureMatronState() {
+      matrons = (matrons || []).map((matron) => normalizeMatron(matron));
+      if (!matrons.length) initializeMatrons();
+      if (!matronState) {
+        matronState = {
+          protectionLevel: 1,
+          assignedMatronId: null,
+          recentIgnoredWarnings: 0,
+          recentPunishments: 0,
+          lastDangerEvent: null,
+          screeningsCompleted: 0,
+          interventionsCompleted: 0,
+          rescuesCompleted: 0,
+        };
+      }
+      if (!getMatron(matronState.assignedMatronId)) {
+        matronState.assignedMatronId = activeMatrons()[0]?.id || null;
+      }
+      matronState.lastDangerEvent = matronState.lastDangerEvent ? createDangerEvent(matronState.lastDangerEvent) : null;
+      recalculateMatronProtectionLevel();
+    }
+
+    function setAssignedProtectionMatron(matronId) {
+      for (const matron of matrons) {
+        matron.assignedProtection = matron.id === matronId && matron.status === "active";
+      }
+      matronState.assignedMatronId = getMatron(matronId)?.status === "active" ? matronId : null;
+      recalculateMatronProtectionLevel();
+    }
+
+    function adjustMatronTrust(matron, delta) {
+      if (!matron) return;
+      matron.trust = clamp((matron.trust || 50) + delta, 0, 100);
+      if (delta < 0 && matron.trust <= 28) matron.resentful = true;
+      if (delta > 0 && matron.trust >= 42) matron.resentful = false;
+    }
+
+    function adjustAllActiveMatronTrust(delta) {
+      for (const matron of activeMatrons()) {
+        adjustMatronTrust(matron, delta);
+      }
+    }
+
+    function matronProtectionLevelLabel() {
+      return [
+        "Warnings",
+        "Screening",
+        "Interception",
+        "Rescue Network",
+        "Inner Gatekeepers",
+      ][Math.max(0, Math.min(4, (matronState.protectionLevel || 1) - 1))] || "Warnings";
+    }
+
+    function buildMatronDangerEvent(queenFaction, sourceLabel, dangerBonus = 0, overrides = {}) {
+      const faction = factionById(queenFaction);
+      const lower = String(sourceLabel || "").toLowerCase();
+      const tags = ["adult", "capture_risk"];
+      if (lower.includes("underworld")) tags.push("underworld", "seduction_trap");
+      if (lower.includes("tryst") || lower.includes("intimacy") || lower.includes("courtship")) tags.push("seduction_trap", "private_meeting");
+      if (lower.includes("meeting")) tags.push("private_meeting", "political");
+      if (lower.includes("night")) tags.push("queen", "private_meeting");
+      if (lower.includes("capture")) tags.push("violent_trap");
+      if (lower.includes("secret")) tags.push("protocol");
+      if (!tags.includes("queen")) tags.push("queen");
+      const deception = clamp(Math.round(46 + dangerBonus * 280 + (queenEntry(queenFaction)?.hate || 0) * 0.22), 10, 95);
+      return createDangerEvent({
+        event_id: `danger_${queenFaction}_${lower.replace(/[^a-z0-9]+/g, "_")}`,
+        event_type: "danger_social_event",
+        danger_level: dangerBonus >= 0.07 ? "severe" : (dangerBonus >= 0.05 ? "high" : "elevated"),
+        tags,
+        enemy_deception: deception,
+        allows_matron_warning: true,
+        allows_matron_intervention: true,
+        allows_rescue_event: true,
+        territory: overrides.territory || "enemy",
+        target_name: faction?.leader || "Unknown Queen",
+        target_role: "queen",
+        motive_hint: lower.includes("underworld") ? "isolation" : "control",
+        target_deception: deception,
+        target_instability: clamp(26 + Math.round((queenEntry(queenFaction)?.hate || 0) * 0.35), 0, 100),
+        target_obsession: clamp(30 + Math.round((queenEntry(queenFaction)?.attraction || 0) * 0.42), 0, 100),
+        faction_loyalty_risk: clamp(40 + Math.round((queenEntry(queenFaction)?.hate || 0) * 0.45), 0, 100),
+        ...overrides,
+      });
+    }
+
+    function bestMatronForDangerEvent(dangerEvent, opts = {}) {
+      ensureMatronState();
+      return chooseBestMatron(matrons, dangerEvent, {
+        assignedMatronId: opts.assignedMatronId || matronState.assignedMatronId,
+      });
+    }
+
+    function requestMatronCounselForDangerEvent(dangerEvent, opts = {}) {
+      const matron = bestMatronForDangerEvent(dangerEvent, opts);
+      if (!matron) return null;
+      const counsel = buildCounsel(matron, dangerEvent, opts);
+      matron.lastCounselRound = round;
+      matronState.lastDangerEvent = dangerEvent;
+      return { matron, counsel };
+    }
+
+    function runMatronScreeningForDangerEvent(dangerEvent, opts = {}) {
+      const matron = bestMatronForDangerEvent(dangerEvent, opts);
+      if (!matron) return null;
+      const screening = screenTarget(matron, {
+        deception: dangerEvent.target_deception,
+        instability: dangerEvent.target_instability,
+        obsession: dangerEvent.target_obsession,
+        factionRisk: dangerEvent.faction_loyalty_risk,
+      }, dangerEvent, opts);
+      matron.lastScreenRound = round;
+      matronState.screeningsCompleted += 1;
+      return { matron, screening };
+    }
+
+    function matronEventBody(baseBody, event) {
+      const sections = [baseBody];
+      if (event.matronAssessment?.counsel) {
+        const { matron, counsel } = event.matronAssessment;
+        sections.push(`${matron.name} assesses the risk as ${counsel.dangerLabel}.\n\n${counsel.quote}`);
+      }
+      if (event.matronScreening?.screening) {
+        const { matron, screening } = event.matronScreening;
+        sections.push(`${matron.name} screens the woman as: ${screening.category}.\nCertainty ${screening.certainty}%.\n${screening.note}`);
+      }
+      if (event.matronContext?.bringEscort) {
+        sections.push("A matron escort has been arranged. The meeting will no longer be truly private.");
+      }
+      if (event.matronContext?.ignoredWarnings) {
+        sections.push("You have chosen to proceed in spite of the warning.");
+      }
+      return sections.join("\n\n");
+    }
+
+    function refreshMatronDangerEvent(event) {
+      event.body = matronEventBody(event.baseBody, event);
+      const activeCount = activeMatrons().length;
+      event.meta = `Danger ${event.dangerEvent.danger_level} • Protection Level ${matronState.protectionLevel} ${matronProtectionLevelLabel()} • Active Matrons ${activeCount}`;
+      const actions = [];
+      if (!event.matronAssessment && activeCount) {
+        actions.push({
+          label: "Ask Matron for Assessment",
+          onClick: () => {
+            event.matronAssessment = requestMatronCounselForDangerEvent(event.dangerEvent, { assignedMatronId: matronState.assignedMatronId });
+            renderEventPanel();
+          },
+        });
+      }
+      if (!event.matronScreening && activeCount && matronState.protectionLevel >= 2) {
+        actions.push({
+          label: "Send Matron First",
+          onClick: () => {
+            event.matronScreening = runMatronScreeningForDangerEvent(event.dangerEvent, { assignedMatronId: matronState.assignedMatronId });
+            if (event.matronScreening?.screening) {
+              event.dangerEvent.enemy_deception = clamp(event.dangerEvent.enemy_deception - Math.max(6, Math.floor(event.matronScreening.screening.certainty / 8)), 0, 100);
+            }
+            event.matronContext.sentMatronFirst = true;
+            renderEventPanel();
+          },
+        });
+      }
+      if (activeCount) {
+        actions.push({
+          label: event.matronContext?.bringEscort ? "Escort Ready" : "Bring Matron Escort",
+          disabled: Boolean(event.matronContext?.bringEscort),
+          onClick: () => {
+            event.matronContext.bringEscort = true;
+            renderEventPanel();
+          },
+        });
+      }
+      if ((event.matronAssessment || event.matronScreening) && !event.matronContext?.ignoredWarnings) {
+        actions.push({
+          label: "Ignore Matron Warnings",
+          onClick: () => {
+            event.matronContext.ignoredWarnings = true;
+            matronState.recentIgnoredWarnings += 1;
+            if (event.matronAssessment?.matron) adjustMatronTrust(event.matronAssessment.matron, -4);
+            else adjustAllActiveMatronTrust(-2);
+            renderEventPanel();
+          },
+        });
+      }
+      for (const action of (event.extraActions || [])) actions.push(action);
+      actions.push({
+        label: event.proceedLabel || "Proceed Alone",
+        onClick: () => {
+          dismissEventModal(true);
+          if (event.onProceed) event.onProceed({ ...event.matronContext, dangerEvent: event.dangerEvent, askedForCounsel: Boolean(event.matronAssessment) });
+        },
+      });
+      actions.push({
+        label: event.declineLabel || "Refuse",
+        onClick: () => {
+          dismissEventModal(true);
+          if (event.onDecline) event.onDecline();
+        },
+      });
+      event.actions = actions;
+    }
+
+    function queueMatronAwareDangerEvent(config) {
+      matronState.lastDangerEvent = config.dangerEvent;
+      const event = {
+        label: config.label || "Danger",
+        title: config.title,
+        baseBody: config.body,
+        body: config.body,
+        portrait: config.portrait,
+        dangerEvent: config.dangerEvent,
+        matronContext: {
+          bringEscort: false,
+          sentMatronFirst: false,
+          ignoredWarnings: false,
+          proceedAlone: true,
+        },
+        proceedLabel: config.proceedLabel,
+        declineLabel: config.declineLabel,
+        onProceed: config.onProceed,
+        onDecline: config.onDecline,
+        extraActions: config.extraActions || [],
+        actions: [],
+      };
+      refreshMatronDangerEvent(event);
+      queueEventModal(event);
+    }
+
+    function queueMatronReaction(title, body, matron) {
+      queueEventModal({
+        label: "Matron",
+        title,
+        body,
+        portrait: matron?.portrait || null,
+        cta: "Continue",
+      });
+    }
+
+    function resolveMatronProtectionBeforeCapture(dangerEvent, context = {}) {
+      ensureMatronState();
+      const matron = bestMatronForDangerEvent(dangerEvent, { assignedMatronId: matronState.assignedMatronId });
+      if (!matron) return { prevented: false, reducedDanger: 0 };
+      const result = resolveIntervention(matron, dangerEvent, {
+        protectionLevel: matronState.protectionLevel,
+        askedForCounsel: Boolean(context.askedForCounsel),
+        sentMatronFirst: Boolean(context.sentMatronFirst),
+        bringEscort: Boolean(context.bringEscort),
+        friendlyTerritory: dangerEvent.territory === "friendly",
+        wentAloneSecret: !context.bringEscort,
+        lowTrust: matron.trust <= 34,
+        recentIgnored: Boolean(context.ignoredWarnings) || matronState.recentIgnoredWarnings > 0,
+      });
+      if (result.type === "interruption_during") {
+        matron.lastInterventionRound = round;
+        matronState.interventionsCompleted += 1;
+        adjustMatronTrust(matron, 3);
+        queueMatronReaction(
+          `${matron.name} Cuts Off The Trap`,
+          `The door opens before the snare can close. ${matron.name} steps in with older women behind her and ends the privacy the trap required.\n\n“Hands off him.”\n\nShe does not apologize. “You can be angry with me after you are alive.”`,
+          matron
+        );
+        return { prevented: true, reducedDanger: 0, matron, result };
+      }
+      if (result.type === "warning_before" && !context.ignoredWarnings) {
+        adjustMatronTrust(matron, 2);
+        queueMatronReaction(
+          `${matron.name} Warns You In Time`,
+          `${matron.name} intercepts the meeting before it fully closes around you.\n\n“Do not go alone. She has made the invitation too sweet, too private, and too easy. That is not affection. That is a room with the door already locked.”`,
+          matron
+        );
+        return { prevented: Boolean(context.bringEscort || context.sentMatronFirst), reducedDanger: 0.06, matron, result };
+      }
+      return { prevented: false, reducedDanger: result.type === "failure_delayed" ? 0 : 0.03, matron, result };
+    }
+
+    function resolveMatronRescueAfterCapture(dangerEvent, context = {}) {
+      const matron = bestMatronForDangerEvent(dangerEvent, { assignedMatronId: matronState.assignedMatronId });
+      if (!matron) return false;
+      const result = resolveIntervention(matron, dangerEvent, {
+        protectionLevel: matronState.protectionLevel,
+        askedForCounsel: Boolean(context.askedForCounsel),
+        sentMatronFirst: Boolean(context.sentMatronFirst),
+        bringEscort: Boolean(context.bringEscort),
+        friendlyTerritory: dangerEvent.territory === "friendly",
+        wentAloneSecret: !context.bringEscort,
+        lowTrust: matron.trust <= 34,
+        recentIgnored: Boolean(context.ignoredWarnings) || matronState.recentIgnoredWarnings > 0,
+        captureAlreadyTriggered: true,
+      });
+      if (result.type !== "rescue_after_capture") return false;
+      matron.lastInterventionRound = round;
+      matronState.interventionsCompleted += 1;
+      matronState.rescuesCompleted += 1;
+      adjustMatronTrust(matron, 4);
+      queueMatronReaction(
+        `${matron.name} Pulls You Back`,
+        `${matron.name} tracks the capture route fast enough to rip you out before your enemies can secure you.\n\nThe rescue is ugly, immediate, and deeply personal. You are shaken, but not taken.`,
+        matron
+      );
+      return true;
+    }
+
+    function currentMatronCounselEvent() {
+      return matronState.lastDangerEvent || createDangerEvent({
+        event_id: "court_protocol_review",
+        event_type: "danger_social_event",
+        danger_level: "elevated",
+        tags: ["adult", "court", "political", "private_meeting"],
+        enemy_deception: 44,
+        target_name: "Current Court Petitioners",
+        target_role: "visitor",
+      });
+    }
+
+    function askCounselFromMatron(matron) {
+      const dangerEvent = currentMatronCounselEvent();
+      const counsel = buildCounsel(matron, dangerEvent, { assignedMatronId: matron.id });
+      matron.lastCounselRound = round;
+      matronState.lastDangerEvent = dangerEvent;
+      queueMatronReaction(
+        `${matron.name} Gives Counsel`,
+        `${counsel.quote}\n\nDanger: ${counsel.dangerLabel}.\nBetrayal risk: ${counsel.betrayalRisk}%.\nRecommendation: ${counsel.recommendation}`,
+        matron
+      );
+      render();
+    }
+
+    function screenVisitorWithMatron(matron) {
+      const dangerEvent = currentMatronCounselEvent();
+      const screening = screenTarget(matron, {
+        deception: dangerEvent.target_deception,
+        instability: dangerEvent.target_instability,
+        obsession: dangerEvent.target_obsession,
+        factionRisk: dangerEvent.faction_loyalty_risk,
+      }, dangerEvent, { assignedMatronId: matron.id });
+      matron.lastScreenRound = round;
+      matronState.screeningsCompleted += 1;
+      queueMatronReaction(
+        `${matron.name} Screens The Visitor`,
+        `${screening.category}\n\nCertainty ${screening.certainty}%.\n${screening.note}`,
+        matron
+      );
+      render();
+    }
+
+    function assignMatronProtection(matron) {
+      if (!matron || matron.status !== "active") return;
+      setAssignedProtectionMatron(matron.id);
+      adjustMatronTrust(matron, 2);
+      addLog(`${matron.name} is now your primary matron protector.`);
+      render();
+    }
+
+    function investigateWithMatron(matron) {
+      if (!matron || matron.status !== "active") return;
+      const templates = [
+        createDangerEvent({
+          event_id: "matron_investigation_underworld",
+          event_type: "danger_social_event",
+          danger_level: "high",
+          tags: ["adult", "underworld", "seduction_trap", "capture_risk"],
+          enemy_deception: 68,
+          target_name: "Mercy Ward Invitation",
+          target_role: "underworld woman",
+          motive_hint: "isolation",
+          territory: "neutral",
+        }),
+        createDangerEvent({
+          event_id: "matron_investigation_court",
+          event_type: "danger_social_event",
+          danger_level: "elevated",
+          tags: ["adult", "political", "queen", "private_meeting"],
+          enemy_deception: 54,
+          target_name: "Private Audience Request",
+          target_role: "court woman",
+          motive_hint: "leverage",
+          territory: "friendly",
+        }),
+      ];
+      const dangerEvent = templates[randomBetween(0, templates.length - 1)];
+      const counsel = buildCounsel(matron, dangerEvent, { assignedMatronId: matron.id });
+      matronState.lastDangerEvent = dangerEvent;
+      adjustMatronTrust(matron, 1);
+      queueMatronReaction(
+        `${matron.name} Returns With A Report`,
+        `${matron.name} spends the day listening instead of speaking.\n\nHer report concerns ${dangerEvent.target_name}.\n${counsel.quote}`,
+        matron
+      );
+      render();
+    }
+
+    function adjustMatronAccess(matron, delta) {
+      if (!matron || matron.status !== "active") return;
+      matron.accessAuthority = clamp((matron.accessAuthority || 1) + delta, 0, 5);
+      if (delta > 0) adjustMatronTrust(matron, 1);
+      if (delta < 0) {
+        adjustMatronTrust(matron, -2);
+        matronState.recentPunishments += 1;
+      }
+      recalculateMatronProtectionLevel();
+      render();
+    }
+
+    function rewardMatron(matron) {
+      if (!matron || matron.status !== "active") return;
+      if (treasury < 2) {
+        addLog("You need 2 treasury to reward a matron properly.");
+        return;
+      }
+      treasury -= 2;
+      matron.loyalty = clamp(matron.loyalty + 5, 0, 100);
+      matron.influence = clamp(matron.influence + 2, 0, 100);
+      adjustMatronTrust(matron, 4);
+      addLog(`${matron.name} accepts your reward and tightens her protection around you.`);
+      render();
+    }
+
+    function dismissMatron(matron) {
+      if (!matron || matron.status !== "active") return;
+      matron.status = "dismissed";
+      matron.assignedProtection = false;
+      if (matronState.assignedMatronId === matron.id) {
+        matronState.assignedMatronId = activeMatrons().find((entry) => entry.id !== matron.id)?.id || null;
+        setAssignedProtectionMatron(matronState.assignedMatronId);
+      }
+      recalculateMatronProtectionLevel();
+      addLog(`${matron.name} is dismissed from active matron service.`);
+      render();
+    }
+
+    function matronEndearment(matron) {
+      const options = matron?.archetype === "iron_matron"
+        ? ["sweetie", "hun", "honey"]
+        : matron?.archetype === "healing_matron"
+          ? ["sweetheart", "honey", "dear heart"]
+          : ["sweetie", "hun", "honey"];
+      return options[randomBetween(0, options.length - 1)];
+    }
+
+    function matronPregnancyStatusLabel(matron) {
+      if (!matron?.pregnant) return matron?.children > 0 ? `Children ${matron.children}` : "No Child";
+      const turnsLeft = Math.max(0, (matron.pregnancyDueRound || round) - round);
+      if (turnsLeft <= 1) return `Late Pregnancy - Children ${matron.children || 0}`;
+      if (turnsLeft === 2) return `Pregnant - Mid Term - Children ${matron.children || 0}`;
+      return `Pregnant - Early Term - Children ${matron.children || 0}`;
+    }
+
+    function queueMatronPersonalReaction(matron, title, label, body) {
+      queueEventModal({
+        label,
+        title,
+        body,
+        portrait: matron?.portrait || null,
+        cta: "Continue",
+      });
+      addLog(`${matron?.name || "A matron"}: ${label}.`);
+    }
+
+    function tryMatronPregnancy(matron, sourceLabel, intensity = 1) {
+      if (!matron || matron.pregnant) return false;
+      const chance = Math.min(
+        0.54,
+        0.08 +
+        intensity * 0.07 +
+        Math.max(0, matron.romance || 0) / 250 +
+        Math.max(0, matron.attraction || 0) / 260 +
+        Math.max(0, matron.trust || 0) / 420 +
+        Math.max(0, matron.nurturing || 0) / 700
+      );
+      if (Math.random() > chance) return false;
+      matron.pregnant = true;
+      matron.pregnancyStartRound = round;
+      matron.pregnancyDueRound = round + 3 + Math.floor(Math.random() * 2);
+      matron.pregnancyOrigin = sourceLabel;
+      matron.romance = Math.min(100, matron.romance + 4);
+      adjustMatronTrust(matron, 3);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Carries Your Child`,
+        "Matron Pregnancy",
+        `${matron.name} rests a hand over her stomach and studies you with a softened, knowing look.\n\n"${pet[0].toUpperCase() + pet.slice(1)}, it seems our closeness has become something real. I am carrying your child now. I will guard that life with the same care I guard you."`
+      );
+      return true;
+    }
+
+    function resolveMatronPregnancies() {
+      for (const matron of matrons) {
+        if (!matron || !matron.pregnant || matron.pregnancyDueRound > round) continue;
+        matron.pregnant = false;
+        matron.pregnancyStartRound = -1;
+        matron.pregnancyDueRound = -1;
+        matron.pregnancyOrigin = null;
+        matron.children = (matron.children || 0) + 1;
+        matron.romance = Math.min(100, (matron.romance || 0) + 6);
+        matron.loyalty = Math.min(100, (matron.loyalty || 0) + 4);
+        adjustMatronTrust(matron, 5);
+        const pet = matronEndearment(matron);
+        queueMatronPersonalReaction(
+          matron,
+          `${matron.name} Gives Birth`,
+          "Matron Birth",
+          `${matron.name} gives birth safely within your household.\n\nShe draws you close afterward and murmurs, "${pet[0].toUpperCase() + pet.slice(1)}, our child is here. Let me keep this house warm around you both."`
+        );
+      }
+    }
+
+    function matronConverse(matron) {
+      if (!matron || matron.status !== "active" || matron.converseUsedThisTurn) return;
+      matron.converseUsedThisTurn = true;
+      adjustMatronTrust(matron, 4);
+      matron.romance = Math.min(100, (matron.romance || 0) + 2);
+      matron.loyalty = Math.min(100, (matron.loyalty || 0) + 1);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Sits With You`,
+        "Motherly Counsel",
+        `${matron.name} settles beside you and listens longer than she speaks.\n\n"${pet[0].toUpperCase() + pet.slice(1)}, you do not have to bare your throat to every burden alone. Let me steady the room around you for a little while."`
+      );
+      render();
+    }
+
+    function matronFlirt(matron) {
+      if (!matron || matron.status !== "active" || matron.flirtUsedThisTurn) return;
+      matron.flirtUsedThisTurn = true;
+      matron.attraction = Math.min(100, (matron.attraction || 0) + 6);
+      matron.romance = Math.min(100, (matron.romance || 0) + 5);
+      adjustMatronTrust(matron, 2);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Answers Your Flirting`,
+        "Warm Teasing",
+        `${matron.name} smiles in that older, knowing way of hers and brushes your arm with deliberate affection.\n\n"Oh, ${pet}, keep looking at me like that and I will start spoiling you on purpose."`
+      );
+      render();
+    }
+
+    function matronConfide(matron) {
+      if (!matron || matron.status !== "active" || matron.confideUsedThisTurn) return;
+      matron.confideUsedThisTurn = true;
+      adjustMatronTrust(matron, 5);
+      matron.protectiveness = Math.min(100, (matron.protectiveness || 0) + 2);
+      matron.insight = Math.min(100, (matron.insight || 0) + 1);
+      matronState.recentIgnoredWarnings = Math.max(0, (matronState.recentIgnoredWarnings || 0) - 1);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Keeps Your Confidence`,
+        "Private Trust",
+        `${matron.name} receives your private thoughts without judgment and holds them carefully.\n\n"I have you, ${pet}. Speak plain. I would rather carry the truth with you than let you walk alone with it."`
+      );
+      render();
+    }
+
+    function matronSpoilPlayer(matron) {
+      if (!matron || matron.status !== "active" || matron.spoilUsedThisTurn) return;
+      matron.spoilUsedThisTurn = true;
+      const treasuryGift = 1 + (matron.influence >= 70 ? 1 : 0) + (matron.nurturing >= 80 ? 1 : 0);
+      treasury += treasuryGift;
+      matron.loyalty = Math.min(100, (matron.loyalty || 0) + 2);
+      matron.romance = Math.min(100, (matron.romance || 0) + 3);
+      adjustMatronTrust(matron, 3);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Spoils You`,
+        "Gifts And Praise",
+        `${matron.name} presses a thoughtful gift into your hands and smooths the front of your clothing as though making the world behave itself around you.\n\n"There now, ${pet}. A ruler should feel cared for too. Take this, hold your head high, and let me be proud of you a while longer."\n\nTreasury +${treasuryGift}.`
+      );
+      render();
+    }
+
+    function matronIntimacy(matron) {
+      if (!matron || matron.status !== "active" || matron.intimacyUsedThisTurn) return;
+      matron.intimacyUsedThisTurn = true;
+      matron.romance = Math.min(100, (matron.romance || 0) + 7);
+      matron.attraction = Math.min(100, (matron.attraction || 0) + 5);
+      adjustMatronTrust(matron, 3);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Draws You Close`,
+        "Private Affection",
+        `${matron.name} draws you into private closeness that feels sheltering as much as it does passionate.\n\n"Hush now, ${pet}. Let me take care of you for a little while."`
+      );
+      tryMatronPregnancy(matron, "Matron Intimacy", 1.04);
+      render();
+    }
+
+    function maybeQueueMatronAffectionEvent() {
+      const candidates = activeMatrons().filter((matron) => (matron.trust || 0) >= 68 || (matron.romance || 0) >= 54);
+      if (!candidates.length) return;
+      const matron = randomItem(candidates);
+      const chance = 0.16 + Math.max(0, (matron.trust || 0) - 60) / 220;
+      if (Math.random() > chance) return;
+      const treasuryGift = matron.influence >= 72 ? 1 : 0;
+      if (treasuryGift) treasury += treasuryGift;
+      adjustMatronTrust(matron, 1);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Checks On You`,
+        "Matron Affection",
+        `${matron.name} catches you between duties, straightens you with practiced hands, and sends you back into the day with a soft look.\n\n"Easy, ${pet}. You are allowed to breathe. I am watching the doors, and I am proud of how you are carrying all this."${treasuryGift ? `\n\nShe also leaves a small practical gift behind. Treasury +${treasuryGift}.` : ""}`
+      );
+    }
+
     function replaceDuchess(tile) {
       if (!tile || !tile.duchessId) return;
       const duchess = getDuchess(tile.duchessId);
@@ -2811,6 +3638,7 @@ const BASE_FACTIONS = [
       gameMode = "conquest";
       overlordQueenId = null;
       initializeDuchesses();
+      initializeMatrons();
       campaignStats = {
         factionsCollapsed: 0,
         autosaves: 0,
@@ -5793,6 +6621,8 @@ const BASE_FACTIONS = [
         pendingQueenFaction = null;
         pendingUnitQueenFaction = null;
         diplomacyTurnNumber += 1;
+        matronState.recentIgnoredWarnings = Math.max(0, (matronState.recentIgnoredWarnings || 0) - 1);
+        matronState.recentPunishments = Math.max(0, (matronState.recentPunishments || 0) - 1);
         if (gameMode === "servitude") {
           resistanceState.devotion = Math.min(100, resistanceState.devotion + 2);
           if (resistanceState.built) {
@@ -5851,6 +6681,14 @@ const BASE_FACTIONS = [
           duchess.confideUsedThisTurn = false;
           duchess.intimacyUsedThisTurn = false;
         }
+        for (const matron of matrons) {
+          if (!matron || matron.status !== "active") continue;
+          matron.converseUsedThisTurn = false;
+          matron.flirtUsedThisTurn = false;
+          matron.confideUsedThisTurn = false;
+          matron.spoilUsedThisTurn = false;
+          matron.intimacyUsedThisTurn = false;
+        }
         if (gameMode === "servitude") {
           maybeApplyOverlordHaremPressure();
         }
@@ -5872,6 +6710,7 @@ const BASE_FACTIONS = [
             }
           }
         }
+        maybeQueueMatronAffectionEvent();
         humanMovesRemaining = HUMAN_MOVES_PER_TURN;
         endTurnBtn.disabled = false;
         autoTurnBtn.disabled = false;
@@ -6995,47 +7834,41 @@ const BASE_FACTIONS = [
       if (!st.affair && curiosityScore >= 48) {
         st.lastSecretOfferTurn = diplomacyTurnNumber;
         st.affairOfferPending = true;
-        queueEventModal({
+        queueMatronAwareDangerEvent({
           label: "Secret Date",
           title: `${faction.leader} Invites You In Secret`,
           body: `${faction.leader} arranges a hidden meeting away from court eyes.\n\nNo heralds, no treaty table, no public oath. Only a quiet night, guarded doors, and the promise of something more dangerous than diplomacy.\n\nShe does this without warning because knowing you has made distance harder to maintain.`,
           portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
-          actions: [
-            {
-              label: "Meet Her Quietly",
-              onClick: () => {
-                if (maybeTriggerCovertCapture(queenFaction, "a midnight tryst", 0.04)) {
-                  st.affairOfferPending = false;
-                  dismissEventModal();
-                  return;
-                }
-                st.affairOfferPending = false;
-                st.affair = true;
-                st.affairLevel = Math.max(1, st.affairLevel);
-                st.trust = Math.min(100, st.trust + 7);
-                st.romance = Math.min(100, st.romance + 8);
-                st.attraction = Math.min(100, st.attraction + 5);
-                st.lastAffairTurn = diplomacyTurnNumber;
-                tryPlayerPregnancy(queenFaction, "Midnight Tryst", 0.95);
-                dismissEventModal();
-                queueDiplomacyReaction(
-                  queenFaction,
-                  `${faction.leader} Keeps Your Secret`,
-                  "Midnight Tryst",
-                  `${faction.leader} meets you in private and leaves flushed, softer, and more willing to risk herself for what grows between you.`
-                );
-              },
-            },
-            {
-              label: "Stay Away",
-              onClick: () => {
-                st.affairOfferPending = false;
-                st.romance = Math.max(0, st.romance - 2);
-                st.trust = Math.max(-100, st.trust - 1);
-                dismissEventModal();
-              },
-            },
-          ],
+          dangerEvent: buildMatronDangerEvent(queenFaction, "a midnight tryst", 0.04, {
+            tags: ["adult", "seduction_trap", "capture_risk", "queen", "private_meeting"],
+          }),
+          proceedLabel: "Proceed Alone",
+          declineLabel: "Stay Away",
+          onProceed: (matronContext) => {
+            if (maybeTriggerCovertCapture(queenFaction, "a midnight tryst", 0.04, matronContext)) {
+              st.affairOfferPending = false;
+              return;
+            }
+            st.affairOfferPending = false;
+            st.affair = true;
+            st.affairLevel = Math.max(1, st.affairLevel);
+            st.trust = Math.min(100, st.trust + 7);
+            st.romance = Math.min(100, st.romance + 8);
+            st.attraction = Math.min(100, st.attraction + 5);
+            st.lastAffairTurn = diplomacyTurnNumber;
+            tryPlayerPregnancy(queenFaction, "Midnight Tryst", 0.95);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Keeps Your Secret`,
+              "Midnight Tryst",
+              `${faction.leader} meets you in private and leaves flushed, softer, and more willing to risk herself for what grows between you.`
+            );
+          },
+          onDecline: () => {
+            st.affairOfferPending = false;
+            st.romance = Math.max(0, st.romance - 2);
+            st.trust = Math.max(-100, st.trust - 1);
+          },
         });
         return;
       }
@@ -7043,48 +7876,42 @@ const BASE_FACTIONS = [
       if (!st.affair && dangerousScore >= 52) {
         st.lastSecretOfferTurn = diplomacyTurnNumber;
         st.affairOfferPending = true;
-        queueEventModal({
+        queueMatronAwareDangerEvent({
           label: "Dangerous Night",
           title: `${faction.leader} Demands A Private Meeting`,
           body: `${faction.leader} sends for you without explanation.\n\nThe summons feels charged, half threat and half temptation. She knows you well enough now that hatred, fascination, and desire have started bleeding together.`,
           portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
-          actions: [
-            {
-              label: "Go To Her Anyway",
-              onClick: () => {
-                if (maybeTriggerCovertCapture(queenFaction, "a dangerous night meeting", 0.08)) {
-                  st.affairOfferPending = false;
-                  dismissEventModal();
-                  return;
-                }
-                st.affairOfferPending = false;
-                st.affair = true;
-                st.affairLevel = Math.max(1, st.affairLevel);
-                st.trust = Math.min(100, st.trust + 4);
-                st.romance = Math.min(100, st.romance + 5);
-                st.attraction = Math.min(100, st.attraction + 8);
-                st.hate = Math.max(0, st.hate - 9);
-                st.lastAffairTurn = diplomacyTurnNumber;
-                tryPlayerPregnancy(queenFaction, "Dangerous Night", 1);
-                dismissEventModal();
-                queueDiplomacyReaction(
-                  queenFaction,
-                  `${faction.leader} Cannot Keep Away`,
-                  "Tension Breaks",
-                  `${faction.leader} meets you in a mood edged with danger, but the encounter softens something in her. What began as a volatile private summons leaves behind a strange new bond.`
-                );
-              },
-            },
-            {
-              label: "Refuse The Risk",
-              onClick: () => {
-                st.affairOfferPending = false;
-                st.hate = Math.min(100, st.hate + 3);
-                st.attraction = Math.min(100, st.attraction + 2);
-                dismissEventModal();
-              },
-            },
-          ],
+          dangerEvent: buildMatronDangerEvent(queenFaction, "a dangerous night meeting", 0.08, {
+            tags: ["adult", "seduction_trap", "capture_risk", "queen", "private_meeting", "political"],
+          }),
+          proceedLabel: "Go To Her Anyway",
+          declineLabel: "Refuse The Risk",
+          onProceed: (matronContext) => {
+            if (maybeTriggerCovertCapture(queenFaction, "a dangerous night meeting", 0.08, matronContext)) {
+              st.affairOfferPending = false;
+              return;
+            }
+            st.affairOfferPending = false;
+            st.affair = true;
+            st.affairLevel = Math.max(1, st.affairLevel);
+            st.trust = Math.min(100, st.trust + 4);
+            st.romance = Math.min(100, st.romance + 5);
+            st.attraction = Math.min(100, st.attraction + 8);
+            st.hate = Math.max(0, st.hate - 9);
+            st.lastAffairTurn = diplomacyTurnNumber;
+            tryPlayerPregnancy(queenFaction, "Dangerous Night", 1);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Cannot Keep Away`,
+              "Tension Breaks",
+              `${faction.leader} meets you in a mood edged with danger, but the encounter softens something in her. What began as a volatile private summons leaves behind a strange new bond.`
+            );
+          },
+          onDecline: () => {
+            st.affairOfferPending = false;
+            st.hate = Math.min(100, st.hate + 3);
+            st.attraction = Math.min(100, st.attraction + 2);
+          },
         });
         return;
       }
@@ -7092,47 +7919,41 @@ const BASE_FACTIONS = [
       if (st.affair && st.affairLevel <= 2 && st.romance >= 58 && st.trust >= 34 && st.attraction >= 70) {
         st.lastSecretOfferTurn = diplomacyTurnNumber;
         st.affairOfferPending = true;
-        queueEventModal({
+        queueMatronAwareDangerEvent({
           label: "Secret Intimacy",
           title: `${faction.leader} Wants You Behind Closed Doors`,
           body: `${faction.leader} sends word that she cannot bear another formal audience.\n\nShe wants you in private, under cover of darkness, where desire can speak more openly than politics ever could.\n\nThe invitation arrives without warning, driven by whatever knowing you has awakened in her.`,
           portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
-          actions: [
-            {
-              label: "Go To Her",
-              onClick: () => {
-                if (maybeTriggerCovertCapture(queenFaction, "secret intimacy", 0.06)) {
-                  st.affairOfferPending = false;
-                  dismissEventModal();
-                  return;
-                }
-                st.affairOfferPending = false;
-                st.affairLevel = Math.min(3, st.affairLevel + 1);
-                st.trust = Math.min(100, st.trust + 5);
-                st.romance = Math.min(100, st.romance + 10);
-                st.attraction = Math.min(100, st.attraction + 8);
-                st.hate = Math.max(0, st.hate - 4);
-                st.lastAffairTurn = diplomacyTurnNumber;
-                tryPlayerPregnancy(queenFaction, "Secret Intimacy", 1.15);
-                dismissEventModal();
-                queueDiplomacyReaction(
-                  queenFaction,
-                  `${faction.leader} Gives In To You`,
-                  "Secret Lovers",
-                  `${faction.leader} yields to private hunger and comes away from the night more deeply entangled with you than before.`
-                );
-              },
-            },
-            {
-              label: "Leave Her Wanting",
-              onClick: () => {
-                st.affairOfferPending = false;
-                st.attraction = Math.min(100, st.attraction + 2);
-                st.hate = Math.min(100, st.hate + 1);
-                dismissEventModal();
-              },
-            },
-          ],
+          dangerEvent: buildMatronDangerEvent(queenFaction, "secret intimacy", 0.06, {
+            tags: ["adult", "seduction_trap", "capture_risk", "queen", "private_meeting"],
+          }),
+          proceedLabel: "Go To Her",
+          declineLabel: "Leave Her Wanting",
+          onProceed: (matronContext) => {
+            if (maybeTriggerCovertCapture(queenFaction, "secret intimacy", 0.06, matronContext)) {
+              st.affairOfferPending = false;
+              return;
+            }
+            st.affairOfferPending = false;
+            st.affairLevel = Math.min(3, st.affairLevel + 1);
+            st.trust = Math.min(100, st.trust + 5);
+            st.romance = Math.min(100, st.romance + 10);
+            st.attraction = Math.min(100, st.attraction + 8);
+            st.hate = Math.max(0, st.hate - 4);
+            st.lastAffairTurn = diplomacyTurnNumber;
+            tryPlayerPregnancy(queenFaction, "Secret Intimacy", 1.15);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Gives In To You`,
+              "Secret Lovers",
+              `${faction.leader} yields to private hunger and comes away from the night more deeply entangled with you than before.`
+            );
+          },
+          onDecline: () => {
+            st.affairOfferPending = false;
+            st.attraction = Math.min(100, st.attraction + 2);
+            st.hate = Math.min(100, st.hate + 1);
+          },
         });
       }
     }
@@ -7626,9 +8447,29 @@ const BASE_FACTIONS = [
       return Math.min(0.34, chance);
     }
 
-    function maybeTriggerCovertCapture(queenFaction, sourceLabel, dangerBonus = 0) {
+    function maybeTriggerCovertCapture(queenFaction, sourceLabel, dangerBonus = 0, matronContext = null) {
       if (gameMode === "servitude") return false;
-      if (Math.random() > covertCaptureChance(queenFaction, dangerBonus)) return false;
+      const dangerEvent = matronContext?.dangerEvent || buildMatronDangerEvent(queenFaction, sourceLabel, dangerBonus);
+      matronState.lastDangerEvent = dangerEvent;
+      const protection = resolveMatronProtectionBeforeCapture(dangerEvent, matronContext || {});
+      if (protection.prevented) return false;
+      const effectiveDanger = Math.max(0, dangerBonus - (protection.reducedDanger || 0));
+      if (Math.random() > covertCaptureChance(queenFaction, effectiveDanger)) {
+        if (matronContext?.ignoredWarnings) {
+          adjustAllActiveMatronTrust(-1);
+        } else if (matronContext?.askedForCounsel || matronContext?.bringEscort || matronContext?.sentMatronFirst) {
+          adjustAllActiveMatronTrust(1);
+        }
+        return false;
+      }
+      if (resolveMatronRescueAfterCapture(dangerEvent, matronContext || {})) return false;
+      if (protection.result?.type === "failure_delayed" && protection.matron) {
+        queueMatronReaction(
+          `${protection.matron.name} Was A Moment Too Late`,
+          `${protection.matron.name} read the shape of the danger, but the snare closed before she could reach you cleanly.\n\nThe knowledge comes with her too late to prevent what follows.`,
+          protection.matron
+        );
+      }
       return covertCaptureToServitude(queenFaction, sourceLabel);
     }
 
@@ -7735,21 +8576,41 @@ const BASE_FACTIONS = [
       const st = queenEntry(queenFaction);
       if (st.lastUnderworldRomanceTurn === diplomacyTurnNumber) return;
       st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
-      if (maybeTriggerCovertCapture(queenFaction, "an underworld rendezvous", 0.07)) return;
-      st.affair = true;
-      st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
-      st.trust = Math.min(100, st.trust + 7);
-      st.romance = Math.min(100, st.romance + 9);
-      st.attraction = Math.min(100, st.attraction + 6);
-      st.hate = Math.max(0, st.hate - 2);
-      tryPlayerPregnancy(queenFaction, "Moonlit Rendezvous", 1.05);
-      queueDiplomacyReaction(
-        queenFaction,
-        `${factionById(queenFaction).leader} Meets You Beneath The City`,
-        "Underworld Rendezvous",
-        `${factionById(queenFaction).leader} steals into the criminal underworld to meet you where spies and nobles alike cannot see.\n\nThe meeting leaves her more bound to you than before, and more willing to gamble her rebellion on your protection.`
-      );
-      render();
+      const faction = factionById(queenFaction);
+      queueMatronAwareDangerEvent({
+        label: "Underworld Rendezvous",
+        title: `${faction.leader} Wants A Hidden Meeting`,
+        body: `${faction.leader} offers a moonlit rendezvous below the city where rebels, smugglers, and spies all pass unseen.\n\nThe invitation is intimate, risky, and exactly the kind of underworld privacy a matron would distrust on principle.`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        dangerEvent: buildMatronDangerEvent(queenFaction, "an underworld rendezvous", 0.07, {
+          tags: ["adult", "underworld", "seduction_trap", "capture_risk", "queen", "private_meeting"],
+          territory: "neutral",
+        }),
+        proceedLabel: "Go To Her Anyway",
+        declineLabel: "Refuse The Rendezvous",
+        onProceed: (matronContext) => {
+          if (maybeTriggerCovertCapture(queenFaction, "an underworld rendezvous", 0.07, matronContext)) return;
+          st.affair = true;
+          st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+          st.trust = Math.min(100, st.trust + 7);
+          st.romance = Math.min(100, st.romance + 9);
+          st.attraction = Math.min(100, st.attraction + 6);
+          st.hate = Math.max(0, st.hate - 2);
+          tryPlayerPregnancy(queenFaction, "Moonlit Rendezvous", 1.05);
+          queueDiplomacyReaction(
+            queenFaction,
+            `${faction.leader} Meets You Beneath The City`,
+            "Underworld Rendezvous",
+            `${faction.leader} steals into the criminal underworld to meet you where spies and nobles alike cannot see.\n\nThe meeting leaves her more bound to you than before, and more willing to gamble her rebellion on your protection.`
+          );
+          render();
+        },
+        onDecline: () => {
+          st.trust = Math.max(-100, st.trust - 1);
+          st.romance = Math.max(0, st.romance - 2);
+          render();
+        },
+      });
     }
 
     function fundKingdomlessQueen(queenFaction, amount = 3) {
@@ -7846,59 +8707,78 @@ const BASE_FACTIONS = [
     function romanceKingdomlessQueen(queenFaction) {
       const st = queenEntry(queenFaction);
       if (st.lastUnderworldRomanceTurn === diplomacyTurnNumber) return;
-      st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
-      if (maybeTriggerCovertCapture(queenFaction, "a secret courtship in the underworld", 0.05)) return;
       const faction = factionById(queenFaction);
-      const score =
-        st.romance * 0.62 +
-        st.attraction * 0.34 +
-        st.trust * 0.28 -
-        st.hate * 0.55 +
-        randomBetween(-22, 28);
-      if (score >= 40) {
-        st.affair = true;
-        st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
-        st.trust = Math.min(100, st.trust + 8);
-        st.romance = Math.min(100, st.romance + 12);
-        st.attraction = Math.min(100, st.attraction + 8);
-        tryPlayerPregnancy(queenFaction, "Court In Secret", 1.08);
-        queueDiplomacyReaction(
-          queenFaction,
-          `${faction.leader} Comes To You In Exile`,
-          "She Loved It",
-          `${faction.leader} has no kingdom left to shelter her, so she comes to you through hidden doors and criminal safehouses.\n\nThe night leaves her visibly softer, warmer, and more willing to imagine a future built around you.`
-        );
-      } else if (score >= 6) {
-        st.trust = Math.min(100, st.trust + 3);
-        st.romance = Math.min(100, st.romance + 5);
-        st.attraction = Math.min(100, st.attraction + 4);
-        tryPlayerPregnancy(queenFaction, "Court In Secret", 0.82);
-        queueDiplomacyReaction(
-          queenFaction,
-          `${faction.leader} Lets You Closer`,
-          "She Liked It",
-          `${faction.leader} accepts the courtship and allows the intimacy, though some part of her still holds back. The connection grows, but cautiously.`
-        );
-      } else if (score >= -18) {
-        st.attraction = Math.min(100, st.attraction + 1);
-        queueDiplomacyReaction(
-          queenFaction,
-          `${faction.leader} Keeps Her Distance`,
-          "She Was Indifferent",
-          `${faction.leader} permits the closeness without fully yielding to it. She does not reject you, but the moment does not truly sweep her away either.`
-        );
-      } else {
-        st.trust = Math.max(-100, st.trust - 5);
-        st.romance = Math.max(0, st.romance - 4);
-        st.hate = Math.min(100, st.hate + 7);
-        queueDiplomacyReaction(
-          queenFaction,
-          `${faction.leader} Rejects The Advance`,
-          "She Hated It",
-          `${faction.leader} bristles at the courtship and leaves feeling used or cornered. Exile has made her vulnerable, not necessarily willing.`
-        );
-      }
-      render();
+      st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
+      queueMatronAwareDangerEvent({
+        label: "Secret Courtship",
+        title: `${faction.leader} Accepts A Hidden Courtship`,
+        body: `${faction.leader} has no kingdom left to protect her and agrees to meet through criminal safehouses and shuttered rooms.\n\nThe intimacy is real, but so is the danger of exile, desperation, and anyone else who notices where you go.`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        dangerEvent: buildMatronDangerEvent(queenFaction, "a secret courtship in the underworld", 0.05, {
+          tags: ["adult", "underworld", "seduction_trap", "capture_risk", "private_meeting"],
+          territory: "neutral",
+        }),
+        proceedLabel: "Pursue The Courtship",
+        declineLabel: "Keep Your Distance",
+        onProceed: (matronContext) => {
+          if (maybeTriggerCovertCapture(queenFaction, "a secret courtship in the underworld", 0.05, matronContext)) return;
+          const score =
+            st.romance * 0.62 +
+            st.attraction * 0.34 +
+            st.trust * 0.28 -
+            st.hate * 0.55 +
+            randomBetween(-22, 28);
+          if (score >= 40) {
+            st.affair = true;
+            st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+            st.trust = Math.min(100, st.trust + 8);
+            st.romance = Math.min(100, st.romance + 12);
+            st.attraction = Math.min(100, st.attraction + 8);
+            tryPlayerPregnancy(queenFaction, "Court In Secret", 1.08);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Comes To You In Exile`,
+              "She Loved It",
+              `${faction.leader} has no kingdom left to shelter her, so she comes to you through hidden doors and criminal safehouses.\n\nThe night leaves her visibly softer, warmer, and more willing to imagine a future built around you.`
+            );
+          } else if (score >= 6) {
+            st.trust = Math.min(100, st.trust + 3);
+            st.romance = Math.min(100, st.romance + 5);
+            st.attraction = Math.min(100, st.attraction + 4);
+            tryPlayerPregnancy(queenFaction, "Court In Secret", 0.82);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Lets You Closer`,
+              "She Liked It",
+              `${faction.leader} accepts the courtship and allows the intimacy, though some part of her still holds back. The connection grows, but cautiously.`
+            );
+          } else if (score >= -18) {
+            st.attraction = Math.min(100, st.attraction + 1);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Keeps Her Distance`,
+              "She Was Indifferent",
+              `${faction.leader} permits the closeness without fully yielding to it. She does not reject you, but the moment does not truly sweep her away either.`
+            );
+          } else {
+            st.trust = Math.max(-100, st.trust - 5);
+            st.romance = Math.max(0, st.romance - 4);
+            st.hate = Math.min(100, st.hate + 7);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Rejects The Advance`,
+              "She Hated It",
+              `${faction.leader} bristles at the courtship and leaves feeling used or cornered. Exile has made her vulnerable, not necessarily willing.`
+            );
+          }
+          render();
+        },
+        onDecline: () => {
+          st.trust = Math.max(-100, st.trust - 2);
+          st.attraction = Math.max(0, st.attraction - 1);
+          render();
+        },
+      });
     }
 
     function haremAutonomyScore() {
@@ -9244,20 +10124,348 @@ const BASE_FACTIONS = [
       haremPanelEl.appendChild(grid);
     }
 
+    function renderHaremPanel() {
+      ensureMatronState();
+      haremPanelEl.innerHTML = "";
+
+      const heading = document.createElement("div");
+      heading.className = "gallery-sub";
+      heading.textContent = gameMode === "servitude"
+        ? `Manage queens and matrons within your harem. Your overlord can restrict or claim queens. Harem autonomy: ${haremAutonomyLabel()}.`
+        : "Manage queens and matrons within your harem.";
+      haremPanelEl.appendChild(heading);
+
+      const isHumanTurn = !gameOver && isPlayerControlledFaction(FACTIONS[currentFactionIndex].id);
+
+      const queenHeading = document.createElement("div");
+      queenHeading.className = "gallery-sub";
+      queenHeading.textContent = "Queens";
+      haremPanelEl.appendChild(queenHeading);
+
+      const queenGrid = document.createElement("div");
+      queenGrid.className = "gallery-grid";
+      if (capturedQueens.length === 0) {
+        const emptyQueens = document.createElement("div");
+        emptyQueens.className = "gallery-card";
+        emptyQueens.textContent = "No queens are currently housed here.";
+        queenGrid.appendChild(emptyQueens);
+      } else {
+        for (const queenFaction of capturedQueens) {
+          const queen = QUEEN_POWERS[queenFaction];
+          const st = queenEntry(queenFaction);
+          const rank = queenRelationshipRank(queenFaction);
+          const unit = queenUnitForFaction(queenFaction);
+          const wrap = document.createElement("div");
+          wrap.className = "gallery-card";
+
+          const title = document.createElement("div");
+          title.className = "gallery-head";
+          title.textContent = queen.title;
+          wrap.appendChild(title);
+
+          const sub = document.createElement("div");
+          sub.className = "gallery-sub";
+          sub.textContent = `${queen.powerName} - ${queen.unitName}`;
+          wrap.appendChild(sub);
+
+          if (queenPortraits[queenFaction]) {
+            const img = document.createElement("img");
+            img.className = "leader-portrait";
+            img.src = queenPortraits[queenFaction];
+            img.alt = `${queen.title} portrait`;
+            wrap.appendChild(img);
+          }
+
+          const tag = document.createElement("div");
+          tag.className = "tag";
+          tag.textContent = `Assignment: ${st.assignment}`;
+          wrap.appendChild(tag);
+
+          const moraleText = document.createElement("div");
+          moraleText.className = "tiny";
+          moraleText.textContent = `Morale: ${st.morale}${st.refusedThisTurn ? " (Refusing this turn)" : ""}`;
+          wrap.appendChild(moraleText);
+
+          const rankText = document.createElement("div");
+          rankText.className = "tiny";
+          rankText.textContent = `Bond: ${rank.id} - War +${rank.warBonus} - Court +${rank.serveBonus}`;
+          wrap.appendChild(rankText);
+
+          const serviceText = document.createElement("div");
+          serviceText.className = "tiny";
+          serviceText.textContent = gameMode === "servitude" ? haremStatusText(queenFaction) : "Under your supervision";
+          wrap.appendChild(serviceText);
+
+          const familyText = document.createElement("div");
+          familyText.className = "tiny";
+          familyText.textContent = `Family: ${pregnancyStatusLabel(queenFaction)}`;
+          wrap.appendChild(familyText);
+
+          const moraleWrap = document.createElement("div");
+          moraleWrap.className = "morale-wrap";
+          const moraleFill = document.createElement("div");
+          moraleFill.className = "morale-fill";
+          moraleFill.style.width = `${st.morale}%`;
+          moraleWrap.appendChild(moraleFill);
+          wrap.appendChild(moraleWrap);
+
+          const info = document.createElement("div");
+          info.className = "tiny";
+          info.textContent = `${queen.powerName}: ${queen.summary} Unlock: ${rank.unlock}`;
+          wrap.appendChild(info);
+
+          const chatBtn = document.createElement("button");
+          chatBtn.textContent = "Converse";
+          chatBtn.addEventListener("click", () => openQueenChat(queenFaction));
+          wrap.appendChild(chatBtn);
+
+          const assignRow = document.createElement("div");
+          assignRow.className = "row";
+          for (const mode of ["court", "war", "intrigue"]) {
+            const assignBtn = document.createElement("button");
+            assignBtn.textContent = mode[0].toUpperCase() + mode.slice(1);
+            assignBtn.disabled = !isHumanTurn || st.assignment === mode || !haremQueenUsable(queenFaction);
+            assignBtn.addEventListener("click", () => {
+              st.assignment = mode;
+              addLog(`${queen.title} is now assigned to ${mode}.`);
+              render();
+            });
+            assignRow.appendChild(assignBtn);
+          }
+          wrap.appendChild(assignRow);
+
+          const supportBtn = document.createElement("button");
+          supportBtn.textContent = "Hold Court (+8 Morale)";
+          supportBtn.disabled = !isHumanTurn || st.tendUsedThisTurn || !haremQueenUsable(queenFaction);
+          supportBtn.addEventListener("click", () => {
+            st.morale = Math.min(100, st.morale + 8);
+            st.trust = Math.min(100, st.trust + 3 + rank.serveBonus);
+            st.tendUsedThisTurn = true;
+            addLog(`${queen.title} gains morale from court attention.`);
+            render();
+          });
+          wrap.appendChild(supportBtn);
+
+          const personalRow = document.createElement("div");
+          personalRow.className = "row";
+
+          const intimacyBtn = document.createElement("button");
+          intimacyBtn.textContent = "Intimacy (+12 Morale)";
+          intimacyBtn.disabled = !isHumanTurn || st.intimacyUsedThisTurn || !haremQueenUsable(queenFaction);
+          intimacyBtn.addEventListener("click", () => {
+            st.morale = Math.min(100, st.morale + 12);
+            st.romance = Math.min(100, st.romance + 5 + rank.serveBonus);
+            st.trust = Math.min(100, st.trust + 2);
+            st.intimacyUsedThisTurn = true;
+            tryPlayerPregnancy(queenFaction, "Harem Intimacy", 1.12);
+            addLog(`${queen.title} spends private, intimate time with you and softens.`);
+            render();
+          });
+          personalRow.appendChild(intimacyBtn);
+
+          const giftBtn = document.createElement("button");
+          giftBtn.textContent = "Gift Finery (+7 Morale)";
+          giftBtn.disabled = !isHumanTurn || st.giftUsedThisTurn || !haremQueenUsable(queenFaction);
+          giftBtn.addEventListener("click", () => {
+            st.morale = Math.min(100, st.morale + 7);
+            st.trust = Math.min(100, st.trust + 4);
+            st.hate = Math.max(-100, st.hate - 2);
+            st.giftUsedThisTurn = true;
+            addLog(`${queen.title} accepts your lavish gift with visible pleasure.`);
+            render();
+          });
+          personalRow.appendChild(giftBtn);
+
+          const confideBtn = document.createElement("button");
+          confideBtn.textContent = "Confide In Her";
+          confideBtn.disabled = !isHumanTurn || st.confideUsedThisTurn || !haremQueenUsable(queenFaction);
+          confideBtn.addEventListener("click", () => {
+            st.morale = Math.min(100, st.morale + 5);
+            st.trust = Math.min(100, st.trust + 5 + rank.serveBonus);
+            st.confideUsedThisTurn = true;
+            for (const queenFaction of diplomacyTargetQueens()) {
+              const dst = queenEntry(queenFaction);
+              dst.trust = Math.min(100, dst.trust + 1);
+            }
+            addLog(`${queen.title} hears your private thoughts and feels more personally bound to your court.`);
+            render();
+          });
+          personalRow.appendChild(confideBtn);
+
+          wrap.appendChild(personalRow);
+
+          if (developerState.enabled) {
+            const devSceneBtn = document.createElement("button");
+            devSceneBtn.textContent = "Dev Scene Lab";
+            devSceneBtn.addEventListener("click", () => openDevSceneLab(queenFaction));
+            wrap.appendChild(devSceneBtn);
+          }
+
+          const deployBtn = document.createElement("button");
+          deployBtn.textContent = pendingQueenFaction === queenFaction ? "Selected" : "Deploy";
+          deployBtn.disabled = !isHumanTurn || queenUsedThisTurn || st.refusedThisTurn || !haremQueenUsable(queenFaction);
+          deployBtn.addEventListener("click", () => {
+            pendingUnitQueenFaction = null;
+            pendingQueenFaction = queenFaction;
+            selectedTile = null;
+            addLog(`${queen.title} is ready. Click one of your tiles to deploy.`);
+            render();
+          });
+          wrap.appendChild(deployBtn);
+
+          const unitInfo = document.createElement("div");
+          unitInfo.className = "tiny";
+          unitInfo.textContent = unit
+            ? `${queen.unitName} active at (${unit.q},${unit.r}) mode=${unit.mode}`
+            : `${queen.unitName} not deployed`;
+          wrap.appendChild(unitInfo);
+
+          const unitRow = document.createElement("div");
+          unitRow.className = "row";
+
+          const recruitBtn = document.createElement("button");
+          recruitBtn.textContent = pendingUnitQueenFaction === queenFaction ? "Placement..." : "Recruit Unit";
+          recruitBtn.disabled = !isHumanTurn || st.refusedThisTurn || Boolean(unit) || !haremQueenUsable(queenFaction);
+          recruitBtn.addEventListener("click", () => {
+            pendingQueenFaction = null;
+            pendingUnitQueenFaction = queenFaction;
+            selectedTile = null;
+            addLog(`Choose one of your tiles to deploy ${queen.unitName}.`);
+            render();
+          });
+          unitRow.appendChild(recruitBtn);
+
+          if (unit) {
+            const toggleModeBtn = document.createElement("button");
+            toggleModeBtn.textContent = unit.mode === "fight" ? "Set Serve Mode" : "Set Fight Mode";
+            toggleModeBtn.disabled = !isHumanTurn || !haremQueenUsable(queenFaction);
+            toggleModeBtn.addEventListener("click", () => {
+              unit.mode = unit.mode === "fight" ? "serve" : "fight";
+              addLog(`${queen.unitName} switched to ${unit.mode} mode.`);
+              render();
+            });
+            unitRow.appendChild(toggleModeBtn);
+          }
+          wrap.appendChild(unitRow);
+          queenGrid.appendChild(wrap);
+        }
+      }
+      haremPanelEl.appendChild(queenGrid);
+
+      const matronHeading = document.createElement("div");
+      matronHeading.className = "gallery-sub";
+      matronHeading.textContent = "Matron Court";
+      haremPanelEl.appendChild(matronHeading);
+
+      const matronSummary = document.createElement("div");
+      matronSummary.className = "gallery-card";
+      matronSummary.style.marginBottom = "1rem";
+      matronSummary.innerHTML = `<strong>Matron Doctrine</strong><br>Matrons belong to the harem as its watchful elder heart: protectors, advisors, and deeply affectionate guardians of the Hylsar.<br><br>Protection Level ${matronState.protectionLevel} - ${matronProtectionLevelLabel()} - Active Matrons ${activeMatrons().length}`;
+      haremPanelEl.appendChild(matronSummary);
+
+      const matronGrid = document.createElement("div");
+      matronGrid.className = "gallery-grid";
+      for (const matron of matrons) {
+        const wrap = document.createElement("div");
+        wrap.className = "gallery-card";
+
+        const title = document.createElement("div");
+        title.className = "gallery-head";
+        title.textContent = matron.title;
+        wrap.appendChild(title);
+
+        const sub = document.createElement("div");
+        sub.className = "gallery-sub";
+        sub.textContent = `${matron.name} - ${getMatronArchetypeLabel(matron.archetype)}`;
+        wrap.appendChild(sub);
+
+        if (matron.portrait) {
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = matron.portrait;
+          img.alt = `${matron.name} portrait`;
+          wrap.appendChild(img);
+        }
+
+        const statusTag = document.createElement("div");
+        statusTag.className = "tag";
+        statusTag.textContent = matron.assignedProtection ? "Primary Protector" : `Status: ${matron.status}`;
+        wrap.appendChild(statusTag);
+
+        const statsA = document.createElement("div");
+        statsA.className = "tiny";
+        statsA.textContent = `Loyalty ${matron.loyalty} - Trust ${matron.trust} - Insight ${matron.insight} - Protectiveness ${matron.protectiveness}`;
+        wrap.appendChild(statsA);
+
+        const statsB = document.createElement("div");
+        statsB.className = "tiny";
+        statsB.textContent = `Romance ${matron.romance} - Attraction ${matron.attraction} - Authority ${matron.accessAuthority}/5 - Influence ${matron.influence}`;
+        wrap.appendChild(statsB);
+
+        const family = document.createElement("div");
+        family.className = "tiny";
+        family.textContent = `Family: ${matronPregnancyStatusLabel(matron)}`;
+        wrap.appendChild(family);
+
+        const notes = document.createElement("div");
+        notes.className = "tiny";
+        notes.textContent = `${matron.notes} Traits: ${Array.isArray(matron.traits) ? matron.traits.join(", ") : ""}`;
+        wrap.appendChild(notes);
+
+        const socialRow = document.createElement("div");
+        socialRow.className = "row";
+        const matronActions = [
+          ["Converse", () => matronConverse(matron), matron.status !== "active" || !isHumanTurn || matron.converseUsedThisTurn],
+          ["Flirt", () => matronFlirt(matron), matron.status !== "active" || !isHumanTurn || matron.flirtUsedThisTurn],
+          ["Confide", () => matronConfide(matron), matron.status !== "active" || !isHumanTurn || matron.confideUsedThisTurn],
+          ["Private Time", () => matronIntimacy(matron), matron.status !== "active" || !isHumanTurn || matron.intimacyUsedThisTurn],
+        ];
+        for (const [label, handler, disabled] of matronActions) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          btn.addEventListener("click", () => handler());
+          socialRow.appendChild(btn);
+        }
+        wrap.appendChild(socialRow);
+
+        const careRow = document.createElement("div");
+        careRow.className = "row";
+        const careActions = [
+          ["Let Her Spoil You", () => matronSpoilPlayer(matron), matron.status !== "active" || !isHumanTurn || matron.spoilUsedThisTurn],
+          ["Ask Counsel", () => askCounselFromMatron(matron), matron.status !== "active"],
+          ["Screen Visitor", () => screenVisitorWithMatron(matron), matron.status !== "active" || matronState.protectionLevel < 2],
+          ["Assign Protection", () => assignMatronProtection(matron), matron.status !== "active" || matron.assignedProtection],
+        ];
+        for (const [label, handler, disabled] of careActions) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          btn.addEventListener("click", () => handler());
+          careRow.appendChild(btn);
+        }
+        wrap.appendChild(careRow);
+        matronGrid.appendChild(wrap);
+      }
+      haremPanelEl.appendChild(matronGrid);
+    }
+
     function renderGovernmentPanel() {
       if (!governmentPanelEl) return;
+      ensureMatronState();
       governmentPanelEl.innerHTML = "";
       const heading = document.createElement("div");
       heading.className = "gallery-sub";
-      heading.textContent = "Manage duchesses, provincial stability, and your captured queens.";
+      heading.textContent = "Manage matrons, duchesses, provincial stability, and your captured queens.";
       governmentPanelEl.appendChild(heading);
 
       const provinces = tiles.filter((tile) => tile.owner === playerFactionId());
       const ownedDuchesses = duchesses.filter((duchess) => duchess.ownerFaction === playerFactionId() && duchess.assignedTile);
       const vacantProvinces = provinces.filter((tile) => tile.terrain === "land" && !tile.duchessId);
+      const activeMatronRoster = activeMatrons();
       const summary = document.createElement("div");
       summary.className = "tile-command-meta";
-      summary.textContent = `Provinces: ${provinces.length} • Assigned Duchesses: ${ownedDuchesses.length} • Vacant Provinces: ${vacantProvinces.length} • Captured Queens: ${capturedQueens.length}`;
+      summary.textContent = `Protection Level ${matronState.protectionLevel} - ${matronProtectionLevelLabel()} - Active Matrons ${activeMatronRoster.length} - Provinces ${provinces.length} - Assigned Duchesses ${ownedDuchesses.length} - Vacant Provinces ${vacantProvinces.length} - Captured Queens ${capturedQueens.length}`;
       governmentPanelEl.appendChild(summary);
 
       const provinceList = document.createElement("div");
@@ -9265,6 +10473,86 @@ const BASE_FACTIONS = [
       provinceList.style.marginBottom = "1rem";
       provinceList.innerHTML = `<strong>Your Provinces</strong><br>${provinces.length > 0 ? provinces.map((tile) => `${tile.q},${tile.r}`).join(" • ") : "None"}`;
       governmentPanelEl.appendChild(provinceList);
+
+      const matronHeading = document.createElement("div");
+      matronHeading.className = "gallery-sub";
+      matronHeading.textContent = "Matron Network";
+      governmentPanelEl.appendChild(matronHeading);
+
+      const matronSummary = document.createElement("div");
+      matronSummary.className = "gallery-card";
+      matronSummary.style.marginBottom = "1rem";
+      matronSummary.innerHTML = `<strong>Doctrine</strong><br>Guards protect the Hylsar from blades. Matrons protect him from desire, lies, obsession, and pretty traps.<br><br>Recent screenings: ${matronState.screeningsCompleted} - Interventions: ${matronState.interventionsCompleted} - Rescues: ${matronState.rescuesCompleted}`;
+      governmentPanelEl.appendChild(matronSummary);
+
+      const matronGrid = document.createElement("div");
+      matronGrid.className = "gallery-grid";
+      for (const matron of matrons) {
+        const card = document.createElement("div");
+        card.className = "gallery-card";
+
+        const title = document.createElement("div");
+        title.className = "gallery-head";
+        title.textContent = matron.title;
+        card.appendChild(title);
+
+        if (matron.portrait) {
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = matron.portrait;
+          img.alt = `${matron.name} portrait`;
+          img.style.maxWidth = "100%";
+          img.style.marginBottom = "0.75rem";
+          card.appendChild(img);
+        }
+
+        const nameLine = document.createElement("div");
+        nameLine.className = "tiny";
+        nameLine.textContent = `${matron.name} - ${getMatronArchetypeLabel(matron.archetype)}`;
+        card.appendChild(nameLine);
+
+        const statsLine = document.createElement("div");
+        statsLine.className = "tiny";
+        statsLine.textContent = `Loyalty ${matron.loyalty} - Insight ${matron.insight} - Protectiveness ${matron.protectiveness} - Trust ${matron.trust}`;
+        card.appendChild(statsLine);
+
+        const statusLine = document.createElement("div");
+        statusLine.className = "tiny";
+        statusLine.textContent = `Status ${matron.status} - Authority ${matron.accessAuthority}/5 - Influence ${matron.influence} - Corruption ${matron.corruption}`;
+        card.appendChild(statusLine);
+
+        const noteLine = document.createElement("div");
+        noteLine.className = "tiny";
+        noteLine.textContent = `${matron.notes}${matron.assignedProtection ? " Primary protector." : ""}`;
+        card.appendChild(noteLine);
+
+        const actionRow = document.createElement("div");
+        actionRow.className = "row";
+        const actionDefs = [
+          ["Ask Counsel", () => askCounselFromMatron(matron), matron.status !== "active"],
+          ["Screen Visitor", () => screenVisitorWithMatron(matron), matron.status !== "active" || matronState.protectionLevel < 2],
+          ["Assign Protection", () => assignMatronProtection(matron), matron.status !== "active" || matron.assignedProtection],
+          ["Investigate", () => investigateWithMatron(matron), matron.status !== "active"],
+          ["Access +", () => adjustMatronAccess(matron, 1), matron.status !== "active" || matron.accessAuthority >= 5],
+          ["Access -", () => adjustMatronAccess(matron, -1), matron.status !== "active" || matron.accessAuthority <= 0],
+          ["Reward", () => rewardMatron(matron), matron.status !== "active"],
+          ["Dismiss", () => dismissMatron(matron), matron.status !== "active"],
+        ];
+        for (const [label, handler, disabled] of actionDefs) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          btn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            handler();
+          });
+          actionRow.appendChild(btn);
+        }
+        card.appendChild(actionRow);
+        matronGrid.appendChild(card);
+      }
+      governmentPanelEl.appendChild(matronGrid);
 
       const duchessGrid = document.createElement("div");
       duchessGrid.className = "gallery-grid";
@@ -9903,6 +11191,7 @@ const BASE_FACTIONS = [
         if (currentFactionIndex === 0) {
           round += 1;
           resolvePregnancies();
+          resolveMatronPregnancies();
           runWorldQueenDiplomacy();
           triggerWorldEvents();
         }
