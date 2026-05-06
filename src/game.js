@@ -653,6 +653,20 @@ const BASE_FACTIONS = [
     let boardOriginY = 0;
     const tileIndex = new Map();
     const armySpriteCache = {};
+    const ARMY_ASSET_SOURCES = {
+      small: "Army Small.png",
+      large: "Army Large.png",
+      massive: "Army Massive.png",
+      naval: "Army Naval.png",
+      queen: "Army Queen.png",
+    };
+    const armyAssets = {
+      small: null,
+      large: null,
+      massive: null,
+      naval: null,
+      queen: null,
+    };
     const HEX_DIRS = [
       [1, 0], [1, -1], [0, -1],
       [-1, 0], [-1, 1], [0, 1],
@@ -710,11 +724,13 @@ const BASE_FACTIONS = [
 
     async function preloadGameAssets() {
       loadHexAssets();
+      loadArmyAssets();
       const mapImages = [];
       for (const bucket of [hexAssets.l, hexAssets.ld, hexAssets.c, hexAssets.cd, hexAssets.m, hexAssets.mp, hexAssets.capital]) {
         for (const img of Object.values(bucket)) mapImages.push(img);
       }
       mapImages.push(hexAssets.city, hexAssets.port);
+      mapImages.push(...Object.values(armyAssets));
       const portraitSources = Object.values(QUEEN_PORTRAITS);
       const ambienceTracks = [menuMusicEl, dayAmbienceEl, nightAmbienceEl, rainAmbienceEl, bloodMoonAmbienceEl];
       const total = mapImages.length + portraitSources.length + ambienceTracks.length + 3;
@@ -1080,6 +1096,14 @@ const BASE_FACTIONS = [
           invalidateStaticBoardCache();
           render();
         };
+      }
+    }
+
+    function loadArmyAssets() {
+      for (const [kind, src] of Object.entries(ARMY_ASSET_SOURCES)) {
+        const img = loadImage(src);
+        armyAssets[kind] = img;
+        img.onload = () => render();
       }
     }
 
@@ -2955,8 +2979,33 @@ const BASE_FACTIONS = [
       return 0;
     }
 
-    function getArmySprite(owner, tier) {
-      const key = `${owner}:${tier}`;
+    function armySpriteKindFromTier(tier) {
+      if (tier >= 2) return "massive";
+      if (tier >= 1) return "large";
+      return "small";
+    }
+
+    function armySpriteKindForTile(tile) {
+      if (getUnitAtTile(tile)) return "queen";
+      if (tile.terrain === "ocean") return "naval";
+      return armySpriteKindFromTier(armyTier(tile.troops));
+    }
+
+    function armySpriteKindForMove(fromTile, toTile, amount) {
+      if (fromTile && getUnitAtTile(fromTile)) return "queen";
+      if ((fromTile && fromTile.terrain === "ocean") || (toTile && toTile.terrain === "ocean")) return "naval";
+      return armySpriteKindFromTier(armyTier(amount));
+    }
+
+    function getArmySprite(owner, kindOrTier) {
+      const kind = typeof kindOrTier === "string" ? kindOrTier : armySpriteKindFromTier(kindOrTier);
+      const asset = armyAssets[kind];
+      if (asset && asset.complete && asset.naturalWidth > 0) {
+        return asset;
+      }
+
+      const tier = kind === "massive" ? 2 : (kind === "large" || kind === "naval" ? 1 : 0);
+      const key = `${owner}:${kind}:${tier}`;
       if (armySpriteCache[key]) return armySpriteCache[key];
 
       const sprite = document.createElement("canvas");
@@ -3098,6 +3147,43 @@ const BASE_FACTIONS = [
 
       armySpriteCache[key] = sprite;
       return sprite;
+    }
+
+    function drawArmySprite(targetCtx, sprite, cx, cy, size) {
+      if (!sprite) return;
+      const sourceWidth = sprite.naturalWidth || sprite.width || size;
+      const sourceHeight = sprite.naturalHeight || sprite.height || size;
+      const sourceSize = Math.min(sourceWidth, sourceHeight);
+      const sourceX = Math.max(0, (sourceWidth - sourceSize) / 2);
+      const sourceY = Math.max(0, (sourceHeight - sourceSize) / 2);
+      targetCtx.save();
+      targetCtx.shadowColor = "rgba(0,0,0,0.42)";
+      targetCtx.shadowBlur = 8;
+      targetCtx.shadowOffsetY = 2;
+      targetCtx.drawImage(sprite, sourceX, sourceY, sourceSize, sourceSize, cx - size / 2, cy - size / 2, size, size);
+      targetCtx.restore();
+    }
+
+    function drawTroopBadge(targetCtx, count, cx, cy) {
+      const text = String(count);
+      targetCtx.save();
+      targetCtx.font = "bold 12px Trebuchet MS";
+      const width = Math.max(18, Math.ceil(targetCtx.measureText(text).width) + 10);
+      const height = 16;
+      const x = cx - width / 2;
+      const y = cy;
+      targetCtx.fillStyle = "rgba(11, 13, 18, 0.88)";
+      targetCtx.strokeStyle = "rgba(246, 227, 168, 0.92)";
+      targetCtx.lineWidth = 1.4;
+      targetCtx.beginPath();
+      targetCtx.roundRect(x, y, width, height, 7);
+      targetCtx.fill();
+      targetCtx.stroke();
+      targetCtx.fillStyle = "#fff6d8";
+      targetCtx.textAlign = "center";
+      targetCtx.textBaseline = "middle";
+      targetCtx.fillText(text, cx, y + height / 2 + 0.5);
+      targetCtx.restore();
     }
 
     function tileFillColor(tile) {
@@ -3455,26 +3541,19 @@ const BASE_FACTIONS = [
           }
         }
 
-        if (tile.troops > 0 && tile.terrain === "land") {
+        if (tile.troops > 0) {
           const hideForAnimation = moveAnimation && (key === animatedFromKey || key === animatedToKey);
           if (tile.owner !== NEUTRAL && !hideForAnimation) {
-            const sprite = getArmySprite(tile.owner, armyTier(tile.troops));
+            const sprite = getArmySprite(tile.owner, armySpriteKindForTile(tile));
             if (sprite) {
               ctx.globalAlpha = 0.96;
-              ctx.drawImage(sprite, tile.cx - 13, tile.cy - 12, 26, 26);
+              drawArmySprite(ctx, sprite, tile.cx, tile.cy - 1, 34);
               ctx.globalAlpha = 1;
             }
           }
           const showTroops = (hoveredTile === tile || selectedTile === tile) && !hideForAnimation;
-          ctx.globalAlpha = showTroops ? 1 : 0.08;
-          ctx.fillStyle = "#ffffff";
-          ctx.strokeStyle = "rgba(10, 10, 12, 0.95)";
-          ctx.lineWidth = 3;
-          ctx.font = "bold 15px Trebuchet MS";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.strokeText(String(tile.troops), tile.cx, tile.cy + 8);
-          ctx.fillText(String(tile.troops), tile.cx, tile.cy + 8);
+          ctx.globalAlpha = showTroops ? 1 : 0.32;
+          drawTroopBadge(ctx, tile.troops, tile.cx, tile.cy + 10);
           ctx.globalAlpha = 1;
         }
 
@@ -3519,18 +3598,11 @@ const BASE_FACTIONS = [
         ctx.moveTo(moveAnimation.from.cx, moveAnimation.from.cy);
         ctx.lineTo(x, y);
         ctx.stroke();
-        const sprite = getArmySprite(moveAnimation.owner, moveAnimation.tier);
+        const sprite = getArmySprite(moveAnimation.owner, moveAnimation.spriteKind);
         if (sprite) {
-          ctx.drawImage(sprite, x - 15, y - 14, 30, 30);
+          drawArmySprite(ctx, sprite, x, y - 1, 36);
         }
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = "rgba(10, 10, 12, 0.95)";
-        ctx.lineWidth = 3;
-        ctx.font = "bold 15px Trebuchet MS";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.strokeText(String(moveAnimation.amount), x, y + 10);
-        ctx.fillText(String(moveAnimation.amount), x, y + 10);
+        drawTroopBadge(ctx, moveAnimation.amount, x, y + 11);
         ctx.restore();
       }
     }
@@ -9446,7 +9518,7 @@ const BASE_FACTIONS = [
         to: { q: toTile.q, r: toTile.r, cx: toTile.cx, cy: toTile.cy },
         owner,
         amount,
-        tier: armyTier(amount),
+        spriteKind: armySpriteKindForMove(fromTile, toTile, amount),
         startedAt: performance.now(),
         duration: 360,
       };
