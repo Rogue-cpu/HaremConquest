@@ -6,60 +6,125 @@
   <title>Harem Conquest</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
-  <header>
-    <div class="title">Harem Conquest</div>
-    <div id="turnInfo" class="status"></div>
-    <button id="tabOverviewBtn">Overview</button>
-    <button id="tabLeadersBtn">Leaders</button>
-    <button id="tabDiplomacyBtn">Diplomacy</button>
-    <button id="tabHaremBtn">Harem</button>
-    <button id="tabUnderworldBtn">Underworld</button>
-    <button id="tabDevBtn">Dev Mode</button>
-    <button id="sendModeBtn">Send: 50%</button>
-    <button id="autoTurnBtn">Auto Turn</button>
-    <button id="resistanceBtn">Resistance</button>
-    <button id="saveGameBtn">Save</button>
-    <button id="loadGameBtn">Load</button>
-    <button id="endTurnBtn">End Turn</button>
-    <button id="restartBtn">Restart</button>
-    <div class="audio-controls">
-      <button id="menuMusicBtn">Play Theme</button>
-      <button id="audioMuteBtn">Mute</button>
-      <label class="audio-slider" for="audioVolumeRange">
-        <span>Vol</span>
-        <input id="audioVolumeRange" type="range" min="0" max="100" value="55" />
-      </label>
-    </div>
-  </header>
-
-  <main>
-    <div id="boardWrap" class="board-wrap">
-      <canvas id="board"></canvas>
-    </div>
-    <aside class="panel">
-      <section id="overviewTab" class="tab-pane active">
-        <div><strong>Factions</strong></div>
-        <div class="legend-row"><span class="dot" style="background: var(--player)"></span> You</div>
-        <div class="legend-row"><span class="dot" style="background: var(--ai1)"></span> Red AI</div>
-        <div class="legend-row"><span class="dot" style="background: var(--ai2)"></span> Blue AI</div>
-        <div class="legend-row"><span class="dot" style="background: var(--neutral)"></span> Neutral</div>
-
-        <div style="margin-top:12px;"><strong>Campaign</strong></div>
-        <div id="saveStatus" class="help">No save loaded.</div>
-
-        <div style="margin-top:12px;"><strong>Rules</strong></div>
-        <div class="help">
-          Capitals still decide crowns, but forts, relic sites, pleasure palaces, trade roads, towns, and ports now shape each campaign.
-          Captured queens develop from hostile prisoners into devoted partners with stronger battlefield and court bonuses.
-          The realm autosaves as turns pass, and every ending now records who won, what collapsed, and which queens you held.
+<body class="royal-shell">
+  <div class="app-frame">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-crest">HC</div>
+        <div class="brand-copy">
+          <div class="title">Harem Conquest</div>
+          <div class="brand-sub">Court, conquest, and provincial intrigue</div>
         </div>
+      </div>
+      <div class="topbar-center">
+        <div id="turnInfo" class="status"></div>
+        <div class="tab-ribbon">
+          <button id="tabOverviewBtn">Overview</button>
+          <button id="tabLeadersBtn">Leaders</button>
+          <button id="tabDiplomacyBtn">Diplomacy</button>
+          <button id="tabHaremBtn">Harem</button>
+          <button id="tabGovernmentBtn">Government</button>
+          <button id="tabUnderworldBtn">Underworld</button>
+          <button id="tabDevBtn">Dev Mode</button>
+        </div>
+      </div>
+      <div class="turn-action">
+        <button id="endTurnBtn">End Turn</button>
+      </div>
+    </header>
 
-        <div style="margin-top:12px;"><strong>Battle Log</strong></div>
-        <div id="log" class="log"></div>
+    <section class="command-row">
+      <div class="command-cluster">
+        <button id="autoTurnBtn">Auto Turn</button>
+        <button id="resistanceBtn">Resistance</button>
+        <button id="saveGameBtn">Save</button>
+        <button id="loadGameBtn">Load</button>
+        <button id="restartBtn">Restart</button>
+      </div>
+      <div class="command-cluster command-cluster-wide">
+        <button id="menuMusicBtn">Play Theme</button>
+        <button id="audioMuteBtn">Mute</button>
+        <label class="audio-slider" for="audioVolumeRange">
+          <span>Volume</span>
+          <input id="audioVolumeRange" type="range" min="0" max="100" value="55" />
+        </label>
+        <button id="sendModeBtn">Send: 50%</button>
+      </div>
+    </section>
+
+    <main class="game-layout">
+      <aside class="side-rail left-rail">
+        <div class="rail-panel">
+          <div class="rail-title">Court Access</div>
+          <div class="rail-copy">Open the wider queen, duchess, and intrigue systems from here while the map remains in view.</div>
+          <div class="rail-stack">
+            <button id="leftOverviewBtn" data-mirror="tabOverviewBtn" type="button">Open Overview</button>
+            <button id="leftLeadersBtn" data-mirror="tabLeadersBtn" type="button">Enemy Leaders</button>
+            <button id="leftDiplomacyBtn" data-mirror="tabDiplomacyBtn" type="button">Foreign Courts</button>
+            <button id="leftHaremBtn" data-mirror="tabHaremBtn" type="button">Royal Harem</button>
+            <button id="leftGovernmentBtn" data-mirror="tabGovernmentBtn" type="button">Provincial Rule</button>
+            <button id="leftUnderworldBtn" data-mirror="tabUnderworldBtn" type="button">Underworld</button>
+            <button id="leftDevBtn" data-mirror="tabDevBtn" type="button">Dev Mode</button>
+          </div>
+        </div>
+        <div class="rail-panel rail-panel-muted">
+          <div class="rail-title">Realm Notes</div>
+          <div class="rail-copy">Generate assets freely. This upgraded shell is built so portrait art, icons, panel trims, and map overlays can slot in later without changing the core game flow.</div>
+        </div>
+      </aside>
+
+      <section class="war-table">
+        <div class="war-table-head">
+          <div class="war-table-title">War Table</div>
+          <div class="war-table-meta">Map command, active borders, and province entry all flow through the central board.</div>
+        </div>
+        <div id="boardWrap" class="board-wrap">
+          <canvas id="board"></canvas>
+        </div>
       </section>
-    </aside>
-  </main>
+
+      <aside class="side-rail right-rail panel">
+        <section id="overviewTab" class="tab-pane active">
+          <div class="info-card">
+            <div class="info-card-title">Factions</div>
+            <div class="legend-row"><span class="dot" style="background: var(--player)"></span> You</div>
+            <div class="legend-row"><span class="dot" style="background: var(--ai1)"></span> Red AI</div>
+            <div class="legend-row"><span class="dot" style="background: var(--ai2)"></span> Blue AI</div>
+            <div class="legend-row"><span class="dot" style="background: var(--neutral)"></span> Neutral</div>
+          </div>
+
+          <div class="info-card">
+            <div class="info-card-title">Campaign</div>
+            <div id="saveStatus" class="help">No save loaded.</div>
+          </div>
+
+          <div class="info-card">
+            <div class="info-card-title">Rules</div>
+            <div class="help">
+              Capitals still decide crowns, but forts, relic sites, pleasure palaces, trade roads, towns, and ports now shape each campaign.
+              Captured queens develop from hostile prisoners into devoted partners with stronger battlefield and court bonuses.
+              The realm autosaves as turns pass, and every ending now records who won, what collapsed, and which queens you held.
+            </div>
+          </div>
+
+          <div class="info-card">
+            <div class="info-card-title">Selected Tile</div>
+            <div id="selectedTilePanel" class="help"></div>
+          </div>
+
+          <div class="info-card info-card-log">
+            <div class="info-card-title">Battle Log</div>
+            <div id="log" class="log"></div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="status-strip">
+      <div class="status-strip-copy">Court protocol, map command, and province management are active.</div>
+      <div class="status-strip-copy">Generated assets can be dropped into this shell as frames, icons, portraits, and map embellishments.</div>
+    </footer>
+  </div>
 
   <div id="modalOverlay" class="modal-overlay">
     <div class="modal-window">
@@ -83,6 +148,11 @@
           <div id="haremPanel" class="help"></div>
         </section>
 
+        <section id="governmentTab" class="tab-pane">
+          <div><strong>Government</strong></div>
+          <div id="governmentPanel" class="help"></div>
+        </section>
+
         <section id="underworldTab" class="tab-pane">
           <div><strong>Criminal Underworld</strong></div>
           <div id="underworldPanel" class="help"></div>
@@ -95,6 +165,11 @@
 
         <section id="eventTab" class="tab-pane">
           <div id="eventPanel" class="help"></div>
+        </section>
+
+        <section id="tileTab" class="tab-pane">
+          <div><strong>Tile Interior</strong></div>
+          <div id="tilePanel" class="help"></div>
         </section>
       </div>
     </div>
@@ -155,6 +230,7 @@
   <script src="src/factions.js"></script>
   <script src="src/map.js"></script>
   <script src="src/ui.js"></script>
+  <script src="src/duchess.js"></script>
   <script src="src/game.js"></script>
 </body>
 </html>
