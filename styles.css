@@ -1,4 +1,4 @@
-:root {
+    :root {
       --bg: #0d3254;
       --panel: #f1ecd9;
       --line: #7f7350;
@@ -12,6 +12,41 @@
     }
 
     * { box-sizing: border-box; }
+
+    body,
+    header,
+    main,
+    button,
+    .panel,
+    .board-wrap,
+    .modal-overlay,
+    .modal-window,
+    .modal-head,
+    .log,
+    .gallery-card,
+    .harem-card,
+    .leader-card,
+    .tile-command-card,
+    .tile-scene-card,
+    .tile-upgrade,
+    .dev-card,
+    .underworld-note,
+    .summary-card,
+    .tag,
+    .info-card,
+    .rail-panel,
+    .command-row,
+    .topbar,
+    .side-rail,
+    .status-strip {
+      transition:
+        background 0.72s ease,
+        background-color 0.72s ease,
+        border-color 0.72s ease,
+        color 0.72s ease,
+        box-shadow 0.72s ease,
+        opacity 0.72s ease;
+    }
 
     body {
       margin: 0;
@@ -726,6 +761,10 @@
       box-shadow: inset 0 0 0 1px rgba(225, 255, 239, 0.06);
     }
 
+    .event-portrait.high-severant-portrait {
+      object-position: center 14%;
+    }
+
     .event-portrait.blackout {
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: #020202;
@@ -786,6 +825,333 @@
 
     .event-continue:hover {
       filter: brightness(1.06);
+    }
+
+    .route-choice-shell {
+      width: min(1040px, 94vw);
+      margin: 0 auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(8, 10, 15, 0.98), rgba(3, 4, 7, 0.98));
+      box-shadow:
+        0 26px 70px rgba(0, 0, 0, 0.55),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .route-choice-intro {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: linear-gradient(180deg, rgba(20, 20, 26, 0.9), rgba(10, 10, 14, 0.92));
+      color: #ddd6cb;
+      line-height: 1.55;
+      white-space: pre-line;
+    }
+
+    .route-choice-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .route-choice-pane {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      min-height: 100%;
+    }
+
+    .route-choice-pane.hidden-court {
+      border-color: rgba(146, 102, 214, 0.42);
+      background:
+        radial-gradient(circle at top left, rgba(120, 84, 183, 0.28), transparent 36%),
+        linear-gradient(180deg, rgba(39, 22, 64, 0.96), rgba(18, 10, 34, 0.98));
+      box-shadow:
+        0 16px 34px rgba(0, 0, 0, 0.3),
+        inset 0 0 0 1px rgba(182, 143, 248, 0.09);
+    }
+
+    .route-choice-pane.severant {
+      border-color: rgba(170, 24, 40, 0.72);
+      background:
+        radial-gradient(circle at top right, rgba(177, 17, 36, 0.5), transparent 34%),
+        linear-gradient(180deg, rgba(42, 2, 8, 0.985), rgba(8, 0, 2, 0.995));
+      box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.46),
+        inset 0 0 0 1px rgba(255, 118, 137, 0.07),
+        inset 0 -24px 60px rgba(0, 0, 0, 0.18);
+    }
+
+    .route-choice-eyebrow {
+      font-size: 0.74rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(240, 232, 220, 0.72);
+    }
+
+    .route-choice-title {
+      font-size: 1.24rem;
+      font-weight: 700;
+      color: #f2e9dd;
+    }
+
+    .route-choice-portrait {
+      width: 100%;
+      height: 340px;
+      object-fit: cover;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0d0d12;
+    }
+
+    .route-choice-copy {
+      font-size: 0.94rem;
+      line-height: 1.56;
+      color: #d8d0c5;
+      white-space: pre-line;
+    }
+
+    .route-choice-action,
+    .route-choice-wait-btn {
+      width: 100%;
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-size: 0.9rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .route-choice-action.hidden-court {
+      border: 1px solid rgba(166, 124, 232, 0.52);
+      background:
+        linear-gradient(180deg, rgba(182, 141, 250, 0.18), rgba(182, 141, 250, 0.05)),
+        linear-gradient(180deg, #4b2b73, #26143f);
+      color: #f1e6ff;
+    }
+
+    .route-choice-action.severant {
+      border: 1px solid rgba(194, 43, 59, 0.78);
+      background:
+        linear-gradient(180deg, rgba(255, 104, 123, 0.18), rgba(255, 104, 123, 0.03)),
+        linear-gradient(180deg, #85121e, #270105);
+      color: #ffe8ea;
+      box-shadow:
+        0 16px 28px rgba(0, 0, 0, 0.42),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .route-choice-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      padding-top: 12px;
+      color: #a89f94;
+      font-size: 0.82rem;
+      letter-spacing: 0.03em;
+    }
+
+    .route-choice-wait {
+      display: flex;
+      justify-content: center;
+    }
+
+    .route-choice-wait-btn {
+      max-width: 240px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: linear-gradient(180deg, #191a20, #0c0d12);
+      color: #ddd9cf;
+    }
+
+    @media (max-width: 900px) {
+      .route-choice-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .route-choice-portrait {
+        height: 240px;
+      }
+    }
+
+    .worship-shell {
+      width: min(1120px, 92vw);
+      margin: 0 auto;
+      border: 1px solid rgba(209, 175, 91, 0.48);
+      border-radius: 14px;
+      background:
+        radial-gradient(circle at 28% 12%, rgba(209, 175, 91, 0.16), transparent 32%),
+        linear-gradient(145deg, rgba(10, 26, 28, 0.98), rgba(5, 15, 17, 0.98));
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58);
+      padding: 16px;
+    }
+
+    .worship-stage {
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) 330px;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .worship-portrait-wrap {
+      position: relative;
+      min-height: 560px;
+      border: 1px solid rgba(209, 175, 91, 0.45);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(2, 10, 12, 0.9);
+      cursor: crosshair;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .worship-portrait {
+      width: 100%;
+      height: 100%;
+      min-height: 560px;
+      display: block;
+      object-fit: contain;
+      object-position: center;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(255, 226, 151, 0.1), transparent 28%),
+        #071315;
+      pointer-events: none;
+    }
+
+    .worship-hint {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      padding: 10px 12px;
+      border: 1px solid rgba(209, 175, 91, 0.34);
+      border-radius: 10px;
+      background: rgba(4, 15, 16, 0.82);
+      color: #f5d58a;
+      font-size: 0.86rem;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .worship-trail {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    .worship-trail-dot {
+      position: absolute;
+      display: block;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255, 235, 178, 0.92), rgba(242, 189, 96, 0.08) 70%, transparent);
+      filter: blur(0.2px);
+      animation: worshipTrailFade 720ms ease-out forwards;
+    }
+
+    .worship-trail-dot.touch {
+      background: radial-gradient(circle, rgba(174, 224, 255, 0.82), rgba(84, 167, 210, 0.08) 70%, transparent);
+    }
+
+    .worship-trail-dot.lick {
+      background: radial-gradient(circle, rgba(255, 176, 196, 0.9), rgba(209, 83, 123, 0.08) 72%, transparent);
+    }
+
+    .worship-trail-dot.praise {
+      background: radial-gradient(circle, rgba(218, 255, 189, 0.82), rgba(137, 212, 96, 0.08) 70%, transparent);
+    }
+
+    @keyframes worshipTrailFade {
+      0% {
+        opacity: 0.9;
+        transform: scale(0.72);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(2.25);
+      }
+    }
+
+    .worship-side {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border: 1px solid rgba(92, 146, 120, 0.3);
+      border-radius: 12px;
+      padding: 14px;
+      background: rgba(6, 18, 18, 0.82);
+    }
+
+    .worship-reaction {
+      min-height: 92px;
+      white-space: pre-line;
+      color: #d7eddc;
+      line-height: 1.45;
+    }
+
+    .worship-meter {
+      height: 12px;
+      border: 1px solid rgba(209, 175, 91, 0.42);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(3, 11, 12, 0.85);
+    }
+
+    .worship-meter-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #9fcf83, #f3d37c, #f0a65f);
+      transition: width 0.16s ease;
+    }
+
+    .worship-mode-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .worship-mode-row button {
+      min-width: 0;
+      padding-inline: 8px;
+    }
+
+    .worship-pose-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .worship-log {
+      flex: 1;
+      min-height: 150px;
+      white-space: pre-line;
+      color: #a8d6b8;
+      font-size: 0.86rem;
+      line-height: 1.45;
+      border: 1px solid rgba(92, 146, 120, 0.26);
+      border-radius: 10px;
+      background: rgba(2, 10, 11, 0.62);
+      padding: 10px;
+      overflow: auto;
+    }
+
+    .worship-side .event-actions {
+      padding: 0;
+      gap: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .worship-stage {
+        grid-template-columns: 1fr;
+      }
+
+      .worship-portrait-wrap,
+      .worship-portrait {
+        min-height: 480px;
+      }
     }
 
     .queen-chat-shell {
@@ -1244,11 +1610,268 @@
     }
 
     .royal-shell .app-frame {
+      position: relative;
+      isolation: isolate;
       min-height: 100vh;
       padding: 10px;
       display: grid;
       grid-template-rows: auto auto minmax(0, 1fr) auto;
       gap: 10px;
+    }
+
+    .royal-shell .app-frame::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 1500;
+      background:
+        radial-gradient(circle at 28% 14%, rgba(178, 25, 48, 0.34), transparent 34%),
+        radial-gradient(circle at 72% 18%, rgba(111, 8, 20, 0.26), transparent 38%),
+        linear-gradient(180deg, rgba(98, 8, 19, 0.24), rgba(6, 0, 0, 0.42));
+    }
+
+    .royal-shell.severant-shell {
+      --bg: #070001;
+      --panel: #100103;
+      --panel-soft: #180207;
+      --panel-raise: #24040a;
+      --line: #911723;
+      --line-soft: rgba(188, 32, 47, 0.34);
+      --text: #f6e8e9;
+      --muted-text: #c19da0;
+      --button-top: #710b17;
+      --button-bottom: #180104;
+      --button-border: #b9212f;
+      --button-glow: rgba(190, 31, 46, 0.24);
+      --player: #92111d;
+      --neutral: #6e4d50;
+      --select: #d52b38;
+      --accent: #270206;
+      background:
+        radial-gradient(circle at top left, rgba(143, 8, 27, 0.42), transparent 30%),
+        radial-gradient(circle at top right, rgba(82, 0, 12, 0.34), transparent 24%),
+        linear-gradient(180deg, #120002, #050001 54%, #000000);
+      color: var(--text);
+    }
+
+    .royal-shell.severant-shell .app-frame::after {
+      animation: severant-theme-wash 900ms ease;
+    }
+
+    .royal-shell.severant-shell .topbar,
+    .royal-shell.severant-shell .command-row,
+    .royal-shell.severant-shell .side-rail,
+    .royal-shell.severant-shell .war-table,
+    .royal-shell.severant-shell .panel,
+    .royal-shell.severant-shell .status-strip {
+      border-color: var(--line);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        linear-gradient(180deg, #1d0207, #080002);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 223, 215, 0.03),
+        0 20px 44px rgba(0, 0, 0, 0.44);
+    }
+
+    .royal-shell.severant-shell .brand-crest {
+      border-color: rgba(213, 54, 73, 0.56);
+      color: #ffe9ea;
+      background:
+        radial-gradient(circle at 32% 30%, rgba(255, 126, 138, 0.18), transparent 40%),
+        linear-gradient(180deg, #53060f, #180003);
+      box-shadow: inset 0 0 20px rgba(196, 37, 59, 0.18);
+    }
+
+    .royal-shell.severant-shell .title,
+    .royal-shell.severant-shell .gallery-head,
+    .royal-shell.severant-shell .gallery-sub,
+    .royal-shell.severant-shell .tile-command-title,
+    .royal-shell.severant-shell .rail-title,
+    .royal-shell.severant-shell .info-card-title,
+    .royal-shell.severant-shell .war-table-title {
+      color: #ffe2e4;
+    }
+
+    .royal-shell.severant-shell .brand-sub,
+    .royal-shell.severant-shell .status,
+    .royal-shell.severant-shell .rail-copy,
+    .royal-shell.severant-shell .war-table-meta,
+    .royal-shell.severant-shell .help,
+    .royal-shell.severant-shell .tiny {
+      color: var(--muted-text);
+    }
+
+    .royal-shell.severant-shell button {
+      border-color: var(--button-border);
+      background:
+        linear-gradient(180deg, rgba(255, 140, 149, 0.07), rgba(255, 140, 149, 0.01)),
+        linear-gradient(180deg, var(--button-top), var(--button-bottom));
+      color: #ffe7e9;
+    }
+
+    .royal-shell.severant-shell button:hover {
+      border-color: #e03b4f;
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,0.04),
+        0 0 0 1px rgba(214, 55, 76, 0.18),
+        0 12px 24px rgba(0, 0, 0, 0.28);
+    }
+
+    .royal-shell.severant-shell button.active-tab,
+    .royal-shell.severant-shell #endTurnBtn {
+      color: #fff0f1;
+      border-color: #ea4254;
+      background:
+        linear-gradient(180deg, rgba(255, 117, 126, 0.18), rgba(255, 117, 126, 0.04)),
+        linear-gradient(180deg, #98111f, #280106);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,0.04),
+        0 0 18px rgba(164, 18, 34, 0.22);
+    }
+
+    .royal-shell.severant-shell .board-wrap {
+      border-color: rgba(188, 65, 77, 0.34);
+      background:
+        radial-gradient(circle at center, rgba(182, 18, 38, 0.12), transparent 45%),
+        linear-gradient(180deg, #200106, #070001);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,0.02),
+        inset 0 18px 34px rgba(255,255,255,0.01);
+    }
+
+    .royal-shell.severant-shell .right-rail {
+      background: linear-gradient(180deg, rgba(29, 2, 8, 0.98), rgba(10, 0, 3, 0.98));
+    }
+
+    .royal-shell.severant-shell .log,
+    .royal-shell.severant-shell .gallery-card,
+    .royal-shell.severant-shell .harem-card,
+    .royal-shell.severant-shell .leader-card,
+    .royal-shell.severant-shell .tile-command-card,
+    .royal-shell.severant-shell .tile-scene-card,
+    .royal-shell.severant-shell .tile-upgrade,
+    .royal-shell.severant-shell .dev-card,
+    .royal-shell.severant-shell .underworld-note,
+    .royal-shell.severant-shell .summary-card,
+    .royal-shell.severant-shell .info-card,
+    .royal-shell.severant-shell .rail-panel {
+      border-color: var(--line-soft);
+      background: linear-gradient(180deg, rgba(30, 3, 9, 0.96), rgba(11, 0, 3, 0.96));
+      color: #efd7d8;
+    }
+
+    .royal-shell.severant-shell .tag {
+      color: #ffdfe1;
+      background: rgba(186, 32, 47, 0.14);
+      border-color: rgba(186, 32, 47, 0.34);
+    }
+
+    .royal-shell.severant-shell .log p {
+      color: #e3cbcd;
+      border-bottom-color: rgba(255,255,255,0.04);
+    }
+
+    .royal-shell.severant-shell .modal-overlay {
+      background: rgba(17, 0, 3, 0.86);
+      backdrop-filter: blur(9px);
+    }
+
+    .royal-shell.severant-shell .modal-window {
+      border-color: var(--line);
+      background:
+        linear-gradient(180deg, rgba(27, 2, 7, 0.98), rgba(9, 0, 2, 0.98));
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,0.03),
+        0 30px 76px rgba(0, 0, 0, 0.56);
+    }
+
+    .royal-shell.severant-shell .modal-head {
+      border-bottom-color: rgba(197, 85, 94, 0.22);
+      background:
+        linear-gradient(180deg, rgba(227, 76, 92, 0.14), rgba(227, 76, 92, 0.02)),
+        linear-gradient(180deg, #42050d, #120002);
+      color: #ffe5e7;
+    }
+
+    .royal-shell.severant-shell .modal-overlay.event-mode {
+      background: rgba(18, 0, 4, 0.68);
+      backdrop-filter: blur(4px);
+    }
+
+    .royal-shell.severant-shell .modal-overlay.event-mode.blackout-event {
+      background: rgba(0, 0, 0, 0.96);
+    }
+
+    .royal-shell.severant-shell .event-card:not(.blackout) {
+      border-color: #8f1a24;
+      background:
+        linear-gradient(180deg, rgba(30, 2, 8, 0.985), rgba(11, 0, 3, 0.99));
+      box-shadow:
+        0 22px 58px rgba(0, 0, 0, 0.6),
+        inset 0 0 0 1px rgba(255, 148, 157, 0.06);
+    }
+
+    .royal-shell.severant-shell .event-banner:not(.blackout) {
+      color: #ffe8ea;
+      border-bottom-color: rgba(196, 49, 63, 0.28);
+      background:
+        linear-gradient(180deg, rgba(255, 102, 120, 0.14), rgba(255, 102, 120, 0.02)),
+        linear-gradient(180deg, rgba(38, 2, 8, 0.98), rgba(18, 0, 4, 0.98));
+    }
+
+    .royal-shell.severant-shell .event-portrait:not(.blackout) {
+      border-color: rgba(191, 41, 57, 0.46);
+      background: #140104;
+      box-shadow: inset 0 0 0 1px rgba(255, 228, 231, 0.04);
+    }
+
+    .royal-shell.severant-shell .event-copy:not(.blackout) {
+      border-color: rgba(169, 31, 46, 0.4);
+      background:
+        linear-gradient(180deg, rgba(30, 2, 8, 0.94), rgba(10, 0, 3, 0.96));
+    }
+
+    .royal-shell.severant-shell .event-copy:not(.blackout) .event-title {
+      color: #ffe3e5;
+    }
+
+    .royal-shell.severant-shell .event-copy:not(.blackout) .event-text {
+      color: #edc9cd;
+    }
+
+    .royal-shell.severant-shell .event-copy:not(.blackout) .event-meta {
+      color: #c67780;
+    }
+
+    .royal-shell.severant-shell .event-actions:not(.blackout) {
+      background: linear-gradient(180deg, rgba(29, 2, 8, 0), rgba(29, 2, 8, 0.28));
+    }
+
+    .royal-shell.severant-shell .event-continue:not(.blackout) {
+      border-color: #b32230;
+      background:
+        linear-gradient(180deg, rgba(255, 109, 126, 0.18), rgba(255, 109, 126, 0.03)),
+        linear-gradient(180deg, #8e101d, #240105);
+      color: #ffebec;
+      box-shadow:
+        0 14px 32px rgba(0, 0, 0, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .royal-shell.severant-shell .save-ok {
+      color: #d8d38c;
+    }
+
+    .royal-shell.severant-shell .save-warn {
+      color: #e09b82;
+    }
+
+    @keyframes severant-theme-wash {
+      0% { opacity: 0; }
+      25% { opacity: 0.42; }
+      100% { opacity: 0; }
     }
 
     .royal-shell .topbar,
@@ -1338,6 +1961,10 @@
       flex-wrap: wrap;
       justify-content: center;
       gap: 8px;
+    }
+
+    .royal-shell .topbar-center .tab-ribbon {
+      display: none;
     }
 
     .royal-shell .turn-action {

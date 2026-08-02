@@ -70,7 +70,7 @@
   };
 
   const SAMPLE_MATRONS = [
-    { id: "matron_yselde_hearth", name: "Yseldra Vale", title: "Hearth Matron of the Inner House", archetype: "hearth_matron", notes: "Keeps the emotional weather of the household from turning into panic or obsession." },
+    { id: "matron_matriarch", name: "The Matriarch", title: "First Wife of the Hidden House", archetype: "hearth_matron", specialRole: "matriarch", notes: "Not one of your formal matrons, but your hidden partner, lover, and household sovereign. She shelters your line, shares your bed, and keeps the nursery breathing in the dark." },
     { id: "matron_brynn_wolf", name: "Brynn Harrow", title: "Wolf Matron of the Night Door", archetype: "wolf_matron", notes: "Smells predation faster than most guards smell steel." },
     { id: "matron_sera_velvet", name: "Sera Lethain", title: "Velvet Matron of the Mirror Hall", archetype: "velvet_matron", notes: "Reads invitation, posture, and perfume like other women read letters." },
     { id: "matron_maud_iron", name: "Maud Vey", title: "Iron Matron of the First Gate", archetype: "iron_matron", notes: "Believes access is a weapon and should be managed like one." },
@@ -135,6 +135,7 @@
       trust: clamp(opts.trust ?? 58 + randomBetween(-8, 14), 0, 100),
       romance: clamp(opts.romance ?? 30 + randomBetween(-8, 12), 0, 100),
       attraction: clamp(opts.attraction ?? 28 + randomBetween(-8, 12), 0, 100),
+      giftUsedThisTurn: Boolean(opts.giftUsedThisTurn),
       accessAuthority: clamp(opts.accessAuthority ?? 1, 0, 5),
       assignedProtection: Boolean(opts.assignedProtection),
       pregnant: Boolean(opts.pregnant),
@@ -151,6 +152,7 @@
       lastScreenRound: Number.isFinite(opts.lastScreenRound) ? opts.lastScreenRound : -1,
       lastInterventionRound: Number.isFinite(opts.lastInterventionRound) ? opts.lastInterventionRound : -1,
       resentful: Boolean(opts.resentful),
+      specialRole: opts.specialRole || null,
     });
   }
 
@@ -167,6 +169,7 @@
     clone.traits = Array.isArray(clone.traits) ? clone.traits.slice(0, 4) : pickTraits(clone.archetype);
     clone.notes = clone.notes || MATRON_ARCHETYPES[clone.archetype]?.summary || "Protects the Hylsar from dangerous intimacy and court traps.";
     clone.portrait = clone.portrait || MATRON_PORTRAITS[clone.archetype] || null;
+    clone.giftUsedThisTurn = Boolean(clone.giftUsedThisTurn);
     clone.accessAuthority = clamp(Number.isFinite(clone.accessAuthority) ? clone.accessAuthority : 1, 0, 5);
     clone.assignedProtection = Boolean(clone.assignedProtection);
     clone.pregnant = Boolean(clone.pregnant);
@@ -183,6 +186,7 @@
     clone.lastScreenRound = Number.isFinite(clone.lastScreenRound) ? clone.lastScreenRound : -1;
     clone.lastInterventionRound = Number.isFinite(clone.lastInterventionRound) ? clone.lastInterventionRound : -1;
     clone.resentful = Boolean(clone.resentful);
+    clone.specialRole = clone.specialRole || null;
     return clone;
   }
 

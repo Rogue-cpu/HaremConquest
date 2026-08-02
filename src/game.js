@@ -245,6 +245,8 @@ if (!window.HCDuchess) {
     buildEventForDuchess: () => null,
     getArchetypeLabel: (a) => a || "Unknown",
     isDangerousDuchess: () => false,
+    PORTRAIT_POOL: [],
+    duchessPortraitForTile: () => "Queens/queen_elara_verdantia.jpg",
   };
 }
 if (!window.HCMatron) {
@@ -288,6 +290,8 @@ if (!window.HCMatron) {
 }
 const {
   createDuchess,
+  duchessPortraitForTile,
+  PORTRAIT_POOL: DUCHESS_PORTRAIT_POOL,
   statusFromDuchess,
   effectSummary,
   computeTurnModifiers,
@@ -317,6 +321,7 @@ let matronState = {
   recentIgnoredWarnings: 0,
   recentPunishments: 0,
   lastDangerEvent: null,
+  discoveriesCompleted: 0,
   screeningsCompleted: 0,
   interventionsCompleted: 0,
   rescuesCompleted: 0,
@@ -515,11 +520,13 @@ const BASE_FACTIONS = [
   { id: 3, name: "Violet Throne", short: "VT", color: "#7a4bb8", isHuman: false, leader: "Queen Morwen", theme: "violet", portrait: "queen_morwen_violet.jpg", startActive: true, home: { q: mapW - 5, r: mapH - 5 }, archetype: "hex", personality: "Rebel-maker" },
   { id: 4, name: "Golden March", short: "GM", color: "#b08a2e", isHuman: false, leader: "Queen Isolde", theme: "gold", portrait: "queen_isolde_gold.jpg", startActive: true, home: { q: Math.floor(mapW / 2), r: 3 }, archetype: "tithe", personality: "Defensive" },
   { id: 5, name: "Onyx Shogunate", short: "OS", color: "#44656d", isHuman: false, leader: "Queen Kaida", theme: "onyx", portrait: "queen_kaida_onyx.jpg", startActive: true, home: { q: Math.floor(mapW / 2), r: mapH - 4 }, archetype: "storm", personality: "Swarm-expander" },
+  { id: 6, name: "Sunspire Principality", short: "SP", color: "#cf8f3d", isHuman: false, leader: "Queen Aurelia", theme: "gold", portrait: "queen_aurelia_sunspire.jpg", startActive: true, home: { q: 3, r: Math.floor(mapH / 2) }, archetype: "edict", personality: "Diplomat" },
+  { id: 7, name: "Scarlet Reach", short: "SR", color: "#9e2d3f", isHuman: false, leader: "Queen Valeska", theme: "red", portrait: "queen_valeska_scarlet.jpg", startActive: true, home: { q: mapW - 4, r: Math.floor(mapH / 2) }, archetype: "banner", personality: "Aggressive" },
 ];
 
     const FACTIONS = [
       ...BASE_FACTIONS,
-      ...QUEEN_FILES.slice(6).map((filename, index) => reserveFactionFromFile(index + 6, filename)),
+      ...QUEEN_FILES.slice(8).map((filename, index) => reserveFactionFromFile(index + 8, filename)),
     ];
 
     const ORIGINAL_QUEEN_FILE_SET = new Set([
@@ -611,6 +618,14 @@ const BASE_FACTIONS = [
       "Queen Morwen": "Original Queens/ladydevimon_ai_by_nerdlord1_dlda7iu-pre.jpg",
       "Queen Victoria": "Original Queens/makima_ai_2_by_nerdlord1_dl2i8hv-pre.jpg",
     };
+    const QUEEN_WORSHIP_POSES_BY_LEADER = {
+      "Queen Selene": [
+        { id: "default", label: "Default", src: null },
+        { id: "ass", label: "Ass Worship", src: "a5e57c596d96e9d7b7279c40045939b5.jpeg" },
+        { id: "feet", label: "Feet", src: "lick selenes feet.jpg" },
+        { id: "pussy", label: "Pussy", src: "sample_31dac54ce15f0aa7ef668af1e98ea79c.jpg" },
+      ],
+    };
 
     function resolveQueenPortraitPath(faction) {
       if (!faction?.portrait) return null;
@@ -644,6 +659,152 @@ const BASE_FACTIONS = [
     const QUEEN_PORTRAITS = Object.fromEntries(
       FACTIONS.map((faction) => [faction.id, resolveQueenPortraitPath(faction)])
     );
+    const HIGH_SEVERANT_PORTRAIT_SRC = "HighSeverant.png";
+    function normalizedIdentityKey(value) {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+    }
+
+    function stableIdentityIndex(value, length) {
+      if (!length) return 0;
+      const text = String(value || "severant");
+      let hash = 0;
+      for (let index = 0; index < text.length; index++) {
+        hash = (hash * 31 + text.charCodeAt(index)) % 2147483647;
+      }
+      return Math.abs(hash) % length;
+    }
+
+    function basePortraitFallbackForFaction(factionId = 0) {
+      return queenPortraits[factionId] || QUEEN_PORTRAITS[factionId] || queenPortraits[0] || QUEEN_PORTRAITS[0] || HIGH_SEVERANT_PORTRAIT_SRC;
+    }
+
+    function severantOfficerSeedForOfficer(officer) {
+      const nameKey = normalizedIdentityKey(officer?.name);
+      const titleKey = normalizedIdentityKey(officer?.title);
+      return SEVERANT_OFFICER_PERSONNEL.find((seed) =>
+        normalizedIdentityKey(seed.name) === nameKey ||
+        normalizedIdentityKey(seed.title) === titleKey
+      ) || null;
+    }
+
+    function defaultOfficerPortrait(officer) {
+      return severantOfficerSeedForOfficer(officer)?.portrait
+        || GENERIC_RESTORED_QUEEN_POOL[(officer?.rosterIndex || 0) % GENERIC_RESTORED_QUEEN_POOL.length]
+        || basePortraitFallbackForFaction();
+    }
+
+    function severantSpySeedForSpy(spy) {
+      const nameKey = normalizedIdentityKey(spy?.name);
+      const titleKey = normalizedIdentityKey(spy?.title);
+      return SEVERANT_SPY_PERSONNEL.find((seed) =>
+        normalizedIdentityKey(seed.name) === nameKey ||
+        normalizedIdentityKey(seed.title) === titleKey
+      ) || null;
+    }
+
+    function defaultSpyPortrait(spy) {
+      return severantSpySeedForSpy(spy)?.portrait
+        || GENERIC_RESTORED_QUEEN_POOL[(spy?.rosterIndex || 0) % GENERIC_RESTORED_QUEEN_POOL.length]
+        || basePortraitFallbackForFaction();
+    }
+
+    function severantOperativeProfileById(orderAgentId) {
+      return SEVERANT_ORDER_OPERATIVES.find((profile) => profile.id === orderAgentId) || null;
+    }
+
+    function derivedSeverantCourtPortrait(profile) {
+      const operative =
+        severantOperativeProfileById(profile?.orderAgentId)
+        || SEVERANT_ORDER_OPERATIVES.find((seed) =>
+          normalizedIdentityKey(seed.name) === normalizedIdentityKey(profile?.name) ||
+          normalizedIdentityKey(seed.title) === normalizedIdentityKey(profile?.title)
+        );
+      if (operative?.portrait) return operative.portrait;
+      if (SEVERANT_COURT_PORTRAIT_POOL.length) {
+        return SEVERANT_COURT_PORTRAIT_POOL[stableIdentityIndex(profile?.id || profile?.name || profile?.orderAgentId, SEVERANT_COURT_PORTRAIT_POOL.length)];
+      }
+      return basePortraitFallbackForFaction();
+    }
+
+    function isHighSeverantPortraitSource(portrait) {
+      return typeof portrait === "string" && portrait.includes(HIGH_SEVERANT_PORTRAIT_SRC);
+    }
+
+    const OFFICER_RANKS = {
+      grand_general: { label: "Grand General", minTroops: 12, maxTroops: 999, attackBonus: 4, defenseBonus: 3, growthBonus: 2, authority: 82 },
+      general: { label: "General", minTroops: 10, maxTroops: 18, attackBonus: 3, defenseBonus: 2, growthBonus: 1, authority: 74 },
+      colonel: { label: "Colonel", minTroops: 7, maxTroops: 13, attackBonus: 2, defenseBonus: 2, growthBonus: 1, authority: 66 },
+      captain: { label: "Captain", minTroops: 5, maxTroops: 9, attackBonus: 2, defenseBonus: 1, growthBonus: 1, authority: 58 },
+      lieutenant: { label: "Lieutenant", minTroops: 3, maxTroops: 6, attackBonus: 1, defenseBonus: 1, growthBonus: 0, authority: 48 },
+      sergeant: { label: "Sergeant", minTroops: 1, maxTroops: 4, attackBonus: 1, defenseBonus: 0, growthBonus: 0, authority: 40 },
+    };
+    const OFFICER_PERSONNEL = [
+      { name: "General Aveline Voss", rank: "grand_general", title: "Mistress of the High Banner" },
+      { name: "General Mirelle Ash", rank: "general", title: "Marshal of the Dawn Line" },
+      { name: "Colonel Sabine Rook", rank: "colonel", title: "Steel Colonel" },
+      { name: "Captain Liora Vane", rank: "captain", title: "Banner Captain" },
+      { name: "Captain Ysra Holt", rank: "captain", title: "Shield Captain" },
+      { name: "Lieutenant Nessa Vale", rank: "lieutenant", title: "Field Lieutenant" },
+      { name: "Lieutenant Cora Flint", rank: "lieutenant", title: "Road Lieutenant" },
+      { name: "Sergeant Tessa Moor", rank: "sergeant", title: "Line Sergeant" },
+      { name: "Sergeant Brynn Cask", rank: "sergeant", title: "Gate Sergeant" },
+    ];
+    const SPY_PERSONNEL = [
+      { name: "Vesper Hale", title: "Velvet Whisper", specialty: "seduction" },
+      { name: "Nerissa Vale", title: "Shadow Courier", specialty: "intelligence" },
+      { name: "Sabine Crow", title: "Quiet Knife", specialty: "capture" },
+      { name: "Lyra Thorn", title: "Court Listener", specialty: "duchess" },
+      { name: "Mira Sable", title: "Veil Agent", specialty: "subversion" },
+    ];
+    const SEVERANT_COMMAND_PORTRAIT_POOL = [
+      "Original Queens/balalaika_ai_by_nerdlord1_dlenmbv-pre.jpg",
+      "Original Queens/blackfire_ai_by_nerdlord1_dl5ywap-pre.jpg",
+      "Original Queens/cassandra_ai_by_nerdlord1_dl6kxwl-pre.jpg",
+      "Original Queens/daki_ai_by_nerdlord1_djblrrw-pre.jpg",
+      "Original Queens/fujiko_mine_ai_by_nerdlord1_dkcmtff-pre.jpg",
+      "Original Queens/integra_hellsing_ai_by_nerdlord1_dl4aco2-pre.jpg",
+      "Original Queens/juri_han_ai_by_nerdlord1_dlefdvu-pre.jpg",
+      "Original Queens/malevola_ai_by_nerdlord1_dky16be-pre.jpg",
+      "Original Queens/melascula_ai_by_nerdlord1_dlkj3tl-pre.jpg",
+    ];
+    const SEVERANT_SPY_PORTRAIT_POOL = [
+      "Original Queens/beelzebub__helltaker__ai_by_nerdlord1_dlvrf9z-414w-2x.jpg",
+      "Original Queens/charlie_morningstar_ai_by_nerdlord1_djaa7hz-pre.jpg",
+      "Original Queens/cassidy__pokemon__ai_by_nerdlord1_dln3sch-pre.jpg",
+      "Original Queens/cynthia_ai_2_by_nerdlord1_dk1oozf-pre.jpg",
+      "Original Queens/miss_delight_ai_by_nerdlord1_dln659p-pre.jpg",
+    ];
+    const SEVERANT_COURT_PORTRAIT_POOL = [
+      "Original Queens/boa_hancock_ai_2_by_nerdlord1_dlev3dm-pre.jpg",
+      "Original Queens/brazilian_miku_ai_by_nerdlord1_dla5d7x-pre.jpg",
+      "Original Queens/chun_li_ai_by_nerdlord1_djb7033-pre.jpg",
+      "Original Queens/erza_scarlet_ai_by_nerdlord1_dkx3wmh-pre.jpg",
+      "Original Queens/heles_ai__by_nerdlord1_dl9oyf4-pre.jpg",
+      "Original Queens/jolyne_cujoh_ai_3_by_nerdlord1_dj5hyof-pre.jpg",
+      "Original Queens/lusamine_ai_by_nerdlord1_dl8rytg-pre.jpg",
+      "Original Queens/mitsuri_kanroji_ai_2_by_nerdlord1_dj576sk-pre.jpg",
+    ];
+    const SEVERANT_OFFICER_PERSONNEL = [
+      { name: "General Seris Vhal", rank: "grand_general", title: "Red Chamber Marshal", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[0] },
+      { name: "General Thalia Rook", rank: "general", title: "Iron Procession General", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[1] },
+      { name: "Colonel Veyra Sorn", rank: "colonel", title: "Claimant Guard Colonel", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[2] },
+      { name: "Captain Kessa Drae", rank: "captain", title: "Banner of the Veil", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[3] },
+      { name: "Captain Morra Vale", rank: "captain", title: "Court Seal Captain", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[4] },
+      { name: "Lieutenant Nys Pell", rank: "lieutenant", title: "Detachments Lieutenant", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[5] },
+      { name: "Lieutenant Olyra Vest", rank: "lieutenant", title: "Discipline Lieutenant", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[6] },
+      { name: "Sergeant Rhea Thorn", rank: "sergeant", title: "Scarlet Chain Sergeant", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[7] },
+      { name: "Sergeant Vaela Korr", rank: "sergeant", title: "Order Line Sergeant", portrait: SEVERANT_COMMAND_PORTRAIT_POOL[8] },
+    ];
+    const SEVERANT_SPY_PERSONNEL = [
+      { name: "Silva Kest", title: "Red Veil Confessor", specialty: "seduction", portrait: SEVERANT_SPY_PORTRAIT_POOL[0] },
+      { name: "Nerith Sable", title: "Archive Whisper", specialty: "intelligence", portrait: SEVERANT_SPY_PORTRAIT_POOL[1] },
+      { name: "Caelis Thorn", title: "Quiet Extraction", specialty: "capture", portrait: SEVERANT_SPY_PORTRAIT_POOL[2] },
+      { name: "Vel Mora", title: "Claimant Listener", specialty: "duchess", portrait: SEVERANT_SPY_PORTRAIT_POOL[3] },
+      { name: "Ilyra Voss", title: "Black Ribbon Agent", specialty: "subversion", portrait: SEVERANT_SPY_PORTRAIT_POOL[4] },
+    ];
 
     const canvas = document.getElementById("board");
     const boardWrapEl = document.getElementById("boardWrap");
@@ -653,7 +814,10 @@ const BASE_FACTIONS = [
     const tabLeadersBtn = document.getElementById("tabLeadersBtn");
     const tabDiplomacyBtn = document.getElementById("tabDiplomacyBtn");
     const tabHaremBtn = document.getElementById("tabHaremBtn");
+    const tabMilitaryBtn = document.getElementById("tabMilitaryBtn");
+    const tabSpiesBtn = document.getElementById("tabSpiesBtn");
     const tabGovernmentBtn = document.getElementById("tabGovernmentBtn");
+    const tabPrisonBtn = document.getElementById("tabPrisonBtn");
     const tabUnderworldBtn = document.getElementById("tabUnderworldBtn");
     const tabDevBtn = document.getElementById("tabDevBtn");
     const sendModeBtn = document.getElementById("sendModeBtn");
@@ -685,6 +849,9 @@ const BASE_FACTIONS = [
     const leaderStatusEl = document.getElementById("leaderStatus");
     const diplomacyPanelEl = document.getElementById("diplomacyPanel");
     const haremPanelEl = document.getElementById("haremPanel");
+    const militaryPanelEl = document.getElementById("militaryPanel");
+    const spiesPanelEl = document.getElementById("spiesPanel");
+    const prisonPanelEl = document.getElementById("prisonPanel");
     const underworldPanelEl = document.getElementById("underworldPanel");
     const devPanelEl = document.getElementById("devPanel");
     const eventPanelEl = document.getElementById("eventPanel");
@@ -694,7 +861,10 @@ const BASE_FACTIONS = [
     const leadersTabEl = document.getElementById("leadersTab");
     const diplomacyTabEl = document.getElementById("diplomacyTab");
     const haremTabEl = document.getElementById("haremTab");
+    const militaryTabEl = document.getElementById("militaryTab");
+    const spiesTabEl = document.getElementById("spiesTab");
     const governmentTabEl = document.getElementById("governmentTab");
+    const prisonTabEl = document.getElementById("prisonTab");
     const underworldTabEl = document.getElementById("underworldTab");
     const devTabEl = document.getElementById("devTab");
     const eventTabEl = document.getElementById("eventTab");
@@ -722,6 +892,77 @@ const BASE_FACTIONS = [
     let pendingQueenFaction = null;
     let queenState = {};
     let queenUnits = [];
+    let heirs = [];
+    let nextHeirId = 1;
+    let dynastyState = {
+      severantAwareness: 18,
+      knownThreat: false,
+      rivalHouseholdPressure: 0,
+      loyalistMomentum: 0,
+      lastCrisisRound: -1,
+      activeRivalHeirId: null,
+      severantProgress: 0,
+      lastSeverantStrikeRound: -1,
+      namedHeirId: null,
+      successionTension: 0,
+      capturedOrderAgents: [],
+      lastMaternalConflictRound: -1,
+      lastSuccessionCrisisRound: -1,
+      counterIntelRating: 0,
+      lastOrderCellRaidRound: -1,
+      orderCellsBroken: 0,
+      highSeverantExposure: 0,
+      confrontationStage: 0,
+    };
+    let officerCorps = [];
+    let spyNetwork = [];
+    let governanceState = {
+      duchessProtocol: "general_judgment",
+      autoAssignDuchesses: true,
+      autoBuildProvinces: true,
+    };
+    let cabinetState = {
+      warHead: null,
+      intelligenceHead: null,
+      householdHead: null,
+      fertilityHead: null,
+    };
+    let fertilityState = {
+      preservedSeed: 22,
+      logistics: 18,
+      publicTrust: 34,
+      conceptionPolicy: "balanced",
+      provinceDemand: 12,
+      petitionsHandled: 0,
+      lastPetitionRound: -1,
+    };
+    let underworldState = {
+      vice: 18,
+      blackMarket: 22,
+      resistance: 16,
+      tunnels: 0,
+      tunnelLinks: 0,
+      mediaReach: 12,
+      liberatedCaptives: 0,
+      seedRoutes: 10,
+      seedLedger: 0,
+      crimePressure: 20,
+      crimeQueensBroken: 0,
+      crimeQueens: [],
+      nextCrimeQueenId: 1,
+      lastSlaveRouteRound: -1,
+      lastCrimeRound: -1,
+      lastBroadcastRound: -1,
+      lastSeedRound: -1,
+      lastTunnelRound: -1,
+      lastBlackSiteRound: -1,
+      lastOrderRouteRound: -1,
+    };
+    let prisonState = {
+      cells: 8,
+      prisoners: [],
+      nextId: 1,
+    };
     let pendingUnitQueenFaction = null;
     let nextUnitId = 1;
     let humanMovesRemaining = HUMAN_MOVES_PER_TURN;
@@ -741,6 +982,78 @@ const BASE_FACTIONS = [
       lastSaveAt: null,
     };
     let treasury = 24;
+    let restorationState = {
+      populationStability: 58,
+      birthRecovery: 18,
+      reserveStock: 64,
+      publicDependence: 82,
+      infrastructureDependency: 86,
+      withdrawalRisk: 18,
+      reformProgress: 4,
+      orderContamination: 78,
+      clinicPolicy: "seize_rebrand",
+      bankPolicy: "supervised_release",
+      publicStory: "stability_first",
+      lastCrisisRound: -1,
+    };
+    let highSeverantState = {
+      interest: 16,
+      respect: 8,
+      obsession: 4,
+      influence: 28,
+      exposure: 6,
+      contactStage: 0,
+      lastContactRound: -1,
+    };
+    let highSeverantProfile = {
+      id: "high_severant",
+      hiddenName: "Seralya Severin",
+      publicName: "The High Severant",
+      coverTitle: "Unknown Architect",
+      trueTitle: "Mistress of the Severant Order",
+      notes: "The unseen hand behind the Order's old world. She prefers channels, pressure, seduction, and dependency over open war.",
+      portrait: HIGH_SEVERANT_PORTRAIT_SRC,
+      dossierStage: 0,
+      intrigue: 76,
+      cruelty: 72,
+      composure: 88,
+      fascination: 18,
+      hostility: 74,
+      seduction: 16,
+      fear: 34,
+      lastInteractionRound: -1,
+      directAudienceUnlocked: false,
+      safehouseKnown: false,
+      confrontationOutcome: null,
+      captive: false,
+      escaped: false,
+    };
+    let campaignRouteState = {
+      side: null,
+      choiceRound: -1,
+      lastOfferRound: -1,
+      deferUntilRound: 0,
+      severantDoctrine: "dark_alliance",
+      claimantQueenId: null,
+      hiddenCourtFactionId: null,
+      setupDone: false,
+      claimantSeatLabel: null,
+      matriarchStanding: "sovereign",
+      lastPressureRound: -1,
+      lastRealignmentRound: -1,
+      orderReserve: 0,
+      lastDetachmentRound: -1,
+      lastDisciplineRound: -1,
+      lastCoronationRound: -1,
+      severantObjectivePhase: 0,
+      severantBriefedPhase: 0,
+      severantRewardedPhase: 0,
+      claimantCrownedQueenId: null,
+      severantCrowned: false,
+      successionSecured: false,
+      lastObjectiveAdvanceRound: -1,
+      severantCommandInstalled: false,
+    };
     let developerState = {
       enabled: false,
       selectedQueenFaction: 0,
@@ -783,6 +1096,33 @@ const BASE_FACTIONS = [
     let inspectedTile = null;
     let moveAnimation = null;
     let boardScale = 1;
+    const HEIR_STAGE_ORDER = ["hidden", "child", "adolescent", "young_adult"];
+    const HEIR_GUARDIAN_TYPES = {
+      mother: "With Mother",
+      matriarch: "The Matriarch",
+      lead_matron: "Lead Matron",
+      guard_captain: "Guard Captain",
+      safe_estate: "Safe Estate",
+    };
+    const HIGH_SEVERANT_TITLE = "The High Severant";
+    const SEVERANT_ORDER_NAME = "The Severant Order";
+    const HIGH_SEVERANT_PORTRAIT_FALLBACK = 5;
+    const MATERNAL_AGENDAS = {
+      shield: "Shield Him",
+      elevate: "Advance Claim",
+      stabilize: "Steady Him",
+      humble: "Keep Him Modest",
+    };
+    const SEVERANT_ORDER_OPERATIVES = [
+      { id: "veil_velis", name: "Velis Drae", title: "Veil Auditor", specialty: "court ledgers and servant routes", portrait: SEVERANT_COURT_PORTRAIT_POOL[0] },
+      { id: "veil_mara", name: "Mara Sable", title: "Nursery Listener", specialty: "young heirs and hidden tutors", portrait: SEVERANT_COURT_PORTRAIT_POOL[1] },
+      { id: "veil_caelia", name: "Caelia Voss", title: "Silk Warden", specialty: "bedchamber penetration and pillow rumors", portrait: SEVERANT_COURT_PORTRAIT_POOL[2] },
+      { id: "veil_nerith", name: "Nerith Vale", title: "Shadow Courier", specialty: "sealed messages and relay cells", portrait: SEVERANT_COURT_PORTRAIT_POOL[3] },
+      { id: "veil_tavia", name: "Tavia Rook", title: "False Defector", specialty: "counterfeits, staged rescues, and false loyalties", portrait: SEVERANT_COURT_PORTRAIT_POOL[4] },
+      { id: "veil_ilyra", name: "Ilyra Vane", title: "Harem Confessor", specialty: "turning attendants and intimate access", portrait: SEVERANT_COURT_PORTRAIT_POOL[5] },
+      { id: "veil_sevrin", name: "Sevrin Kade", title: "Quiet Surgeon", specialty: "serums, memory cuts, and conditioning", portrait: SEVERANT_COURT_PORTRAIT_POOL[6] },
+      { id: "veil_lys", name: "Lys Morcant", title: "Succession Broker", specialty: "rival heirs and inheritance fractures", portrait: SEVERANT_COURT_PORTRAIT_POOL[7] },
+    ];
     const MIN_BOARD_SCALE = 0.6;
     const MAX_BOARD_SCALE = 2.2;
     let isDraggingBoard = false;
@@ -896,7 +1236,7 @@ const BASE_FACTIONS = [
       }
       mapImages.push(hexAssets.city, hexAssets.port);
       mapImages.push(...Object.values(armyAssets));
-      const portraitSources = [...Object.values(QUEEN_PORTRAITS), ...Object.values(MATRON_PORTRAITS || {})].filter(Boolean);
+      const portraitSources = [...Object.values(QUEEN_PORTRAITS), ...Object.values(MATRON_PORTRAITS || {}), ...(DUCHESS_PORTRAIT_POOL || []), HIGH_SEVERANT_PORTRAIT_SRC].filter(Boolean);
       const ambienceTracks = [menuMusicEl, dayAmbienceEl, nightAmbienceEl, rainAmbienceEl, bloodMoonAmbienceEl];
       const total = mapImages.length + portraitSources.length + ambienceTracks.length + 3;
       let done = 0;
@@ -967,6 +1307,13 @@ const BASE_FACTIONS = [
         ...base,
         name: state.regimeName || base.name,
         short: state.regimeShort || base.short,
+        color: state.regimeColor || base.color,
+        leader: state.regimeLeader || base.leader,
+        theme: state.regimeTheme || base.theme,
+        portrait: state.regimePortrait || base.portrait,
+        home: state.regimeHome ? { ...state.regimeHome } : base.home,
+        archetype: state.regimeArchetype || base.archetype,
+        personality: state.regimePersonality || base.personality,
       };
     }
 
@@ -1016,7 +1363,15 @@ const BASE_FACTIONS = [
           lastUnderworldAidTurn: -1,
           lastUnderworldRomanceTurn: -1,
           lastUnderworldRiseTurn: -1,
+          lastSupportBargainTurn: -1,
+          lastJoinBargainTurn: -1,
           underworldRiseSupport: 0,
+          respect: 0,
+          ego: 42,
+          undergroundLocation: null,
+          demandedThisTurn: false,
+          routeStatus: "neutral",
+          lastRouteChangeRound: -1,
           lastAudienceTurn: -1,
           overlordClaimed: false,
           forbiddenThisTurn: false,
@@ -1037,7 +1392,6071 @@ const BASE_FACTIONS = [
         state.hate = Math.min(state.hate, 0);
         state.fear = Math.min(state.fear, 0);
       }
+      state.respect = Number.isFinite(state.respect) ? state.respect : 0;
+      state.ego = clamp(Number.isFinite(state.ego) ? state.ego : 42, 0, 100);
+      state.undergroundLocation = state.undergroundLocation || null;
+      state.demandedThisTurn = Boolean(state.demandedThisTurn);
+      state.routeStatus = [
+        "neutral",
+        "claimant",
+        "follower",
+        "resisting",
+        "subdued",
+        "displaced",
+        "contained",
+        "gone",
+      ].includes(state.routeStatus)
+        ? state.routeStatus
+        : "neutral";
+      state.lastRouteChangeRound = Number.isFinite(state.lastRouteChangeRound) ? state.lastRouteChangeRound : -1;
       return state;
+    }
+
+    function heirStageFromAge(age) {
+      if (age >= 12) return "young_adult";
+      if (age >= 8) return "adolescent";
+      if (age >= 4) return "child";
+      return "hidden";
+    }
+
+    function heirStageLabel(stage) {
+      return ({
+        hidden: "Hidden Son",
+        child: "Guarded Child",
+        adolescent: "Adolescent Heir",
+        young_adult: "Young Adult Heir",
+      })[stage] || "Heir";
+    }
+
+    function heirPoliticalStance(heir) {
+      if (heir.rival) return "Rival";
+      if (heir.loyalistReadiness >= 75) return "Loyalist";
+      if (heir.rebelReadiness >= 60) return "Restless";
+      if (heir.corruption >= 45) return "Compromised";
+      return "Unproven";
+    }
+
+    function heirNamePool() {
+      return [
+        "Alaric", "Lucian", "Rowan", "Cassian", "Darian", "Theron", "Evander", "Leoric",
+        "Valen", "Marius", "Aurel", "Caius", "Orion", "Silas", "Kaelen", "Draven",
+      ];
+    }
+
+    function generateHeirName() {
+      const pool = heirNamePool();
+      return `${pool[(nextHeirId - 1) % pool.length]} ${["Vale", "Thorn", "Dusk", "Vane", "Hart", "Rook"][Math.floor(Math.random() * 6)]}`;
+    }
+
+    function matriarchMatron() {
+      ensureMatronState();
+      return matrons.find((matron) => (matron.specialRole || "") === "matriarch") || activeMatrons()[0] || null;
+    }
+
+    function heirGuardianLabel(heir) {
+      return HEIR_GUARDIAN_TYPES[heir.guardianType] || "Household";
+    }
+
+    function heirMotherLabel(heir) {
+      return heir.motherName || "Unknown Mother";
+    }
+
+    function heirMotherProfile(heir) {
+      const matriarch = matriarchMatron();
+      const fallback = {
+        name: heirMotherLabel(heir),
+        title: heir.motherType === "matron"
+          ? (heir.motherId && matriarch && heir.motherId === matriarch.id ? "Royal Consort" : "House Matron")
+          : heir.motherType === "duchess"
+          ? "Provincial Duchess"
+          : heir.motherType === "queen"
+          ? "Royal Mother"
+          : heir.motherType === "severant_defector"
+          ? "Severant Court Woman"
+          : "Mother of the House",
+        temperament: heir.maternalAgenda === "elevate"
+          ? "ambitious"
+          : heir.maternalAgenda === "shield"
+          ? "protective"
+          : heir.maternalAgenda === "humble"
+          ? "stern"
+          : "measured",
+        portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+      };
+      if (heir.motherType === "matron") {
+        const matron = matrons.find((entry) => entry.id === heir.motherId);
+        if (matron) {
+          return {
+            name: matron.name,
+            title: isMatriarchConsort(matron) ? (matron.title || "Royal Consort") : matron.title,
+            temperament: matron.archetype === "court_matron"
+              ? "political"
+              : matron.archetype === "wolf_matron"
+              ? "territorial"
+              : matron.archetype === "iron_matron"
+              ? "unyielding"
+              : "watchful",
+            portrait: matron.portrait || fallback.portrait,
+          };
+        }
+      }
+      if (heir.motherType === "duchess") {
+        const duchess = getDuchess(heir.motherId);
+        if (duchess) {
+          return {
+            name: duchess.name,
+            title: duchess.title,
+            temperament: duchess.archetype?.includes("court")
+              ? "courtly"
+              : duchess.archetype?.includes("war")
+              ? "hard"
+              : duchess.ambition >= 60
+              ? "calculating"
+              : "noble",
+            portrait: duchess.portrait || fallback.portrait,
+          };
+        }
+      }
+      if (heir.motherType === "queen") {
+        const queen = QUEEN_POWERS[heir.motherId] || factionById(heir.motherId);
+        if (queen) {
+          return {
+            name: queen.title || queen.leader || fallback.name,
+            title: queen.title || queen.leader || fallback.title,
+            temperament: heir.maternalAgenda === "elevate"
+              ? "regal and ambitious"
+              : heir.maternalAgenda === "shield"
+              ? "regal and possessive"
+              : "regal and watchful",
+            portrait: queenPortraits[heir.motherId] || QUEEN_PORTRAITS[heir.motherId] || fallback.portrait,
+          };
+        }
+      }
+      if (heir.motherType === "severant_defector") {
+        const woman = activeSeverantCourtWomen().find((entry) => entry.id === heir.motherId)
+          || (prisonState?.prisoners || []).find((entry) => entry.id === heir.motherId && entry.category === "severant_defector");
+        if (woman) {
+          return {
+            name: woman.name || fallback.name,
+            title: `${SEVERANT_ORDER_NAME} Court Woman`,
+            temperament: (woman.assignment || "household") === "intel"
+              ? "calculating and alert"
+              : (woman.assignment || "household") === "nursery"
+              ? "protective and attentive"
+              : (woman.assignment || "household") === "prison"
+              ? "disciplined and severe"
+              : "obedient and watchful",
+            portrait: severantCourtPortrait(woman) || fallback.portrait,
+          };
+        }
+      }
+      return fallback;
+    }
+
+    function heirSuccessionLabel(heir) {
+      if (dynastyState.namedHeirId === heir.id) return "Named Heir";
+      if (heir.disinherited) return "Disinherited";
+      if ((heir.successionClaim || 0) >= 72) return "Strong Claim";
+      if ((heir.successionClaim || 0) >= 48) return "Visible Claim";
+      return "Minor Claim";
+    }
+
+    function heirSummaryLine(heir) {
+      const loyalty = Math.round(heir.loyalty || 0);
+      const rivalText = heir.rival ? "Rival" : (heir.loyalistReadiness >= 70 ? "Loyalist" : "Unproven");
+      return `${heirStageLabel(heir.stage)} - Age ${heir.age} - ${rivalText} - Loyalty ${loyalty} - ${heirSuccessionLabel(heir)}`;
+    }
+
+    function heirHouseholdSummary(heir) {
+      return `Harem ${heir.haremSize} - Order ${heir.householdOrder} - Decadence ${heir.householdDecadence} - Women To Him ${heir.householdLoyaltyToSon} - Women To You ${heir.householdLoyaltyToYou} - Infiltration ${heir.householdInfiltration}`;
+    }
+
+    function heirBrotherSummary(heir) {
+      return `Brothers ${heir.brotherRespect} respect - Rivalry ${heir.brotherRivalry} - Influence ${heir.brotherInfluence}`;
+    }
+
+    function heirMaternalSummary(heir) {
+      return `Mother Politics ${heir.maternalInfluence} influence - Favor ${heir.maternalFavor} - Agenda ${MATERNAL_AGENDAS[heir.maternalAgenda] || "Unknown"}`;
+    }
+
+    function heirSuccessionScore(heir) {
+      return clamp(
+        (heir.successionClaim || 0) * 0.34 +
+        heir.loyalty * 0.18 +
+        heir.maturity * 0.22 +
+        heir.respect * 0.18 +
+        heir.security * 0.08 -
+        heir.corruption * 0.18 -
+        heir.resentment * 0.14,
+        0,
+        100
+      );
+    }
+
+    function pickSeverantOperativeProfile() {
+      ensureDynastyState();
+      const captured = new Set(dynastyState.capturedOrderAgents || []);
+      const available = SEVERANT_ORDER_OPERATIVES.filter((profile) => !captured.has(profile.id));
+      const profile = randomItem(available.length ? available : SEVERANT_ORDER_OPERATIVES) || SEVERANT_ORDER_OPERATIVES[0];
+      if (!captured.has(profile.id)) {
+        dynastyState.capturedOrderAgents = [...captured, profile.id];
+      }
+      return profile;
+    }
+
+    function ensureRestorationState() {
+      if (!restorationState) {
+        restorationState = {
+          populationStability: 58,
+          birthRecovery: 18,
+          reserveStock: 64,
+          publicDependence: 82,
+          infrastructureDependency: 86,
+          withdrawalRisk: 18,
+          reformProgress: 4,
+          orderContamination: 78,
+          clinicPolicy: "seize_rebrand",
+          bankPolicy: "supervised_release",
+          publicStory: "stability_first",
+          lastCrisisRound: -1,
+        };
+      }
+      restorationState.populationStability = clamp(Number.isFinite(restorationState.populationStability) ? restorationState.populationStability : 58, 0, 100);
+      restorationState.birthRecovery = clamp(Number.isFinite(restorationState.birthRecovery) ? restorationState.birthRecovery : 18, 0, 100);
+      restorationState.reserveStock = clamp(Number.isFinite(restorationState.reserveStock) ? restorationState.reserveStock : 64, 0, 100);
+      restorationState.publicDependence = clamp(Number.isFinite(restorationState.publicDependence) ? restorationState.publicDependence : 82, 0, 100);
+      restorationState.infrastructureDependency = clamp(Number.isFinite(restorationState.infrastructureDependency) ? restorationState.infrastructureDependency : 86, 0, 100);
+      restorationState.withdrawalRisk = clamp(Number.isFinite(restorationState.withdrawalRisk) ? restorationState.withdrawalRisk : 18, 0, 100);
+      restorationState.reformProgress = clamp(Number.isFinite(restorationState.reformProgress) ? restorationState.reformProgress : 4, 0, 100);
+      restorationState.orderContamination = clamp(Number.isFinite(restorationState.orderContamination) ? restorationState.orderContamination : 78, 0, 100);
+      restorationState.clinicPolicy = restorationState.clinicPolicy || "seize_rebrand";
+      restorationState.bankPolicy = restorationState.bankPolicy || "supervised_release";
+      restorationState.publicStory = restorationState.publicStory || "stability_first";
+      restorationState.lastCrisisRound = Number.isFinite(restorationState.lastCrisisRound) ? restorationState.lastCrisisRound : -1;
+    }
+
+    function restorationPolicyLabel(key, value) {
+      const labels = {
+        clinicPolicy: {
+          keep_running: "Keep Running",
+          seize_rebrand: "Seize And Rebrand",
+          phase_out: "Phase Out Slowly",
+          destroy_fast: "Destroy Immediately",
+        },
+        bankPolicy: {
+          legacy_control: "Legacy Banking",
+          supervised_release: "Supervised Release",
+          distributed_reform: "Distributed Reform",
+          family_restoration: "Family Restoration",
+        },
+        publicStory: {
+          stability_first: "Stability First",
+          truth_in_stages: "Truth In Stages",
+          total_exposure: "Immediate Truth",
+        },
+      };
+      return labels[key]?.[value] || value || "Unknown";
+    }
+
+    function ensureHighSeverantState() {
+      if (!highSeverantState) {
+        highSeverantState = {
+          interest: 16,
+          respect: 8,
+          obsession: 4,
+          influence: 28,
+          exposure: 6,
+          contactStage: 0,
+          lastContactRound: -1,
+        };
+      }
+      highSeverantState.interest = clamp(Number.isFinite(highSeverantState.interest) ? highSeverantState.interest : 16, 0, 100);
+      highSeverantState.respect = clamp(Number.isFinite(highSeverantState.respect) ? highSeverantState.respect : 8, 0, 100);
+      highSeverantState.obsession = clamp(Number.isFinite(highSeverantState.obsession) ? highSeverantState.obsession : 4, 0, 100);
+      highSeverantState.influence = clamp(Number.isFinite(highSeverantState.influence) ? highSeverantState.influence : 28, 0, 100);
+      highSeverantState.exposure = clamp(Number.isFinite(highSeverantState.exposure) ? highSeverantState.exposure : 6, 0, 100);
+      highSeverantState.contactStage = Math.max(0, Math.floor(highSeverantState.contactStage || 0));
+      highSeverantState.lastContactRound = Number.isFinite(highSeverantState.lastContactRound) ? highSeverantState.lastContactRound : -1;
+    }
+
+    function ensureHighSeverantProfile() {
+      if (!highSeverantProfile) {
+        highSeverantProfile = {
+          id: "high_severant",
+          hiddenName: "Seralya Severin",
+          publicName: HIGH_SEVERANT_TITLE,
+          coverTitle: "Unknown Architect",
+          trueTitle: "Mistress of the Severant Order",
+          notes: "The unseen hand behind the Order's old world. She prefers channels, pressure, seduction, and dependency over open war.",
+          portrait: HIGH_SEVERANT_PORTRAIT_SRC,
+          dossierStage: 0,
+          intrigue: 76,
+          cruelty: 72,
+          composure: 88,
+          fascination: 18,
+          hostility: 74,
+          seduction: 16,
+          fear: 34,
+          lastInteractionRound: -1,
+          directAudienceUnlocked: false,
+          safehouseKnown: false,
+          confrontationOutcome: null,
+          captive: false,
+          escaped: false,
+          judgedRound: -1,
+          converseUsedThisTurn: false,
+          flirtUsedThisTurn: false,
+          giftUsedThisTurn: false,
+          spoilUsedThisTurn: false,
+          intimacyUsedThisTurn: false,
+          pregnant: false,
+          pregnancyStartRound: -1,
+          pregnancyDueRound: -1,
+          pregnancyOrigin: null,
+          children: 0,
+        };
+      }
+      highSeverantProfile.hiddenName = highSeverantProfile.hiddenName || "Seralya Severin";
+      highSeverantProfile.publicName = highSeverantProfile.publicName || HIGH_SEVERANT_TITLE;
+      highSeverantProfile.coverTitle = highSeverantProfile.coverTitle || "Unknown Architect";
+      highSeverantProfile.trueTitle = highSeverantProfile.trueTitle || "Mistress of the Severant Order";
+      highSeverantProfile.notes = highSeverantProfile.notes || "The unseen hand behind the Order's old world.";
+      highSeverantProfile.portrait = highSeverantProfile.portrait || HIGH_SEVERANT_PORTRAIT_SRC;
+      highSeverantProfile.dossierStage = Math.max(0, Math.floor(highSeverantProfile.dossierStage || 0));
+      highSeverantProfile.intrigue = clamp(Number.isFinite(highSeverantProfile.intrigue) ? highSeverantProfile.intrigue : 76, 0, 100);
+      highSeverantProfile.cruelty = clamp(Number.isFinite(highSeverantProfile.cruelty) ? highSeverantProfile.cruelty : 72, 0, 100);
+      highSeverantProfile.composure = clamp(Number.isFinite(highSeverantProfile.composure) ? highSeverantProfile.composure : 88, 0, 100);
+      highSeverantProfile.fascination = clamp(Number.isFinite(highSeverantProfile.fascination) ? highSeverantProfile.fascination : 18, 0, 100);
+      highSeverantProfile.hostility = clamp(Number.isFinite(highSeverantProfile.hostility) ? highSeverantProfile.hostility : 74, 0, 100);
+      highSeverantProfile.seduction = clamp(Number.isFinite(highSeverantProfile.seduction) ? highSeverantProfile.seduction : 16, 0, 100);
+      highSeverantProfile.fear = clamp(Number.isFinite(highSeverantProfile.fear) ? highSeverantProfile.fear : 34, 0, 100);
+      highSeverantProfile.lastInteractionRound = Number.isFinite(highSeverantProfile.lastInteractionRound) ? highSeverantProfile.lastInteractionRound : -1;
+      highSeverantProfile.directAudienceUnlocked = Boolean(highSeverantProfile.directAudienceUnlocked);
+      highSeverantProfile.safehouseKnown = Boolean(highSeverantProfile.safehouseKnown);
+      highSeverantProfile.confrontationOutcome = highSeverantProfile.confrontationOutcome || null;
+      highSeverantProfile.captive = Boolean(highSeverantProfile.captive);
+      highSeverantProfile.escaped = Boolean(highSeverantProfile.escaped);
+      highSeverantProfile.judgedRound = Number.isFinite(highSeverantProfile.judgedRound) ? highSeverantProfile.judgedRound : -1;
+      highSeverantProfile.converseUsedThisTurn = Boolean(highSeverantProfile.converseUsedThisTurn);
+      highSeverantProfile.flirtUsedThisTurn = Boolean(highSeverantProfile.flirtUsedThisTurn);
+      highSeverantProfile.giftUsedThisTurn = Boolean(highSeverantProfile.giftUsedThisTurn);
+      highSeverantProfile.spoilUsedThisTurn = Boolean(highSeverantProfile.spoilUsedThisTurn);
+      highSeverantProfile.intimacyUsedThisTurn = Boolean(highSeverantProfile.intimacyUsedThisTurn);
+      highSeverantProfile.pregnant = Boolean(highSeverantProfile.pregnant);
+      highSeverantProfile.pregnancyStartRound = Number.isFinite(highSeverantProfile.pregnancyStartRound) ? highSeverantProfile.pregnancyStartRound : -1;
+      highSeverantProfile.pregnancyDueRound = Number.isFinite(highSeverantProfile.pregnancyDueRound) ? highSeverantProfile.pregnancyDueRound : -1;
+      highSeverantProfile.pregnancyOrigin = highSeverantProfile.pregnancyOrigin || null;
+      highSeverantProfile.children = Math.max(0, Math.floor(highSeverantProfile.children || 0));
+    }
+
+    function ensureCampaignRouteState() {
+      if (!campaignRouteState) {
+        campaignRouteState = {
+          side: null,
+          choiceRound: -1,
+          lastOfferRound: -1,
+          deferUntilRound: 0,
+          severantDoctrine: "dark_alliance",
+          claimantQueenId: null,
+          hiddenCourtFactionId: null,
+          setupDone: false,
+          claimantSeatLabel: null,
+          matriarchStanding: "sovereign",
+          lastPressureRound: -1,
+          lastRealignmentRound: -1,
+          orderReserve: 0,
+          lastDetachmentRound: -1,
+          lastDisciplineRound: -1,
+          lastCoronationRound: -1,
+          severantObjectivePhase: 0,
+          severantBriefedPhase: 0,
+          severantRewardedPhase: 0,
+          claimantCrownedQueenId: null,
+          severantCrowned: false,
+          successionSecured: false,
+          lastObjectiveAdvanceRound: -1,
+          severantCourtWomen: [],
+          severantCommandInstalled: false,
+        };
+      }
+      campaignRouteState.side = campaignRouteState.side === "hidden_court" || campaignRouteState.side === "severant"
+        ? campaignRouteState.side
+        : null;
+      campaignRouteState.choiceRound = Number.isFinite(campaignRouteState.choiceRound) ? campaignRouteState.choiceRound : -1;
+      campaignRouteState.lastOfferRound = Number.isFinite(campaignRouteState.lastOfferRound) ? campaignRouteState.lastOfferRound : -1;
+      campaignRouteState.deferUntilRound = Math.max(0, Math.floor(campaignRouteState.deferUntilRound || 0));
+      campaignRouteState.severantDoctrine = campaignRouteState.severantDoctrine === "continuity"
+        ? "continuity"
+        : "dark_alliance";
+      const claimantId = Number.isFinite(campaignRouteState.claimantQueenId)
+        ? Math.floor(campaignRouteState.claimantQueenId)
+        : null;
+      campaignRouteState.claimantQueenId = claimantId !== null && claimantId > 0 ? claimantId : null;
+      const hiddenCourtId = Number.isFinite(campaignRouteState.hiddenCourtFactionId)
+        ? Math.floor(campaignRouteState.hiddenCourtFactionId)
+        : null;
+      campaignRouteState.hiddenCourtFactionId = hiddenCourtId !== null &&
+        hiddenCourtId > 0 &&
+        FACTIONS.some((faction) => faction.id === hiddenCourtId)
+        ? hiddenCourtId
+        : null;
+      campaignRouteState.setupDone = Boolean(campaignRouteState.setupDone);
+      campaignRouteState.claimantSeatLabel = campaignRouteState.claimantSeatLabel || null;
+      campaignRouteState.matriarchStanding = ["sovereign", "watched", "sealed", "hidden_court"].includes(campaignRouteState.matriarchStanding)
+        ? campaignRouteState.matriarchStanding
+        : "sovereign";
+      campaignRouteState.lastPressureRound = Number.isFinite(campaignRouteState.lastPressureRound) ? campaignRouteState.lastPressureRound : -1;
+      campaignRouteState.lastRealignmentRound = Number.isFinite(campaignRouteState.lastRealignmentRound) ? campaignRouteState.lastRealignmentRound : -1;
+      campaignRouteState.orderReserve = Math.max(0, Math.floor(campaignRouteState.orderReserve || 0));
+      campaignRouteState.lastDetachmentRound = Number.isFinite(campaignRouteState.lastDetachmentRound) ? campaignRouteState.lastDetachmentRound : -1;
+      campaignRouteState.lastDisciplineRound = Number.isFinite(campaignRouteState.lastDisciplineRound) ? campaignRouteState.lastDisciplineRound : -1;
+      campaignRouteState.lastCoronationRound = Number.isFinite(campaignRouteState.lastCoronationRound) ? campaignRouteState.lastCoronationRound : -1;
+      campaignRouteState.severantObjectivePhase = clamp(Math.floor(campaignRouteState.severantObjectivePhase || 0), 0, 4);
+      campaignRouteState.severantBriefedPhase = clamp(Math.floor(campaignRouteState.severantBriefedPhase || 0), 0, 4);
+      campaignRouteState.severantRewardedPhase = clamp(Math.floor(campaignRouteState.severantRewardedPhase || 0), 0, 3);
+      const crownedClaimantId = Number.isFinite(campaignRouteState.claimantCrownedQueenId)
+        ? Math.floor(campaignRouteState.claimantCrownedQueenId)
+        : null;
+      campaignRouteState.claimantCrownedQueenId = crownedClaimantId !== null && crownedClaimantId > 0 ? crownedClaimantId : null;
+      campaignRouteState.severantCrowned = Boolean(campaignRouteState.severantCrowned);
+      campaignRouteState.successionSecured = Boolean(campaignRouteState.successionSecured);
+      campaignRouteState.lastObjectiveAdvanceRound = Number.isFinite(campaignRouteState.lastObjectiveAdvanceRound)
+        ? campaignRouteState.lastObjectiveAdvanceRound
+        : -1;
+      campaignRouteState.severantCommandInstalled = Boolean(campaignRouteState.severantCommandInstalled);
+      campaignRouteState.severantCourtWomen = Array.isArray(campaignRouteState.severantCourtWomen)
+        ? campaignRouteState.severantCourtWomen
+            .map((profile) => normalizeSeverantCourtWoman({
+              ...(profile || {}),
+              category: profile?.category || "severant_court_woman",
+            }))
+            .filter(Boolean)
+        : [];
+    }
+
+    function ensureCabinetState() {
+      if (!cabinetState) {
+        cabinetState = {
+          warHead: null,
+          intelligenceHead: null,
+          householdHead: null,
+          fertilityHead: null,
+        };
+      }
+      for (const key of ["warHead", "intelligenceHead", "householdHead", "fertilityHead"]) {
+        cabinetState[key] = cabinetState[key] || null;
+      }
+    }
+
+    function ensureFertilityState() {
+      if (!fertilityState) {
+        fertilityState = {
+          preservedSeed: 22,
+          logistics: 18,
+          publicTrust: 34,
+          conceptionPolicy: "balanced",
+          provinceDemand: 12,
+          petitionsHandled: 0,
+          lastPetitionRound: -1,
+        };
+      }
+      fertilityState.preservedSeed = clamp(Number.isFinite(fertilityState.preservedSeed) ? fertilityState.preservedSeed : 22, 0, 100);
+      fertilityState.logistics = clamp(Number.isFinite(fertilityState.logistics) ? fertilityState.logistics : 18, 0, 100);
+      fertilityState.publicTrust = clamp(Number.isFinite(fertilityState.publicTrust) ? fertilityState.publicTrust : 34, 0, 100);
+      fertilityState.conceptionPolicy = fertilityState.conceptionPolicy || "balanced";
+      fertilityState.provinceDemand = clamp(Number.isFinite(fertilityState.provinceDemand) ? fertilityState.provinceDemand : 12, 0, 100);
+      fertilityState.petitionsHandled = Math.max(0, Math.floor(fertilityState.petitionsHandled || 0));
+      fertilityState.lastPetitionRound = Number.isFinite(fertilityState.lastPetitionRound) ? fertilityState.lastPetitionRound : -1;
+    }
+
+    function ensureUnderworldState() {
+      if (!underworldState) {
+        underworldState = {
+          vice: 18,
+          blackMarket: 22,
+          resistance: 16,
+          tunnels: 0,
+          tunnelLinks: 0,
+          mediaReach: 12,
+          liberatedCaptives: 0,
+          seedRoutes: 10,
+          seedLedger: 0,
+          crimePressure: 20,
+          crimeQueensBroken: 0,
+          crimeQueens: [],
+          nextCrimeQueenId: 1,
+          lastSlaveRouteRound: -1,
+          lastCrimeRound: -1,
+          lastBroadcastRound: -1,
+          lastSeedRound: -1,
+          lastTunnelRound: -1,
+          lastBlackSiteRound: -1,
+          lastOrderRouteRound: -1,
+        };
+      }
+      underworldState.vice = clamp(Number.isFinite(underworldState.vice) ? underworldState.vice : 18, 0, 100);
+      underworldState.blackMarket = clamp(Number.isFinite(underworldState.blackMarket) ? underworldState.blackMarket : 22, 0, 100);
+      underworldState.resistance = clamp(Number.isFinite(underworldState.resistance) ? underworldState.resistance : 16, 0, 100);
+      underworldState.tunnels = Math.max(0, Math.floor(underworldState.tunnels || 0));
+      underworldState.tunnelLinks = Math.max(0, Math.floor(underworldState.tunnelLinks || 0));
+      underworldState.mediaReach = clamp(Number.isFinite(underworldState.mediaReach) ? underworldState.mediaReach : 12, 0, 100);
+      underworldState.liberatedCaptives = Math.max(0, Math.floor(underworldState.liberatedCaptives || 0));
+      underworldState.seedRoutes = clamp(Number.isFinite(underworldState.seedRoutes) ? underworldState.seedRoutes : 10, 0, 100);
+      underworldState.seedLedger = Math.max(0, Math.floor(underworldState.seedLedger || 0));
+      underworldState.crimePressure = clamp(Number.isFinite(underworldState.crimePressure) ? underworldState.crimePressure : 20, 0, 100);
+      underworldState.crimeQueensBroken = Math.max(0, Math.floor(underworldState.crimeQueensBroken || 0));
+      underworldState.crimeQueens = Array.isArray(underworldState.crimeQueens)
+        ? underworldState.crimeQueens.map((entry) => normalizeCrimeQueenProfile({ ...entry }))
+        : [];
+      underworldState.nextCrimeQueenId = Math.max(1, Math.floor(underworldState.nextCrimeQueenId || (underworldState.crimeQueens.length + 1)));
+      underworldState.lastSlaveRouteRound = Number.isFinite(underworldState.lastSlaveRouteRound) ? underworldState.lastSlaveRouteRound : -1;
+      underworldState.lastCrimeRound = Number.isFinite(underworldState.lastCrimeRound) ? underworldState.lastCrimeRound : -1;
+      underworldState.lastBroadcastRound = Number.isFinite(underworldState.lastBroadcastRound) ? underworldState.lastBroadcastRound : -1;
+      underworldState.lastSeedRound = Number.isFinite(underworldState.lastSeedRound) ? underworldState.lastSeedRound : -1;
+      underworldState.lastTunnelRound = Number.isFinite(underworldState.lastTunnelRound) ? underworldState.lastTunnelRound : -1;
+      underworldState.lastBlackSiteRound = Number.isFinite(underworldState.lastBlackSiteRound) ? underworldState.lastBlackSiteRound : -1;
+      underworldState.lastOrderRouteRound = Number.isFinite(underworldState.lastOrderRouteRound) ? underworldState.lastOrderRouteRound : -1;
+    }
+
+    function fertilityPolicyLabel(value) {
+      return ({
+        strict: "Strict Eligibility",
+        balanced: "Balanced Allocation",
+        expansion: "Expansion First",
+      })[value] || "Balanced Allocation";
+    }
+
+    const CRIME_QUEEN_NAME_FIRST = ["Vexa", "Marrow", "Selka", "Nyra", "Kest", "Talia", "Riven", "Zoraya", "Mirelle", "Cassia"];
+    const CRIME_QUEEN_NAME_LAST = ["Blackveil", "Sable", "Knifebloom", "Voss", "Redhand", "Silkshade", "Morn", "Crowne", "Ashglass", "Vale"];
+    const CRIME_QUEEN_SPECIALTIES = ["contraband", "vice dens", "trafficking", "forged papers", "extortion", "blood-drug labs"];
+
+    function crimeQueenPortraitSeed(profile) {
+      const index = Math.max(0, (profile?.seed || 0) % GENERIC_RESTORED_QUEEN_POOL.length);
+      return GENERIC_RESTORED_QUEEN_POOL[index] || QUEEN_PORTRAITS[0];
+    }
+
+    function createCrimeQueenProfile(tile) {
+      const seed = underworldState.nextCrimeQueenId++;
+      const first = CRIME_QUEEN_NAME_FIRST[(seed - 1) % CRIME_QUEEN_NAME_FIRST.length];
+      const last = CRIME_QUEEN_NAME_LAST[(seed + 2) % CRIME_QUEEN_NAME_LAST.length];
+      return {
+        id: `crime_queen_${seed}`,
+        seed,
+        tileKey: `${tile.q},${tile.r}`,
+        region: duchessRegionName(tile),
+        name: `${first} ${last}`,
+        title: "Crime Queen",
+        specialty: CRIME_QUEEN_SPECIALTIES[(seed + 1) % CRIME_QUEEN_SPECIALTIES.length],
+        ambition: clamp(48 + randomBetween(-8, 18), 0, 100),
+        cruelty: clamp(46 + randomBetween(-8, 22), 0, 100),
+        leverage: clamp(44 + randomBetween(-8, 20), 0, 100),
+        trapLevel: 0,
+        recruitmentPressure: 0,
+        loyalty: clamp(26 + randomBetween(-6, 12), 0, 100),
+        trust: clamp(18 + randomBetween(-6, 10), 0, 100),
+        romance: clamp(8 + randomBetween(-4, 10), 0, 100),
+        attraction: clamp(20 + randomBetween(-6, 12), 0, 100),
+        assignment: "court",
+        converseUsedThisTurn: false,
+        flirtUsedThisTurn: false,
+        confideUsedThisTurn: false,
+        audienceUsedThisTurn: false,
+        giftUsedThisTurn: false,
+        spoilUsedThisTurn: false,
+        intimacyUsedThisTurn: false,
+        pregnant: false,
+        pregnancyStartRound: -1,
+        pregnancyDueRound: -1,
+        pregnancyOrigin: null,
+        children: 0,
+        status: "active",
+        notes: "Built her own gang in the collapse and now taxes fear, vice, and scarcity.",
+      };
+    }
+
+    function crimeQueenForTile(tile, createIfMissing = false) {
+      ensureUnderworldState();
+      if (!tile) return null;
+      const key = `${tile.q},${tile.r}`;
+      let profile = underworldState.crimeQueens.find((entry) => entry.tileKey === key && entry.status === "active") || null;
+      if (!profile && createIfMissing) {
+        profile = createCrimeQueenProfile(tile);
+        underworldState.crimeQueens.push(profile);
+      }
+      return profile;
+    }
+
+    function activeCrimeQueens() {
+      ensureUnderworldState();
+      return underworldState.crimeQueens.filter((entry) => entry.status === "active");
+    }
+
+    function ensureCrimeQueenPresence(minCount = 3) {
+      ensureUnderworldState();
+      const active = activeCrimeQueens();
+      if (active.length >= minCount) return active;
+      const candidates = playerUnderworldTiles().length
+        ? playerUnderworldTiles()
+        : tiles.filter((tile) => tile.terrain === "land");
+      const ranked = candidates
+        .map((tile) => ({ tile, systems: ensureTileSystems(tile) }))
+        .sort((a, b) => {
+          const aScore = (a.tile.capital ? 12 : 0) + (a.tile.estate ? 7 : 0) + a.systems.vicePressure + a.systems.slaveRouteRisk + a.systems.prosperity;
+          const bScore = (b.tile.capital ? 12 : 0) + (b.tile.estate ? 7 : 0) + b.systems.vicePressure + b.systems.slaveRouteRisk + b.systems.prosperity;
+          return bScore - aScore;
+        });
+      for (const entry of ranked) {
+        if (activeCrimeQueens().length >= minCount) break;
+        const existing = crimeQueenForTile(entry.tile, false);
+        if (existing) continue;
+        entry.systems.vicePressure = clamp(Math.max(entry.systems.vicePressure, 24), 0, 100);
+        entry.systems.underworldControl = clamp(Math.max(entry.systems.underworldControl, 20), 0, 100);
+        crimeQueenForTile(entry.tile, true);
+      }
+      return activeCrimeQueens();
+    }
+
+    function crimeQueenTile(profile) {
+      if (!profile?.tileKey) return null;
+      const [q, r] = String(profile.tileKey).split(",").map(Number);
+      return Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+    }
+
+    function normalizeCrimeQueenProfile(profile) {
+      if (!profile) return profile;
+      profile.trapLevel = Math.max(0, Math.floor(profile.trapLevel || 0));
+      profile.recruitmentPressure = Math.max(0, Math.floor(profile.recruitmentPressure || 0));
+      profile.loyalty = clamp(Number.isFinite(profile.loyalty) ? profile.loyalty : 30, 0, 100);
+      profile.trust = clamp(Number.isFinite(profile.trust) ? profile.trust : 20, 0, 100);
+      profile.romance = clamp(Number.isFinite(profile.romance) ? profile.romance : 10, 0, 100);
+      profile.attraction = clamp(Number.isFinite(profile.attraction) ? profile.attraction : 20, 0, 100);
+      profile.assignment = profile.assignment || "court";
+      profile.converseUsedThisTurn = Boolean(profile.converseUsedThisTurn);
+      profile.flirtUsedThisTurn = Boolean(profile.flirtUsedThisTurn);
+      profile.confideUsedThisTurn = Boolean(profile.confideUsedThisTurn);
+      profile.audienceUsedThisTurn = Boolean(profile.audienceUsedThisTurn);
+      profile.giftUsedThisTurn = Boolean(profile.giftUsedThisTurn);
+      profile.spoilUsedThisTurn = Boolean(profile.spoilUsedThisTurn);
+      profile.intimacyUsedThisTurn = Boolean(profile.intimacyUsedThisTurn);
+      profile.pregnant = Boolean(profile.pregnant);
+      profile.pregnancyStartRound = Number.isFinite(profile.pregnancyStartRound) ? profile.pregnancyStartRound : -1;
+      profile.pregnancyDueRound = Number.isFinite(profile.pregnancyDueRound) ? profile.pregnancyDueRound : -1;
+      profile.pregnancyOrigin = profile.pregnancyOrigin || null;
+      profile.children = Math.max(0, Math.floor(profile.children || 0));
+      profile.status = profile.status || "active";
+      return profile;
+    }
+
+    function courtCrimeQueens() {
+      ensureUnderworldState();
+      return underworldState.crimeQueens.filter((entry) => entry.status === "court");
+    }
+
+    function assetCrimeQueens() {
+      ensureUnderworldState();
+      return underworldState.crimeQueens.filter((entry) => entry.status === "asset");
+    }
+
+    function imprisonedCrimeQueens() {
+      ensureUnderworldState();
+      return underworldState.crimeQueens.filter((entry) => entry.status === "imprisoned");
+    }
+
+    function crimeQueenStatusLabel(profile) {
+      return ({
+        active: "Active Gang Leader",
+        asset: "Controlled Asset",
+        court: "Court Consort",
+        imprisoned: "Imprisoned Boss",
+      })[profile?.status] || "Unknown";
+    }
+
+    function crimeQueenBondLabel(profile) {
+      if ((profile.loyalty || 0) >= 70 && (profile.trust || 0) >= 60) return "Housebound";
+      if ((profile.trust || 0) >= 45) return "Settled";
+      if ((profile.romance || 0) >= 35) return "Tempted";
+      return "Dangerous";
+    }
+
+    function crimeQueenPregnancyStatusLabel(profile) {
+      if (!profile?.pregnant) return (profile?.children || 0) > 0 ? `Children ${profile.children}` : "No Heir";
+      const turnsLeft = Math.max(0, (profile.pregnancyDueRound || 0) - round);
+      if (turnsLeft <= 1) return `Late Pregnancy - Heirs ${profile.children || 0}`;
+      if (turnsLeft === 2) return `Pregnant - Mid Term - Heirs ${profile.children || 0}`;
+      return `Pregnant - Early Term - Heirs ${profile.children || 0}`;
+    }
+
+    function crimeQueenRelationshipTier(profile) {
+      const trust = profile?.trust || 0;
+      const romance = profile?.romance || 0;
+      const attraction = profile?.attraction || 0;
+      const total = trust * 0.42 + romance * 0.36 + attraction * 0.22;
+      if (total >= 76) return "devoted";
+      if (total >= 58) return "deep";
+      if (total >= 38) return "warm";
+      return "tentative";
+    }
+
+    function crimeQueenAffectionScene(profile) {
+      const tier = crimeQueenRelationshipTier(profile);
+      const tierLine = tier === "devoted"
+        ? "She no longer treats closeness like a temporary bargain. She is choosing to stay close."
+        : tier === "deep"
+        ? "The moment carries the weight of a bond that has moved well beyond raw leverage."
+        : tier === "warm"
+        ? "What began as dangerous chemistry is turning into something openly personal."
+        : "Even now, there is a testing, curious softness beneath all her caution.";
+      return `${profile.name} drops the harder edges for a rare private moment, trading the old underworld mask for deliberate warmth meant only for you.\n\n${tierLine}`;
+    }
+
+    function tryCrimeQueenPregnancy(profile, sourceLabel, intensity = 1) {
+      if (!profile || profile.pregnant) return false;
+      const chance = Math.min(
+        0.58,
+        0.08 +
+        intensity * 0.08 +
+        Math.max(0, profile.romance || 0) / 260 +
+        Math.max(0, profile.attraction || 0) / 240 +
+        Math.max(0, profile.trust || 0) / 420
+      );
+      if (Math.random() > chance) return false;
+      profile.pregnant = true;
+      profile.pregnancyStartRound = round;
+      profile.pregnancyDueRound = round + 3 + Math.floor(Math.random() * 2);
+      profile.pregnancyOrigin = sourceLabel;
+      profile.romance = Math.min(100, (profile.romance || 0) + 4);
+      profile.trust = Math.min(100, (profile.trust || 0) + 3);
+      queueEventModal({
+        label: "Pregnancy",
+        title: `${profile.name} Carries Your Child`,
+        body: `${profile.name} realizes your recent intimacy has left her pregnant.\n\nThe child will bind one more dangerous woman to your household and deepen her stake in your rule.`,
+        portrait: crimeQueenPortraitSeed(profile),
+        cta: "Continue",
+      });
+      addLog(`${profile.name} becomes pregnant after ${sourceLabel.toLowerCase()}.`);
+      return true;
+    }
+
+    function resolveCrimeQueenPregnancies() {
+      ensureUnderworldState();
+      for (const profile of underworldState.crimeQueens || []) {
+        if (!profile || !profile.pregnant || profile.pregnancyDueRound > round) continue;
+        profile.pregnant = false;
+        profile.pregnancyStartRound = -1;
+        profile.pregnancyDueRound = -1;
+        profile.pregnancyOrigin = null;
+        profile.children = (profile.children || 0) + 1;
+        profile.romance = Math.min(100, (profile.romance || 0) + 6);
+        profile.trust = Math.min(100, (profile.trust || 0) + 5);
+        profile.loyalty = Math.min(100, (profile.loyalty || 0) + 4);
+        const heir = createHeirFromBirth({
+          type: "crime_queen",
+          id: profile.id,
+          name: profile.name,
+        });
+        queueEventModal({
+          label: "Birth",
+          title: `${profile.name} Gives Birth`,
+          body: `${profile.name} gives birth safely within your household.\n\n${heir.name} is hidden inside your dynasty like any other son, and the former underworld queen is drawn tighter into the family she once stood outside.`,
+          portrait: crimeQueenPortraitSeed(profile),
+          cta: "Acknowledge The Heir",
+        });
+        addLog(`${profile.name} gives birth to your child.`);
+      }
+    }
+
+    function recruitCrimeQueenProfile(profile, tile, sourceLabel = "underworld pressure") {
+      if (!profile) return false;
+      const localTile = tile || crimeQueenTile(profile);
+      const systems = localTile ? ensureTileSystems(localTile) : null;
+      if (systems) {
+        systems.vicePressure = clamp(systems.vicePressure - 18, 0, 100);
+        systems.underworldControl = clamp(systems.underworldControl + 14, 0, 100);
+        systems.security = clamp(systems.security + 5, 0, 100);
+      }
+      underworldState.blackMarket = clamp(underworldState.blackMarket + 4, 0, 100);
+      underworldState.crimeQueensBroken += 1;
+      profile.status = "asset";
+      profile.assignment = "underworld";
+      profile.loyalty = clamp((profile.loyalty || 0) + 10, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + 8, 0, 100);
+      profile.notes = `${profile.name} was bent into service through ${sourceLabel} and now runs a controlled shadow network for you.`;
+      addLog(`${profile.name} is turned into a controlled underworld asset instead of being caged.`);
+      return true;
+    }
+
+    function takeCrimeQueenIntoCourt(profile, tile, sourceLabel = "your summons") {
+      if (!profile) return false;
+      const localTile = tile || crimeQueenTile(profile);
+      const systems = localTile ? ensureTileSystems(localTile) : null;
+      if (systems) {
+        systems.vicePressure = clamp(systems.vicePressure - 16, 0, 100);
+        systems.underworldControl = clamp(systems.underworldControl + 10, 0, 100);
+        systems.security = clamp(systems.security + 4, 0, 100);
+      }
+      profile.status = "court";
+      profile.assignment = "court";
+      profile.loyalty = clamp((profile.loyalty || 0) + 16, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + 12, 0, 100);
+      profile.attraction = clamp((profile.attraction || 0) + 8, 0, 100);
+      profile.notes = `${profile.name} was brought into your household through ${sourceLabel}.`;
+      addLog(`${profile.name} is taken into your court rather than your cells.`);
+      return true;
+    }
+
+    function converseCrimeQueen(profile) {
+      if (!profile || profile.converseUsedThisTurn) return false;
+      profile.converseUsedThisTurn = true;
+      profile.trust = clamp((profile.trust || 0) + 4, 0, 100);
+      profile.loyalty = clamp((profile.loyalty || 0) + 2, 0, 100);
+      addLog(`${profile.name} leaves your private talk more measured and more aware of her place in your court.`);
+      render();
+      return true;
+    }
+
+    function audienceCrimeQueen(profile) {
+      if (!profile || profile.audienceUsedThisTurn) return false;
+      profile.audienceUsedThisTurn = true;
+      profile.romance = clamp((profile.romance || 0) + 5, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + 3, 0, 100);
+      profile.attraction = clamp((profile.attraction || 0) + 4, 0, 100);
+      addLog(`${profile.name} adjusts quickly to personal audience and court attention.`);
+      render();
+      return true;
+    }
+
+    function flirtCrimeQueen(profile) {
+      if (!profile || profile.flirtUsedThisTurn) return false;
+      profile.flirtUsedThisTurn = true;
+      profile.attraction = clamp((profile.attraction || 0) + 6, 0, 100);
+      profile.romance = clamp((profile.romance || 0) + 5, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + 2, 0, 100);
+      addLog(`${profile.name} answers your flirting with amused danger and obvious interest.`);
+      render();
+      return true;
+    }
+
+    function confideCrimeQueen(profile) {
+      if (!profile || profile.confideUsedThisTurn) return false;
+      profile.confideUsedThisTurn = true;
+      profile.trust = clamp((profile.trust || 0) + 5, 0, 100);
+      profile.loyalty = clamp((profile.loyalty || 0) + 3, 0, 100);
+      profile.notes = `${profile.name} now carries more of your private truth and guards it like personal leverage turned inward toward loyalty.`;
+      addLog(`${profile.name} receives your confidence and grows more personally tied to your household.`);
+      render();
+      return true;
+    }
+
+    function giftCrimeQueen(profile) {
+      if (!profile || profile.giftUsedThisTurn) return false;
+      if (treasury < 2) {
+        addLog("You need 2 crowns to reward her properly.");
+        return false;
+      }
+      treasury = Math.max(0, treasury - 2);
+      profile.giftUsedThisTurn = true;
+      profile.loyalty = clamp((profile.loyalty || 0) + 5, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + 4, 0, 100);
+      addLog(`${profile.name} accepts your gift and grows easier to manage inside the household.`);
+      render();
+      return true;
+    }
+
+    function spoilFromCrimeQueen(profile) {
+      if (!profile || profile.spoilUsedThisTurn) return false;
+      profile.spoilUsedThisTurn = true;
+      const treasuryGift = 1 + ((profile.leverage || 0) >= 70 ? 1 : 0);
+      treasury += treasuryGift;
+      profile.loyalty = clamp((profile.loyalty || 0) + 2, 0, 100);
+      profile.romance = clamp((profile.romance || 0) + 3, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + 3, 0, 100);
+      addLog(`${profile.name} uses her old network to spoil you and quietly enrich the household. Treasury +${treasuryGift}.`);
+      render();
+      return true;
+    }
+
+    function intimacyCrimeQueen(profile) {
+      if (!profile || profile.intimacyUsedThisTurn) return false;
+      profile.intimacyUsedThisTurn = true;
+      const tier = crimeQueenRelationshipTier(profile);
+      profile.romance = clamp((profile.romance || 0) + (tier === "devoted" ? 9 : tier === "deep" ? 8 : 7), 0, 100);
+      profile.attraction = clamp((profile.attraction || 0) + (tier === "tentative" ? 5 : 6), 0, 100);
+      profile.loyalty = clamp((profile.loyalty || 0) + 2, 0, 100);
+      profile.trust = clamp((profile.trust || 0) + (tier === "tentative" ? 3 : 4), 0, 100);
+      queueEventModal({
+        label: "Private Intimacy",
+        title: `${profile.name} Draws Closer`,
+        body: crimeQueenAffectionScene(profile),
+        portrait: crimeQueenPortraitSeed(profile),
+        cta: "Continue",
+      });
+      const intensity = tier === "devoted"
+        ? 1.18
+        : tier === "deep"
+        ? 1.12
+        : tier === "warm"
+        ? 1.06
+        : 1.02;
+      tryCrimeQueenPregnancy(profile, "Private Intimacy", intensity);
+      render();
+      return true;
+    }
+
+    function assignCrimeQueen(profile, assignment) {
+      if (!profile) return false;
+      profile.assignment = assignment;
+      if (assignment === "underworld") {
+        underworldState.blackMarket = clamp(underworldState.blackMarket + 2, 0, 100);
+      } else if (assignment === "intrigue") {
+        underworldState.mediaReach = clamp(underworldState.mediaReach + 1, 0, 100);
+      }
+      addLog(`${profile.name} is now assigned to ${assignment}.`);
+      render();
+      return true;
+    }
+
+    function openCrimeQueenDossier(profileId) {
+      ensureUnderworldState();
+      const profile = underworldState.crimeQueens.find((entry) => entry.id === profileId);
+      if (!profile) return false;
+      const tile = crimeQueenTile(profile);
+      const bodyParts = [
+        `${profile.name} controls or once controlled a ${profile.specialty} network in ${profile.region}.`,
+        `Status: ${crimeQueenStatusLabel(profile)}`,
+        `Bond: ${crimeQueenBondLabel(profile)}`,
+        `Loyalty ${profile.loyalty} • Trust ${profile.trust} • Romance ${profile.romance} • Attraction ${profile.attraction}`,
+        `Ambition ${profile.ambition} • Cruelty ${profile.cruelty} • Leverage ${profile.leverage}`,
+        `Assignment: ${profile.assignment || "none"}`,
+        `Notes: ${profile.notes}`,
+      ];
+      if (tile) {
+        const systems = ensureTileSystems(tile);
+        bodyParts.push(`Region Pressure: Vice ${systems.vicePressure} • Security ${systems.security} • Underworld ${systems.underworldControl}`);
+      }
+
+      const actions = [];
+      if (profile.status === "active") {
+        actions.push(
+          {
+            label: "Set Honeypot",
+            onClick: () => {
+              dismissEventModal(true);
+              stageCrimeHoneypot(profile);
+            },
+          },
+          {
+            label: "Pressure Recruit",
+            onClick: () => {
+              dismissEventModal(true);
+              pressureRecruitCrimeQueen(profile);
+            },
+          },
+          {
+            label: "Take To Court",
+            onClick: () => {
+              dismissEventModal(true);
+              takeCrimeQueenIntoCourt(profile, tile, "dossier intervention");
+              render();
+            },
+          }
+        );
+      } else if (profile.status === "asset") {
+        actions.push(
+          {
+            label: "Bring To Court",
+            onClick: () => {
+              dismissEventModal(true);
+              takeCrimeQueenIntoCourt(profile, tile, "promotion from shadow service");
+              render();
+            },
+          },
+          {
+            label: "Assign Underworld",
+            onClick: () => {
+              dismissEventModal(true);
+              assignCrimeQueen(profile, "underworld");
+            },
+          },
+          {
+            label: "Assign Intrigue",
+            onClick: () => {
+              dismissEventModal(true);
+              assignCrimeQueen(profile, "intrigue");
+            },
+          }
+        );
+      } else if (profile.status === "court") {
+        actions.push(
+          {
+            label: "Converse",
+            onClick: () => {
+              dismissEventModal(true);
+              converseCrimeQueen(profile);
+            },
+          },
+          {
+            label: "Private Audience",
+            onClick: () => {
+              dismissEventModal(true);
+              audienceCrimeQueen(profile);
+            },
+          },
+          {
+            label: "Gift Her",
+            onClick: () => {
+              dismissEventModal(true);
+              giftCrimeQueen(profile);
+            },
+          }
+        );
+        actions.push(
+          {
+            label: "Flirt",
+            onClick: () => {
+              dismissEventModal(true);
+              flirtCrimeQueen(profile);
+            },
+          },
+          {
+            label: "Confide",
+            onClick: () => {
+              dismissEventModal(true);
+              confideCrimeQueen(profile);
+            },
+          },
+          {
+            label: "Intimacy",
+            onClick: () => {
+              dismissEventModal(true);
+              intimacyCrimeQueen(profile);
+            },
+          }
+        );
+      }
+
+      actions.push({
+        label: "Close Dossier",
+        onClick: () => dismissEventModal(),
+      });
+
+      queueEventModal({
+        label: "Crime Queen Dossier",
+        title: `${profile.name} - ${crimeQueenStatusLabel(profile)}`,
+        body: bodyParts.join("\n\n"),
+        portrait: crimeQueenPortraitSeed(profile),
+        actions,
+      });
+      return true;
+    }
+
+    function imprisonCrimeQueenProfile(profile, tile, sourceLabel = "criminal crackdown") {
+      if (!profile) return false;
+      const localTile = tile || crimeQueenTile(profile);
+      const systems = localTile ? ensureTileSystems(localTile) : null;
+      if (systems) {
+        systems.vicePressure = clamp(systems.vicePressure - 26, 0, 100);
+        systems.security = clamp(systems.security + 8, 0, 100);
+        systems.underworldControl = clamp(systems.underworldControl + 6, 0, 100);
+      }
+      underworldState.crimePressure = clamp(underworldState.crimePressure - 4, 0, 100);
+      profile.status = "imprisoned";
+      profile.notes = `${profile.name} was caged after ${sourceLabel}.`;
+      addPrisoner({
+        category: "war_captive",
+        name: profile.name,
+        title: "Underworld Prisoner",
+        spirit: Math.max(38, profile.ambition),
+        fear: Math.max(44, Math.floor(profile.cruelty * 0.8)),
+        compliance: 28,
+        health: 68,
+        notes: `Held after her ${profile.specialty} empire in ${profile.region} was broken apart.`,
+      });
+      return true;
+    }
+
+    function stageCrimeHoneypot(profile) {
+      ensureUnderworldState();
+      if (!profile || profile.status !== "active") return false;
+      const tile = crimeQueenTile(profile);
+      if (!tile) {
+        addLog("That crime queen has no known territory to bait right now.");
+        return false;
+      }
+      if (treasury < 2) {
+        addLog("You need 2 crowns to set a convincing honeypot.");
+        return false;
+      }
+      treasury = Math.max(0, treasury - 2);
+      profile.trapLevel = Math.min(3, (profile.trapLevel || 0) + 1);
+      profile.notes = `${profile.name} is being lured toward a false corridor, planted buyers, and trap houses in ${profile.region}.`;
+      const systems = ensureTileSystems(tile);
+      systems.underworldControl = clamp(systems.underworldControl + 4, 0, 100);
+      systems.security = clamp(systems.security + 2, 0, 100);
+      const chance = clamp(0.24 + profile.trapLevel * 0.13 + Math.max(0, underworldState.mediaReach - 20) / 180, 0.18, 0.82);
+      if (Math.random() <= chance) {
+        queueEventModal({
+          label: "Honeypot",
+          title: `${profile.name} Walks Into The Trap`,
+          body: `Your false route works. ${profile.name} bites on a planted corridor in ${profile.region}, exposing handlers, stash sites, and herself.\n\nYou can convert the catch into service or drag her straight to prison.`,
+          portrait: crimeQueenPortraitSeed(profile),
+          actions: [
+            {
+              label: "Recruit Through Leverage",
+              onClick: () => {
+                recruitCrimeQueenProfile(profile, tile, "a successful honeypot");
+                dismissEventModal(true);
+                render();
+              },
+            },
+            {
+              label: "Bring Her To Court",
+              onClick: () => {
+                takeCrimeQueenIntoCourt(profile, tile, "a successful honeypot");
+                dismissEventModal(true);
+                render();
+              },
+            },
+            {
+              label: "Throw Her In Chains",
+              onClick: () => {
+                imprisonCrimeQueenProfile(profile, tile, "a successful honeypot");
+                dismissEventModal(true);
+                render();
+              },
+            },
+          ],
+        });
+      } else {
+        addLog(`A honeypot is prepared against ${profile.name} in ${profile.region}.`);
+        render();
+      }
+      return true;
+    }
+
+    function pressureRecruitCrimeQueen(profile) {
+      ensureUnderworldState();
+      if (!profile || profile.status !== "active") return false;
+      const tile = crimeQueenTile(profile);
+      if (!tile) {
+        addLog("That crime queen cannot be pressured without a known operating region.");
+        return false;
+      }
+      profile.recruitmentPressure = Math.min(3, (profile.recruitmentPressure || 0) + 1);
+      const systems = ensureTileSystems(tile);
+      systems.underworldControl = clamp(systems.underworldControl + 3, 0, 100);
+      const chance = clamp(
+        0.18 +
+        profile.recruitmentPressure * 0.12 +
+        profile.trapLevel * 0.08 +
+        Math.max(0, systems.underworldControl - systems.vicePressure) / 140,
+        0.14,
+        0.8
+      );
+      if (Math.random() <= chance) {
+        recruitCrimeQueenProfile(profile, tile, "recruitment pressure");
+        addLog(`${profile.name} folds and agrees to work under your criminal discipline.`);
+      } else {
+        profile.notes = `${profile.name} is being squeezed by bribes, pressure, and dead-end markets in ${profile.region}.`;
+        addLog(`You tighten the screws on ${profile.name}, but she has not yielded yet.`);
+      }
+      render();
+      return true;
+    }
+
+    function rebelCellStanceLabel(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (st.trust >= 45 && st.romance >= 30) return "Aligned";
+      if (st.trust >= 20) return "Cooperative";
+      if (st.hate >= 35) return "Volatile";
+      return "Transactional";
+    }
+
+    function rebelCellMotivation(queenFaction) {
+      const faction = factionById(queenFaction);
+      const st = queenEntry(queenFaction);
+      if (leaderState[queenFaction]?.rebelAgainst !== null && leaderState[queenFaction]?.rebelAgainst !== undefined) {
+        return `Break ${factionById(leaderState[queenFaction].rebelAgainst)?.leader || "her overlord"} and reclaim command.`;
+      }
+      if (st.underworldRiseSupport >= 3) return "Convert hidden support into a throne of her own.";
+      if (st.hate >= 22) return "Survive, regroup, and strike back at the court that caged her.";
+      if (st.romance >= 25) return "Bind her fortunes to your rise and share in the new order.";
+      return "Wait below the surface for the next opening.";
+    }
+
+    function underworldFactionKindLabel(kind) {
+      return ({
+        active_rebel: "Rebel Queen",
+        hidden_claimant: "Hidden Claimant",
+        off_field_cell: "Underground Cell",
+      })[kind] || "Underground Contact";
+    }
+
+    function underworldFactionBadge(kind) {
+      const label = ({
+        active_rebel: "REBEL CELL",
+        hidden_claimant: "CLAIMANT CELL",
+        off_field_cell: "SHADOW CELL",
+      })[kind] || "UNDERGROUND";
+      const fill = ({
+        active_rebel: "#6f1d2c",
+        hidden_claimant: "#24435c",
+        off_field_cell: "#3f3a58",
+      })[kind] || "#2f3746";
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="${fill}"/>
+              <stop offset="100%" stop-color="#111927"/>
+            </linearGradient>
+          </defs>
+          <rect width="640" height="320" rx="24" fill="url(#bg)"/>
+          <rect x="28" y="28" width="584" height="264" rx="18" fill="rgba(255,255,255,0.06)" stroke="rgba(240,207,132,0.42)" stroke-width="4"/>
+          <text x="320" y="138" text-anchor="middle" fill="#f0cf84" font-size="30" font-family="Georgia, serif" letter-spacing="6">UNDERGROUND</text>
+          <text x="320" y="190" text-anchor="middle" fill="#f6edd2" font-size="44" font-family="Georgia, serif" font-weight="700">${label}</text>
+          <text x="320" y="238" text-anchor="middle" fill="rgba(255,255,255,0.72)" font-size="20" font-family="Consolas, monospace">PLACEHOLDER BANNER</text>
+        </svg>
+      `.trim();
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+
+    function openUnderworldFactionDossier(queenFaction, kind) {
+      const faction = factionById(queenFaction);
+      if (!faction) return false;
+      const st = queenEntry(queenFaction);
+      const cap = factionCapitalTile(queenFaction);
+      const authorityId = reserveAuthorityForQueen(queenFaction);
+      const authority = authorityId === null || authorityId === undefined ? null : factionById(authorityId);
+      const portrait = queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction];
+      const bodyParts = [
+        `${faction.leader} currently operates as a ${underworldFactionKindLabel(kind).toLowerCase()} inside the shadow war.`,
+        `Stance: ${rebelCellStanceLabel(queenFaction)}`,
+        `Motive: ${rebelCellMotivation(queenFaction)}`,
+        `Trust ${st.trust} • Romance ${st.romance} • Attraction ${st.attraction} • Hate ${st.hate} • Momentum ${st.underworldRiseSupport}`,
+      ];
+      if (kind === "active_rebel") {
+        bodyParts.push(`Open rebellion target: ${factionById(leaderState[queenFaction]?.rebelAgainst)?.leader || "a rival court"}`);
+        if (cap) bodyParts.push(`Capital troops: ${cap.troops}`);
+      } else if (kind === "hidden_claimant") {
+        bodyParts.push(authority ? `Current authority: ${authority.leader}` : "Current authority: between courts");
+      } else if (kind === "off_field_cell") {
+        const location = undergroundTileForQueen(queenFaction);
+        bodyParts.push(location ? `Current hide site: ${duchessRegionName(location)} (${location.q}, ${location.r})` : "Current hide site: concealed");
+      }
+
+      const actions = [];
+      if (kind === "active_rebel") {
+        actions.push(
+          {
+            label: "Send 4 Troops",
+            onClick: () => {
+              dismissEventModal(true);
+              sendArmyToRebelQueen(queenFaction, 4);
+            },
+          },
+          {
+            label: "Moonlit Rendezvous",
+            onClick: () => {
+              dismissEventModal(true);
+              romanceRebelQueenInUnderworld(queenFaction);
+            },
+          },
+          {
+            label: "Support For Intimacy",
+            onClick: () => {
+              dismissEventModal(true);
+              proposeSupportForIntimacy(queenFaction, "rebel");
+            },
+          },
+          {
+            label: "Support Her Defection",
+            onClick: () => {
+              dismissEventModal(true);
+              proposeSupportForHaremJoin(queenFaction, "rebel");
+            },
+          }
+        );
+      } else if (kind === "hidden_claimant") {
+        actions.push(
+          {
+            label: "Fund Rebellion / Escape (3)",
+            onClick: () => {
+              dismissEventModal(true);
+              fundKingdomlessQueen(queenFaction, 3);
+            },
+          },
+          {
+            label: "Court In Secret",
+            onClick: () => {
+              dismissEventModal(true);
+              romanceKingdomlessQueen(queenFaction);
+            },
+          },
+          {
+            label: "Patronage For Intimacy",
+            onClick: () => {
+              dismissEventModal(true);
+              proposeSupportForIntimacy(queenFaction, "claimant");
+            },
+          },
+          {
+            label: "Offer Sanctuary In Harem",
+            onClick: () => {
+              dismissEventModal(true);
+              proposeSupportForHaremJoin(queenFaction, "claimant");
+            },
+          }
+        );
+      } else {
+        actions.push(
+          {
+            label: st.underworldAssigned ? "Withdraw" : "Assign",
+            onClick: () => {
+              dismissEventModal(true);
+              toggleUnderworldQueen(queenFaction);
+            },
+          },
+          {
+            label: "Conspire",
+            onClick: () => {
+              dismissEventModal(true);
+              conspireWithQueen(queenFaction);
+            },
+          },
+          {
+            label: "Underground Date",
+            onClick: () => {
+              dismissEventModal(true);
+              romanceUnderworldQueen(queenFaction);
+            },
+          }
+        );
+      }
+
+      actions.push(
+        {
+          label: "Converse",
+          onClick: () => {
+            dismissEventModal(true);
+            converseUndergroundQueen(queenFaction);
+          },
+        },
+        {
+          label: "Use Spies",
+          onClick: () => {
+            dismissEventModal(true);
+            influenceUndergroundQueenWithSpies(queenFaction);
+          },
+        },
+        {
+          label: "Close Dossier",
+          onClick: () => dismissEventModal(),
+        }
+      );
+
+      queueEventModal({
+        label: "Dossier",
+        title: `${faction.leader} - ${underworldFactionKindLabel(kind)}`,
+        body: bodyParts.join("\n\n"),
+        portrait,
+        actions,
+      });
+      return true;
+    }
+
+    function tunnelNodesForFaction(factionId = playerFactionId()) {
+      return ownedTiles(factionId).filter((tile) => tile.terrain === "land" && ensureTileSystems(tile).tunnelNode);
+    }
+
+    function tunnelExitForMove(fromTile, toTile, factionId) {
+      if (!fromTile || !toTile) return null;
+      if (!ensureTileSystems(fromTile).tunnelNode) return null;
+      const exits = tunnelNodesForFaction(factionId).filter((tile) => tile !== fromTile);
+      return exits.find((exit) => inTroopRange(exit, toTile)) || null;
+    }
+
+    function inOperationalMoveRange(a, b, factionId = a?.owner) {
+      if (!a || !b) return false;
+      return inTroopRange(a, b) || Boolean(tunnelExitForMove(a, b, factionId));
+    }
+
+    function tilesInOperationalMoveRange(tile, factionId = tile?.owner) {
+      return tiles.filter((candidate) => candidate !== tile && inOperationalMoveRange(tile, candidate, factionId));
+    }
+
+    function hasTunnelSpyAccess(tile, factionId = playerFactionId()) {
+      if (!tile) return false;
+      return tunnelNodesForFaction(factionId).some((node) => hexDistance(node, tile) <= 2);
+    }
+
+    function spyTunnelBonus(tile, factionId = playerFactionId()) {
+      return hasTunnelSpyAccess(tile, factionId) ? 1 : 0;
+    }
+
+    function playerUnderworldTiles() {
+      return ownedTiles(playerFactionId()).filter((tile) => tile.terrain === "land");
+    }
+
+    function tunnelNodeCount() {
+      return playerUnderworldTiles().filter((tile) => ensureTileSystems(tile).tunnelNode).length;
+    }
+
+    function expandTunnelNetwork() {
+      ensureUnderworldState();
+      const provinces = playerUnderworldTiles().filter((tile) => !ensureTileSystems(tile).tunnelNode);
+      if (!provinces.length) {
+        addLog("Every major province already has a tunnel node.");
+        return false;
+      }
+      if (treasury < 4) {
+        addLog("You need 4 crowns to dig a new tunnel route.");
+        return false;
+      }
+      const tile = provinces.sort((a, b) => {
+        const sa = ensureTileSystems(a);
+        const sb = ensureTileSystems(b);
+        return (sb.slaveRouteRisk + sb.underworldControl) - (sa.slaveRouteRisk + sa.underworldControl);
+      })[0];
+      const systems = ensureTileSystems(tile);
+      treasury = Math.max(0, treasury - 4);
+      systems.tunnelNode = true;
+      systems.underworldControl = clamp(systems.underworldControl + 14, 0, 100);
+      systems.security = clamp(systems.security + 6, 0, 100);
+      systems.loyalty = clamp(systems.loyalty + 4, 0, 100);
+      underworldState.tunnels += 1;
+      underworldState.tunnelLinks = Math.max(0, underworldState.tunnels - 1);
+      underworldState.lastTunnelRound = round;
+      addLog(`Tunnel crews open a hidden route beneath ${duchessRegionName(tile)}.`);
+      render();
+      return true;
+    }
+
+    function freeSlaveRoute(tile) {
+      ensureUnderworldState();
+      ensureFertilityState();
+      ensureRestorationState();
+      if (!tile) return false;
+      const systems = ensureTileSystems(tile);
+      if (systems.slaveRouteRisk < 16) {
+        addLog(`${duchessRegionName(tile)} has no major captive route to break right now.`);
+        return false;
+      }
+      systems.slaveRouteRisk = clamp(systems.slaveRouteRisk - 24, 0, 100);
+      systems.vicePressure = clamp(systems.vicePressure - 12, 0, 100);
+      systems.underworldControl = clamp(systems.underworldControl + 10, 0, 100);
+      systems.dissidentPresence = clamp(systems.dissidentPresence + 8, 0, 100);
+      systems.loyalty = clamp(systems.loyalty + 6, 0, 100);
+      const freed = Math.max(2, Math.floor((systems.prosperity + underworldState.resistance) / 18));
+      underworldState.liberatedCaptives += freed;
+      underworldState.resistance = clamp(underworldState.resistance + 5, 0, 100);
+      underworldState.lastSlaveRouteRound = round;
+      restorationState.populationStability = clamp(restorationState.populationStability + 2, 0, 100);
+      fertilityState.publicTrust = clamp(fertilityState.publicTrust + 2, 0, 100);
+      addLog(`Your cells break a captive route in ${duchessRegionName(tile)} and free ${freed} people into your protection.`);
+      render();
+      return true;
+    }
+
+    function seedUndergroundRestoration(tile) {
+      ensureUnderworldState();
+      ensureFertilityState();
+      ensureRestorationState();
+      if (!tile) return false;
+      if (fertilityState.preservedSeed < 6) {
+        addLog("The Fertility Department does not have enough preserved seed for a covert distribution run.");
+        return false;
+      }
+      const systems = ensureTileSystems(tile);
+      fertilityState.preservedSeed = clamp(fertilityState.preservedSeed - 6, 0, 100);
+      fertilityState.logistics = clamp(fertilityState.logistics + 1, 0, 100);
+      fertilityState.publicTrust = clamp(fertilityState.publicTrust + 2, 0, 100);
+      restorationState.birthRecovery = clamp(restorationState.birthRecovery + 2, 0, 100);
+      systems.familyFulfillment = clamp(systems.familyFulfillment + 12, 0, 100);
+      systems.familyDemand = clamp(systems.familyDemand - 8, 0, 100);
+      systems.loyalty = clamp(systems.loyalty + 3, 0, 100);
+      underworldState.seedRoutes = clamp(underworldState.seedRoutes + 4, 0, 100);
+      underworldState.seedLedger += 1;
+      underworldState.lastSeedRound = round;
+      addLog(`A covert fertility shipment reaches ${duchessRegionName(tile)} through your hidden channels.`);
+      render();
+      return true;
+    }
+
+    function runShadowBroadcast() {
+      ensureUnderworldState();
+      ensureRestorationState();
+      if (treasury < 3) {
+        addLog("You need 3 crowns to finance a secure dissident broadcast.");
+        return false;
+      }
+      treasury = Math.max(0, treasury - 3);
+      underworldState.mediaReach = clamp(underworldState.mediaReach + 8, 0, 100);
+      underworldState.resistance = clamp(underworldState.resistance + 4, 0, 100);
+      restorationState.orderContamination = clamp(restorationState.orderContamination - 4, 0, 100);
+      restorationState.publicDependence = clamp(restorationState.publicDependence - 2, 0, 100);
+      for (const tile of shuffled(playerUnderworldTiles()).slice(0, 3)) {
+        const systems = ensureTileSystems(tile);
+        systems.dissidentPresence = clamp(systems.dissidentPresence + 12, 0, 100);
+        systems.loyalty = clamp(systems.loyalty + 2, 0, 100);
+      }
+      underworldState.lastBroadcastRound = round;
+      addLog("Your secret media cells push a new wave of forbidden broadcasts through the provinces.");
+      render();
+      return true;
+    }
+
+    function breakCrimeQueen(tile) {
+      ensureUnderworldState();
+      if (!tile) return false;
+      const systems = ensureTileSystems(tile);
+      if (systems.vicePressure < 18) {
+        addLog(`${duchessRegionName(tile)} has no dominant crime queen to target right now.`);
+        return false;
+      }
+      const profile = crimeQueenForTile(tile, true);
+      queueEventModal({
+        label: "Crime Queen",
+        title: `${profile.name} Is Cornered In ${duchessRegionName(tile)}`,
+        body: `${profile.name}, known locally as the ${profile.title.toLowerCase()} of ${duchessRegionName(tile)}, has been dragged into the light by your network.\n\nHer trade is ${profile.specialty}. Her leverage is real. Decide whether she becomes your controlled asset or a prisoner under your guard.`,
+        portrait: crimeQueenPortraitSeed(profile),
+        actions: [
+            {
+              label: "Break And Recruit",
+              onClick: () => {
+                recruitCrimeQueenProfile(profile, tile, "direct takedown");
+                dismissEventModal(true);
+                render();
+              },
+            },
+            {
+              label: "Take Into Court",
+              onClick: () => {
+                takeCrimeQueenIntoCourt(profile, tile, "direct takedown");
+                dismissEventModal(true);
+                render();
+              },
+            },
+            {
+              label: "Imprison Her",
+              onClick: () => {
+                imprisonCrimeQueenProfile(profile, tile, "direct takedown");
+                dismissEventModal(true);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerUnderworldOpportunity() {
+      ensureUnderworldState();
+      const provinces = shuffled(playerUnderworldTiles())
+        .map((tile) => ({ tile, systems: ensureTileSystems(tile) }))
+        .filter(({ systems }) => systems.slaveRouteRisk >= 24 || systems.vicePressure >= 28);
+      if (!provinces.length || underworldState.lastCrimeRound === round) return false;
+      const pick = provinces[0];
+      underworldState.lastCrimeRound = round;
+      queueEventModal({
+        label: "Underworld Opportunity",
+        title: `${duchessRegionName(pick.tile)} Boils Over`,
+        body: `Your hidden network reports a hot window in ${duchessRegionName(pick.tile)}.\n\nSlave routes, contraband corridors, and dissident safehouses are colliding. Move now and you can reshape who controls the shadows there.\n\nVice Pressure ${pick.systems.vicePressure} • Captive Route Risk ${pick.systems.slaveRouteRisk} • Dissident Presence ${pick.systems.dissidentPresence}`,
+        actions: [
+          {
+            label: "Free The Captives",
+            onClick: () => {
+              freeSlaveRoute(pick.tile);
+              dismissEventModal(true);
+            },
+          },
+          {
+            label: "Break The Crime Queen",
+            onClick: () => {
+              dismissEventModal(true);
+              breakCrimeQueen(pick.tile);
+            },
+          },
+          {
+            label: "Leave The Shadows Quiet",
+            onClick: () => dismissEventModal(),
+          },
+        ],
+      });
+      return true;
+    }
+
+    function queueSeverantBlackSiteEventForTile(tile) {
+      ensureUnderworldState();
+      ensureRestorationState();
+      ensureHighSeverantState();
+      if (!tile) return false;
+      const target = { tile, systems: ensureTileSystems(tile) };
+      queueEventModal({
+        label: "Black Site",
+        title: `${SEVERANT_ORDER_NAME} Black Site Exposed`,
+        body: `Your cells uncover a buried ${SEVERANT_ORDER_NAME} black site beneath ${duchessRegionName(target.tile)}.\n\nIt holds records, drugs, and captive-routing evidence tied to the old regime. Move carefully and you can hurt the Order without tearing the province apart.\n\nContamination ${target.systems.severantContamination} • Captive Route Risk ${target.systems.slaveRouteRisk}`,
+        actions: [
+          {
+            label: "Storm And Free Them",
+            onClick: () => {
+              freeSlaveRoute(target.tile);
+              target.systems.severantContamination = clamp(target.systems.severantContamination - 14, 0, 100);
+              highSeverantState.exposure = clamp(highSeverantState.exposure + 4, 0, 100);
+              dynastyState.orderCellsBroken = Math.max(0, (dynastyState.orderCellsBroken || 0) + 1);
+              dismissEventModal(true);
+            },
+          },
+          {
+            label: "Seize The Archive",
+            onClick: () => {
+              target.systems.severantContamination = clamp(target.systems.severantContamination - 8, 0, 100);
+              restorationState.reformProgress = clamp(restorationState.reformProgress + 4, 0, 100);
+              highSeverantState.interest = clamp(highSeverantState.interest + 3, 0, 100);
+              addPrisoner({
+                category: "severant_operative",
+                name: `${SEVERANT_ORDER_NAME} Archivist`,
+                title: "Captured Black-Site Handler",
+                spirit: 42,
+                fear: 54,
+                compliance: 18,
+                health: 66,
+                notes: `Taken alive from a black site beneath ${duchessRegionName(target.tile)}.`,
+              });
+              dismissEventModal(true);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerSeverantBlackSiteEvent() {
+      ensureUnderworldState();
+      if (underworldState.lastBlackSiteRound === round) return false;
+      const target = shuffled(playerUnderworldTiles())
+        .map((tile) => ({ tile, systems: ensureTileSystems(tile) }))
+        .find(({ systems }) => systems.severantContamination >= 52 || systems.slaveRouteRisk >= 34);
+      if (!target || Math.random() > 0.2) return false;
+      underworldState.lastBlackSiteRound = round;
+      return queueSeverantBlackSiteEventForTile(target.tile);
+    }
+
+    function queueSeverantSlaveRouteEventForTile(tile) {
+      ensureUnderworldState();
+      ensureRestorationState();
+      if (!tile) return false;
+      const target = { tile, systems: ensureTileSystems(tile) };
+      queueEventModal({
+        label: "Order Route",
+        title: `${SEVERANT_ORDER_NAME} Moves In The Dark`,
+        body: `Watchers report a fresh captive route being reopened through ${duchessRegionName(target.tile)} by agents tied to the old order.\n\nIf you let it stand, the Order regains leverage. If you hit it hard, you may trigger a sharper response.`,
+        actions: [
+          {
+            label: "Interdict The Route",
+            onClick: () => {
+              freeSlaveRoute(target.tile);
+              target.systems.severantDependency = clamp(target.systems.severantDependency - 6, 0, 100);
+              restorationState.orderContamination = clamp(restorationState.orderContamination - 3, 0, 100);
+              dismissEventModal(true);
+            },
+          },
+          {
+            label: "Track It Quietly",
+            onClick: () => {
+              target.systems.dissidentPresence = clamp(target.systems.dissidentPresence + 8, 0, 100);
+              dynastyState.counterIntelRating = clamp((dynastyState.counterIntelRating || 0) + 3, 0, 100);
+              highSeverantState.influence = clamp(highSeverantState.influence + 1, 0, 100);
+              dismissEventModal(true);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerSeverantSlaveRouteEvent() {
+      ensureUnderworldState();
+      ensureRestorationState();
+      if (underworldState.lastOrderRouteRound === round) return false;
+      const target = shuffled(playerUnderworldTiles())
+        .map((tile) => ({ tile, systems: ensureTileSystems(tile) }))
+        .find(({ systems }) => systems.slaveRouteRisk >= 28 && systems.severantDependency >= 46);
+      if (!target || Math.random() > 0.22) return false;
+      underworldState.lastOrderRouteRound = round;
+      return queueSeverantSlaveRouteEventForTile(target.tile);
+    }
+
+    function resolveUnderworldTurn() {
+      ensureUnderworldState();
+      const provinces = playerUnderworldTiles();
+      if (!provinces.length) return;
+      const nodeCount = tunnelNodeCount();
+      treasury += Math.max(0, Math.floor((underworldState.blackMarket + nodeCount * 6) / 28));
+      underworldState.crimePressure = clamp(
+        underworldState.crimePressure + Math.max(0, Math.floor((underworldState.vice - underworldState.resistance) / 24)),
+        0,
+        100
+      );
+      for (const tile of provinces) {
+        const systems = ensureTileSystems(tile);
+        systems.vicePressure = clamp(systems.vicePressure + Math.max(0, Math.floor((underworldState.vice - systems.security) / 26)), 0, 100);
+        systems.slaveRouteRisk = clamp(systems.slaveRouteRisk + Math.max(0, Math.floor((underworldState.crimePressure - systems.security) / 28)), 0, 100);
+        systems.underworldControl = clamp(systems.underworldControl + Math.floor((underworldState.resistance + underworldState.mediaReach - systems.vicePressure) / 40), 0, 100);
+        systems.dissidentPresence = clamp(systems.dissidentPresence + Math.floor((underworldState.mediaReach - systems.corruption) / 35), 0, 100);
+        if (systems.vicePressure >= 26 && Math.random() < 0.18) {
+          crimeQueenForTile(tile, true);
+        }
+        if (systems.tunnelNode) {
+          systems.security = clamp(systems.security + 2, 0, 100);
+          systems.loyalty = clamp(systems.loyalty + 1, 0, 100);
+          systems.recruitment = clamp(systems.recruitment + 1, 0, 100);
+        }
+      }
+      if (maybeTriggerSeverantBlackSiteEvent()) return;
+      if (maybeTriggerSeverantSlaveRouteEvent()) return;
+      if (Math.random() < 0.18 + Math.min(0.14, nodeCount * 0.03)) {
+        maybeTriggerUnderworldOpportunity();
+      }
+    }
+
+    function cabinetCandidatePool(department) {
+      if (department === "warHead") {
+        return officersForFaction(playerFactionId()).map((entry) => ({
+          id: entry.id,
+          type: "officer",
+          label: `${entry.title} ${entry.name}`,
+          power: (entry.tactics || 0) + (entry.discipline || 0) + Math.floor((entry.loyalty || 0) / 2),
+        }));
+      }
+      if (department === "intelligenceHead") {
+        return spiesForFaction(playerFactionId()).map((entry) => ({
+          id: entry.id,
+          type: "spy",
+          label: `${entry.title} ${entry.name}`,
+          power: (entry.subtlety || 0) + (entry.influence || 0) + Math.floor((entry.loyalty || 0) / 2),
+        }));
+      }
+      if (department === "householdHead") {
+        return activeMatrons().map((entry) => ({
+          id: entry.id,
+          type: "matron",
+          label: `${entry.title} ${entry.name}`,
+          power: (entry.protectiveness || 0) + (entry.insight || 0) + Math.floor((entry.loyalty || 0) / 2),
+        }));
+      }
+      if (department === "fertilityHead") {
+        return [
+          ...discoveredCourtMatrons().map((entry) => ({
+            id: entry.id,
+            type: "matron",
+            label: `${entry.title} ${entry.name}`,
+            power: (entry.nurturing || 0) + (entry.insight || 0) + Math.floor((entry.loyalty || 0) / 2),
+          })),
+          ...duchesses.filter((entry) => entry.ownerFaction === playerFactionId() && entry.assignedTile).map((entry) => ({
+            id: entry.id,
+            type: "duchess",
+            label: `${entry.title} ${entry.name}`,
+            power: (entry.competence || 0) + (entry.charm || 0) + Math.floor((entry.loyalty || 0) / 2),
+          })),
+        ];
+      }
+      return [];
+    }
+
+    function cabinetAdvisorLabel(slot) {
+      ensureCabinetState();
+      const choice = cabinetState[slot];
+      if (!choice) return "Unassigned";
+      if (choice.type === "officer") return officerCorps.find((entry) => entry.id === choice.id)?.name || "Unknown Officer";
+      if (choice.type === "spy") return spyNetwork.find((entry) => entry.id === choice.id)?.name || "Unknown Spy";
+      if (choice.type === "matron") return matrons.find((entry) => entry.id === choice.id)?.name || "Unknown Matron";
+      if (choice.type === "duchess") return duchesses.find((entry) => entry.id === choice.id)?.name || "Unknown Duchess";
+      return "Unassigned";
+    }
+
+    function cycleCabinetAssignment(slot) {
+      ensureCabinetState();
+      const pool = cabinetCandidatePool(slot).sort((a, b) => b.power - a.power);
+      if (!pool.length) {
+        addLog("No valid advisor candidates are available for that department.");
+        return;
+      }
+      const current = cabinetState[slot];
+      const index = current ? pool.findIndex((entry) => entry.id === current.id && entry.type === current.type) : -1;
+      const next = pool[(index + 1) % pool.length];
+      cabinetState[slot] = { id: next.id, type: next.type };
+      addLog(`${next.label} is now assigned to ${slot === "warHead" ? "the War Office" : slot === "intelligenceHead" ? "Intelligence" : slot === "householdHead" ? "the Household Office" : "the Fertility Department"}.`);
+      render();
+    }
+
+    function investInFertility(kind) {
+      ensureFertilityState();
+      if (kind === "preserve") {
+        if (treasury < 3) {
+          addLog("You need 3 treasury to expand sperm preservation and storage.");
+          return;
+        }
+        treasury -= 3;
+        fertilityState.preservedSeed = clamp(fertilityState.preservedSeed + 14, 0, 100);
+        fertilityState.logistics = clamp(fertilityState.logistics + 4, 0, 100);
+        restorationState.reserveStock = clamp(restorationState.reserveStock + 8, 0, 100);
+        addLog("The Fertility Department expands cold storage, routing, and preservation capacity.");
+      } else if (kind === "logistics") {
+        if (treasury < 2) {
+          addLog("You need 2 treasury to accelerate fertility logistics.");
+          return;
+        }
+        treasury -= 2;
+        fertilityState.logistics = clamp(fertilityState.logistics + 10, 0, 100);
+        fertilityState.publicTrust = clamp(fertilityState.publicTrust + 4, 0, 100);
+        addLog("You tighten courier routes, clinic records, and provincial delivery chains.");
+      } else if (kind === "trust") {
+        if (treasury < 2) {
+          addLog("You need 2 treasury to improve public trust in the fertility program.");
+          return;
+        }
+        treasury -= 2;
+        fertilityState.publicTrust = clamp(fertilityState.publicTrust + 8, 0, 100);
+        fertilityState.provinceDemand = clamp(fertilityState.provinceDemand - 3, 0, 100);
+        addLog("Public messaging and gentler oversight make the fertility program feel safer and more legitimate.");
+      } else if (kind === "policy") {
+        const order = ["strict", "balanced", "expansion"];
+        const index = order.indexOf(fertilityState.conceptionPolicy);
+        fertilityState.conceptionPolicy = order[(index + 1) % order.length];
+        addLog(`The Fertility Department shifts to ${fertilityPolicyLabel(fertilityState.conceptionPolicy)}.`);
+      }
+      render();
+    }
+
+    function applyCabinetTurnEffects() {
+      ensureCabinetState();
+      ensureFertilityState();
+      const warHead = cabinetState.warHead;
+      if (warHead?.type === "officer") {
+        const officer = officerCorps.find((entry) => entry.id === warHead.id);
+        if (officer) {
+          const capital = playerCapitalTile();
+          if (capital) capital.troops += Math.max(0, Math.floor((officer.tactics - 50) / 20));
+        }
+      }
+      const intelHead = cabinetState.intelligenceHead;
+      if (intelHead?.type === "spy") {
+        const spy = spyNetwork.find((entry) => entry.id === intelHead.id);
+        if (spy) {
+          dynastyState.severantProgress = clamp(dynastyState.severantProgress - Math.max(1, Math.floor((spy.subtlety - 45) / 20)), 0, 100);
+          highSeverantState.exposure = clamp(highSeverantState.exposure + Math.max(0, Math.floor((spy.influence - 55) / 25)), 0, 100);
+        }
+      }
+      const householdHead = cabinetState.householdHead;
+      if (householdHead?.type === "matron") {
+        const matron = matrons.find((entry) => entry.id === householdHead.id);
+        if (matron) {
+          matronState.recentIgnoredWarnings = Math.max(0, (matronState.recentIgnoredWarnings || 0) - 1);
+          dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum + Math.max(0, Math.floor((matron.protectiveness - 60) / 20)), 0, 100);
+        }
+      }
+      const fertilityHead = cabinetState.fertilityHead;
+      if (fertilityHead) {
+        const bonus = fertilityHead.type === "matron"
+          ? Math.floor(((matrons.find((entry) => entry.id === fertilityHead.id)?.nurturing || 50) - 50) / 18)
+          : Math.floor(((duchesses.find((entry) => entry.id === fertilityHead.id)?.competence || 50) - 50) / 18);
+        fertilityState.logistics = clamp(fertilityState.logistics + Math.max(0, bonus), 0, 100);
+        fertilityState.publicTrust = clamp(fertilityState.publicTrust + Math.max(0, Math.floor(bonus / 2)), 0, 100);
+      }
+    }
+
+    function maybeTriggerProvinceFertilityPetition() {
+      ensureFertilityState();
+      if (fertilityState.lastPetitionRound === round) return false;
+      const provinces = ownedTiles(playerFactionId()).filter((tile) => tile.terrain === "land");
+      if (provinces.length < 4) return false;
+      const target = randomItem(provinces.filter((tile) => {
+        const systems = ensureTileSystems(tile);
+        return systems.loyalty >= 55 && systems.prosperity >= 8;
+      }));
+      if (!target) return false;
+      let chance = 0.1 + Math.min(0.18, provinces.length * 0.01) + Math.max(0, fertilityState.publicTrust - 30) / 300;
+      if (fertilityState.conceptionPolicy === "expansion") chance += 0.08;
+      if (Math.random() > chance) return false;
+      fertilityState.lastPetitionRound = round;
+      const systems = ensureTileSystems(target);
+      const region = duchessRegionName(target);
+      queueEventModal({
+        label: "Fertility Petition",
+        title: `${region} Seeks Conception Licenses`,
+        body: `As your influence expands, bonded couples in ${region} begin petitioning the crown for help starting families.\n\nThey want legal clearance, security guarantees, and in some cases access to preserved seed from the Fertility Department.\n\nProvince Loyalty ${systems.loyalty} • Prosperity ${systems.prosperity} • Fertility Trust ${fertilityState.publicTrust} • Preserved Seed ${fertilityState.preservedSeed}`,
+        portrait: getDuchess(target.duchessId)?.portrait || matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: "Approve Natural Pairings",
+            onClick: () => {
+              dismissEventModal();
+              systems.loyalty = clamp(systems.loyalty + 4, 0, 100);
+              systems.prosperity = clamp(systems.prosperity + 2, 0, 100);
+              fertilityState.publicTrust = clamp(fertilityState.publicTrust + 3, 0, 100);
+              fertilityState.petitionsHandled += 1;
+              addLog(`You approve protected conception petitions in ${region}, and the province answers with visible gratitude.`);
+              render();
+            },
+          },
+          {
+            label: "Route Reserve Vials",
+            onClick: () => {
+              dismissEventModal();
+              if (fertilityState.preservedSeed < 8) {
+                addLog("You do not yet have enough preserved reserves to satisfy that request.");
+                render();
+                return;
+              }
+              fertilityState.preservedSeed = clamp(fertilityState.preservedSeed - 8, 0, 100);
+              fertilityState.logistics = clamp(fertilityState.logistics + 1, 0, 100);
+              systems.loyalty = clamp(systems.loyalty + 5, 0, 100);
+              restorationState.birthRecovery = clamp(restorationState.birthRecovery + 2, 0, 100);
+              fertilityState.petitionsHandled += 1;
+              addLog(`You release preserved seed into ${region}'s fertility pipeline and accelerate the province's family petitions.`);
+              render();
+            },
+          },
+          {
+            label: "Defer For Order",
+            onClick: () => {
+              dismissEventModal();
+              systems.unrest = clamp(systems.unrest + 2, 0, 100);
+              fertilityState.publicTrust = clamp(fertilityState.publicTrust - 3, 0, 100);
+              fertilityState.provinceDemand = clamp(fertilityState.provinceDemand + 4, 0, 100);
+              addLog(`You defer the request in ${region}, preserving control at the cost of frustration on the ground.`);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function highSeverantPortrait() {
+      ensureHighSeverantProfile();
+      return highSeverantProfile.portrait || HIGH_SEVERANT_PORTRAIT_SRC || queenPortraits[HIGH_SEVERANT_PORTRAIT_FALLBACK] || QUEEN_PORTRAITS[HIGH_SEVERANT_PORTRAIT_FALLBACK] || queenPortraits[0] || QUEEN_PORTRAITS[0];
+    }
+
+    function highSeverantDisplayName() {
+      ensureHighSeverantProfile();
+      if (highSeverantProfile.dossierStage >= 3 || dynastyState.highSeverantExposure >= 60) return highSeverantProfile.hiddenName;
+      if (dynastyState.knownThreat || highSeverantProfile.dossierStage >= 1) return highSeverantProfile.publicName;
+      return highSeverantProfile.coverTitle;
+    }
+
+    function highSeverantDisplayTitle() {
+      ensureHighSeverantProfile();
+      if (highSeverantProfile.dossierStage >= 3 || dynastyState.highSeverantExposure >= 60) return highSeverantProfile.trueTitle;
+      if (dynastyState.knownThreat || highSeverantProfile.dossierStage >= 1) return HIGH_SEVERANT_TITLE;
+      return "Shadow Figure";
+    }
+
+    function campaignRouteSideLabel(side = campaignRouteState?.side) {
+      if (side === "hidden_court") return "Hidden Court";
+      if (side === "severant") return "Severant Pact";
+      return "Unchosen";
+    }
+
+    function severantDoctrineLabel(value = campaignRouteState?.severantDoctrine) {
+      return value === "continuity" ? "Continuity" : "Dark Alliance";
+    }
+
+    function severantClaimantCandidateScore(faction) {
+      if (!faction || faction.isHuman) return -Infinity;
+      const st = queenEntry(faction.id);
+      const land = ownedTiles(faction.id).filter((tile) => tile.terrain === "land").length;
+      const troops = ownedTiles(faction.id).reduce((sum, tile) => sum + (tile.terrain === "land" ? tile.troops : 0), 0);
+      const rebelBonus = leaderState[faction.id]?.rebelAgainst !== null && leaderState[faction.id]?.rebelAgainst !== undefined ? 14 : 0;
+      const ambitionBonus = ["Aggressive", "Opportunist", "Swarm-expander"].includes(faction.personality || "") ? 8 : 0;
+      return (
+        land * 22 +
+        troops * 1.1 +
+        Math.max(0, st.trust) * 0.65 +
+        Math.max(0, st.romance) * 0.5 +
+        Math.max(0, st.attraction) * 0.4 +
+        Math.max(0, st.fear) * 0.18 -
+        Math.max(0, st.hate) * 0.7 +
+        rebelBonus +
+        ambitionBonus
+      );
+    }
+
+    function campaignRouteClaimantCandidates() {
+      if (campaignRouteState?.side === "severant" && !campaignRouteState.setupDone) {
+        const external = activeFactions()
+          .filter((faction) => !faction.isHuman && !capturedQueens.includes(faction.id))
+          .sort((a, b) => severantClaimantCandidateScore(b) - severantClaimantCandidateScore(a));
+        if (external.length) return external;
+      }
+      return capturedQueens
+        .filter((queenId) => queenId > 0)
+        .map((queenId) => factionById(queenId))
+        .filter(Boolean);
+    }
+
+    function syncCampaignRouteClaimantQueen() {
+      ensureCampaignRouteState();
+      const candidates = campaignRouteClaimantCandidates();
+      if (!candidates.length) {
+        campaignRouteState.claimantQueenId = null;
+        return null;
+      }
+      if (!candidates.some((faction) => faction.id === campaignRouteState.claimantQueenId)) {
+        campaignRouteState.claimantQueenId = candidates[0].id;
+      }
+      return factionById(campaignRouteState.claimantQueenId);
+    }
+
+    function campaignRouteClaimantQueen() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") return null;
+      return syncCampaignRouteClaimantQueen();
+    }
+
+    function campaignRouteEligible() {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side || gameMode !== "conquest") return false;
+      if (round < 6) return false;
+      const severantPressure =
+        dynastyState.confrontationStage >= 2 ||
+        highSeverantProfile.safehouseKnown ||
+        highSeverantProfile.directAudienceUnlocked ||
+        highSeverantProfile.dossierStage >= 2;
+      return dynastyState.knownThreat && severantPressure;
+    }
+
+    function campaignRouteOpportunitySummary() {
+      ensureDynastyState();
+      ensureHighSeverantProfile();
+      return `Round ${round} - Threat ${dynastyState.knownThreat ? "Named" : "Hidden"} - Confrontation ${dynastyState.confrontationStage}/3 - Dossier ${highSeverantProfile.dossierStage}/4 - Safehouse ${highSeverantProfile.safehouseKnown ? "Tracked" : "Unknown"} - Audience ${highSeverantProfile.directAudienceUnlocked ? "Open" : "Distant"}`;
+    }
+
+    function severantRouteQueenStatusLabel(status) {
+      return ({
+        neutral: "Unsorted",
+        claimant: "Claimant Throne",
+        follower: "Route Follower",
+        resisting: "Resisting The Pact",
+        subdued: "Broken Into Service",
+        displaced: "Displaced From Court",
+        contained: "Contained Under Guard",
+        gone: "Gone To The Hidden Court",
+      })[status] || "Unsorted";
+    }
+
+    function matriarchSeverantStandingLabel(value = campaignRouteState?.matriarchStanding) {
+      return ({
+        sovereign: "Hidden Sovereign",
+        watched: "Under Watch",
+        sealed: "Sealed Away",
+        hidden_court: "Gone With The Hidden Court",
+      })[value] || "Hidden Sovereign";
+    }
+
+    function severantRouteFollowers() {
+      ensureCampaignRouteState();
+      return capturedQueens.filter((queenFaction) =>
+        ["claimant", "follower", "subdued"].includes(queenEntry(queenFaction).routeStatus)
+      );
+    }
+
+    function severantRouteResisters() {
+      ensureCampaignRouteState();
+      return capturedQueens.filter((queenFaction) =>
+        ["resisting", "displaced", "contained"].includes(queenEntry(queenFaction).routeStatus)
+      );
+    }
+
+    function severantRouteSeatSummary() {
+      ensureCampaignRouteState();
+      return campaignRouteState.claimantSeatLabel || "Seat not yet reassigned";
+    }
+
+    function severantObjectivePhaseTitle(phase = campaignRouteState?.severantObjectivePhase || 0) {
+      if (phase === 1) return "Phase I: Erase The Rebellion";
+      if (phase === 2) return "Phase II: Destroy All Rival Crowns";
+      if (phase === 3) return "Phase III: Crown The Severant And Secure The Inner Circle";
+      if (phase >= 4) return "Severant Objectives Complete";
+      return "No Severant Objective";
+    }
+
+    function severantRouteRebelQueens() {
+      return FACTIONS.filter((faction) =>
+        !faction.isHuman &&
+        !leaderState[faction.id]?.defeated &&
+        leaderState[faction.id]?.rebelAgainst !== null &&
+        leaderState[faction.id]?.rebelAgainst !== undefined
+      );
+    }
+
+    function severantClaimantCrowned() {
+      ensureCampaignRouteState();
+      const claimant = campaignRouteClaimantQueen();
+      return Boolean(claimant && campaignRouteState.claimantCrownedQueenId === claimant.id);
+    }
+
+    function severantInnerCircleSnapshot() {
+      ensureCampaignRouteState();
+      ensureFertilityState();
+      const heirCount = allHeirs().length;
+      const loyalCount = loyalHeirs().length;
+      return {
+        claimantCrowned: severantClaimantCrowned(),
+        severantCrowned: Boolean(campaignRouteState.severantCrowned),
+        successionSecured: Boolean(campaignRouteState.successionSecured),
+        heirs: heirCount,
+        loyalHeirs: loyalCount,
+        preservedSeed: fertilityState.preservedSeed,
+        logistics: fertilityState.logistics,
+      };
+    }
+
+    function severantObjectivePhaseBody(phase = campaignRouteState?.severantObjectivePhase || 0) {
+      if (phase === 1) {
+        return `${highSeverantProfile.hiddenName} wants every open rebellion erased before she spends another thought on ceremony.\n\nBreak the queens still ruling in revolt and prove that no rival banner can survive once the Order is moving through your hand.`;
+      }
+      if (phase === 2) {
+        return `The rebellion is not enough. She wants every rival crown broken, every off-field queen secured, and every surviving claimant folded into your pact or swept off the board.`;
+      }
+      if (phase === 3) {
+        return campaignRouteState.severantDoctrine === "continuity"
+          ? `The war is over. Now she wants the regime formalized without exposing its true center.\n\nCrown her inside the sealed court, keep the claimant throne in place for the public world, and lock the inner circle into a durable succession plan.`
+          : `The war is over. Now she wants the new order made permanent.\n\nCrown her beside you, seat the claimant court beneath you both, and bind the inner circle through oath, inheritance, and secured succession.`;
+      }
+      return `${highSeverantProfile.hiddenName} has no further phase to assign.`;
+    }
+
+    function severantObjectiveProgressText(phase = campaignRouteState?.severantObjectivePhase || 0) {
+      if (phase === 1) {
+        const rebels = severantRouteRebelQueens();
+        if (!rebels.length) return "Every rebel queen has been crushed or dragged back under authority.";
+        const names = rebels.slice(0, 3).map((faction) => faction.leader).join(", ");
+        return `Rebel queens remaining ${rebels.length}${names ? `: ${names}${rebels.length > 3 ? "..." : ""}` : ""}`;
+      }
+      if (phase === 2) {
+        const rivals = unsecuredSeverantQueens();
+        if (!rivals.length) return "No unsecured rival queen remains outside your pact.";
+        const names = rivals.slice(0, 3).map((faction) => faction.leader).join(", ");
+        return `Unsecured rival queens ${rivals.length}${names ? `: ${names}${rivals.length > 3 ? "..." : ""}` : ""}`;
+      }
+      if (phase === 3) {
+        const claimant = campaignRouteClaimantQueen();
+        const innerCircle = severantInnerCircleSnapshot();
+        const claimantLine = innerCircle.claimantCrowned
+          ? `Claimant crowned${claimant ? `: ${claimant.leader}` : ""}`
+          : `Claimant still needs coronation${claimant ? `: ${claimant.leader}` : ""}`;
+        const charterLine = innerCircle.successionSecured
+          ? "Succession charter sealed"
+          : `Heirs ${innerCircle.heirs} • Loyal ${innerCircle.loyalHeirs} • Preserved Seed ${innerCircle.preservedSeed} • Logistics ${innerCircle.logistics}`;
+        return `${claimantLine} • ${innerCircle.severantCrowned ? "Severant crowned" : "Severant uncrowned"} • ${charterLine}`;
+      }
+      if (phase >= 4) {
+        return `${highSeverantProfile.hiddenName} has her crown, the claimant court is seated, and the inner circle's succession is locked down.`;
+      }
+      return "The Severant has not yet set her campaign objectives.";
+    }
+
+    function severantObjectivePhaseComplete(phase = campaignRouteState?.severantObjectivePhase || 0) {
+      if (phase === 1) return severantRouteRebelQueens().length === 0;
+      if (phase === 2) return severantRouteFinalMapLocked();
+      if (phase === 3) {
+        const innerCircle = severantInnerCircleSnapshot();
+        return innerCircle.claimantCrowned && innerCircle.severantCrowned && innerCircle.successionSecured;
+      }
+      return phase >= 4;
+    }
+
+    function severantObjectiveRewardText(phase) {
+      if (phase === 1) return "Reward: +6 Order Reserve, +3 Treasury, +6 capital troops, and tighter Severant influence over the court.";
+      if (phase === 2) return "Reward: +8 Order Reserve, +4 Treasury, +8 capital troops, and the claimant court elevated over the wreck of every rival throne.";
+      if (phase === 3) return "Reward: the Severant ending is now fully unlocked.";
+      return "";
+    }
+
+    function grantSeverantObjectiveReward(phase) {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      ensureRestorationState();
+      const capital = playerCapitalTile();
+      const claimant = campaignRouteClaimantQueen();
+      if (phase === 1) {
+        campaignRouteState.orderReserve = Math.min(24, campaignRouteState.orderReserve + 6);
+        treasury += 3;
+        if (capital) capital.troops += 6;
+        highSeverantState.respect = clamp(highSeverantState.respect + 4, 0, 100);
+        highSeverantState.influence = clamp(highSeverantState.influence + 3, 0, 100);
+        highSeverantState.obsession = clamp(highSeverantState.obsession + 2, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination + 3, 0, 100);
+        return;
+      }
+      if (phase === 2) {
+        campaignRouteState.orderReserve = Math.min(28, campaignRouteState.orderReserve + 8);
+        treasury += 4;
+        if (capital) capital.troops += 8;
+        if (claimant) {
+          const claimantState = queenEntry(claimant.id);
+          claimantState.morale = clamp(claimantState.morale + 8, 0, 100);
+          claimantState.trust = clamp(claimantState.trust + 5, -100, 100);
+        }
+        for (const queenFaction of severantRouteFollowers()) {
+          queenEntry(queenFaction).morale = clamp(queenEntry(queenFaction).morale + 3, 0, 100);
+        }
+        highSeverantState.respect = clamp(highSeverantState.respect + 5, 0, 100);
+        highSeverantState.influence = clamp(highSeverantState.influence + 5, 0, 100);
+        highSeverantState.obsession = clamp(highSeverantState.obsession + 3, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence + 3, 0, 100);
+      }
+    }
+
+    function queueSeverantObjectiveBriefing(phase, rewardPhase = null) {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (phase <= 0) return false;
+      const rewardText = rewardPhase ? `${severantObjectiveRewardText(rewardPhase)}\n\n` : "";
+      const title = phase >= 4 ? "The Pact Hardens Into A Regime" : severantObjectivePhaseTitle(phase);
+      const body = phase >= 4
+        ? `${highSeverantProfile.hiddenName} rewards your work with calm approval, then settles into the throne you built for her.\n\n${rewardText}No further rival remains, no open rebellion remains, and the inner circle's future is sealed.\n\n${severantObjectiveProgressText(4)}`
+        : `${highSeverantProfile.hiddenName} draws you back in with almost motherly composure, rewards what you have finished, and sets the next phase directly in your hands.\n\n${rewardText}${severantObjectivePhaseBody(phase)}\n\n${severantObjectiveProgressText(phase)}`;
+      queueEventModal({
+        label: "Severant Objective",
+        title,
+        body,
+        portrait: highSeverantPortrait(),
+        cta: phase >= 4 ? "Rule The New Order" : "Take The Orders",
+      });
+      return true;
+    }
+
+    function maybeAdvanceSeverantObjectiveChain() {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant" || highSeverantProfile.confrontationOutcome === "judged") return false;
+      let changed = false;
+      if (campaignRouteState.severantObjectivePhase < 1) {
+        campaignRouteState.severantObjectivePhase = 1;
+        campaignRouteState.severantBriefedPhase = 0;
+        campaignRouteState.lastObjectiveAdvanceRound = round;
+        changed = true;
+      }
+      while (
+        campaignRouteState.severantObjectivePhase >= 1 &&
+        campaignRouteState.severantObjectivePhase <= 3 &&
+        severantObjectivePhaseComplete(campaignRouteState.severantObjectivePhase)
+      ) {
+        const completedPhase = campaignRouteState.severantObjectivePhase;
+        if (campaignRouteState.severantRewardedPhase < completedPhase) {
+          grantSeverantObjectiveReward(completedPhase);
+          campaignRouteState.severantRewardedPhase = completedPhase;
+        }
+        campaignRouteState.severantObjectivePhase = Math.min(4, completedPhase + 1);
+        campaignRouteState.lastObjectiveAdvanceRound = round;
+        queueSeverantObjectiveBriefing(campaignRouteState.severantObjectivePhase, completedPhase);
+        campaignRouteState.severantBriefedPhase = Math.max(campaignRouteState.severantBriefedPhase, campaignRouteState.severantObjectivePhase);
+        changed = true;
+      }
+      if (campaignRouteState.severantObjectivePhase > 0 && campaignRouteState.severantBriefedPhase < campaignRouteState.severantObjectivePhase) {
+        queueSeverantObjectiveBriefing(campaignRouteState.severantObjectivePhase);
+        campaignRouteState.severantBriefedPhase = campaignRouteState.severantObjectivePhase;
+        changed = true;
+      }
+      return changed;
+    }
+
+    function openSeverantObjectiveReview() {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route uses phase objectives.");
+        return false;
+      }
+      queueEventModal({
+        label: "Severant Objective",
+        title: severantObjectivePhaseTitle(),
+        body: `${severantObjectivePhaseBody()}\n\n${severantObjectiveProgressText()}`,
+        portrait: highSeverantPortrait(),
+        cta: "Continue",
+      });
+      return true;
+    }
+
+    function matriarchSupportLocked() {
+      ensureCampaignRouteState();
+      return campaignRouteState.side === "severant" &&
+        ["watched", "sealed", "hidden_court"].includes(campaignRouteState.matriarchStanding);
+    }
+
+    function matriarchPersonalLocked() {
+      ensureCampaignRouteState();
+      return campaignRouteState.side === "severant" &&
+        ["sealed", "hidden_court"].includes(campaignRouteState.matriarchStanding);
+    }
+
+    function severantRouteQueenServiceText(queenFaction) {
+      if (campaignRouteState.side !== "severant") {
+        return gameMode === "servitude" ? haremStatusText(queenFaction) : "Under your supervision";
+      }
+      const status = queenEntry(queenFaction).routeStatus;
+      if (queenFaction === 0) {
+        if (status === "gone") return "Elara has fled the Severant court and now stands with the Hidden Court outside your household.";
+        return status === "contained"
+          ? "Elara remains in the court, but only under direct guard."
+          : "Elara has been pushed out of the center of your court.";
+      }
+      if (status === "gone") return "She refused the pact and fled your court rather than remain inside the Severant household.";
+      if (status === "claimant") return "Chosen by the Severant as the queen who stands beneath you both.";
+      if (status === "follower") return "Following you through the Severant pact.";
+      if (status === "subdued") return "Forced back into line after resisting the pact.";
+      if (status === "resisting") return "Openly resisting the Severant pact from inside your court.";
+      return "Held away from real influence while the bad route hardens.";
+    }
+
+    function severantRouteQueenShouldFollow(queenFaction) {
+      const faction = factionById(queenFaction);
+      const st = queenEntry(queenFaction);
+      const rank = queenRelationshipRank(queenFaction);
+      if (!faction || queenFaction === 0) return false;
+      if (queenFaction === campaignRouteState.claimantQueenId) return true;
+      if (rank.id === "Devoted" && st.hate <= 12 && st.ego <= 58) return true;
+      if (["Rebel-maker", "Diplomat", "Defensive"].includes(faction.personality || "") && st.ego >= 38) return false;
+      if (["Aggressive", "Swarm-expander", "Opportunist"].includes(faction.personality || "")) return true;
+      if (st.ego >= 60) return false;
+      return st.trust + st.romance + st.attraction >= 180;
+    }
+
+    function syncSeverantRouteCourtAlignment() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") return;
+      const claimantId = campaignRouteClaimantQueen()?.id || null;
+      if (claimantId !== null) {
+        queenPortraits[0] = queenPortraits[claimantId] || QUEEN_PORTRAITS[claimantId] || queenPortraits[0];
+      }
+      for (const queenFaction of capturedQueens) {
+        const st = queenEntry(queenFaction);
+        const previous = st.routeStatus;
+        let nextStatus = previous;
+        if (previous === "gone") {
+          nextStatus = "gone";
+        } else if (queenFaction === claimantId) {
+          nextStatus = "claimant";
+        } else if (queenFaction === 0) {
+          nextStatus = previous === "contained" ? "contained" : "displaced";
+        } else if (["follower", "resisting", "subdued"].includes(previous)) {
+          nextStatus = previous;
+        } else {
+          nextStatus = severantRouteQueenShouldFollow(queenFaction) ? "follower" : "resisting";
+        }
+        if (nextStatus !== previous) st.lastRouteChangeRound = round;
+        st.routeStatus = nextStatus;
+        st.forbiddenThisTurn = ["resisting", "displaced", "contained"].includes(nextStatus);
+        if (st.forbiddenThisTurn) {
+          st.assignment = "court";
+          removeQueenUnitForFaction(queenFaction);
+        }
+      }
+    }
+
+    function severantRouteSeatTile(queenFaction = campaignRouteState?.claimantQueenId) {
+      const playerId = playerFactionId();
+      const candidates = ownedTiles(playerId).filter((tile) => tile.terrain === "land");
+      if (!candidates.length) return null;
+      const home = factionById(queenFaction)?.home || null;
+      if (home) {
+        const direct = getTile(home.q, home.r);
+        if (direct && direct.owner === playerId && direct.terrain === "land") return direct;
+      }
+      const scored = candidates
+        .map((tile) => {
+          const homeDistance = home ? Math.abs(tile.q - home.q) + Math.abs(tile.r - home.r) : 0;
+          return {
+            tile,
+            score:
+              (tile.capital ? 20 : 0) +
+              (tile.estate === "palace" ? 10 : 0) +
+              (tile.estate === "town" ? 4 : 0) -
+              homeDistance,
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+      return scored[0]?.tile || playerCapitalTile();
+    }
+
+    function movePlayerCapitalToTile(tile, label = null) {
+      const playerId = playerFactionId();
+      if (!tile || tile.owner !== playerId || tile.terrain !== "land") return false;
+      for (const owned of ownedTiles(playerId)) {
+        if (owned !== tile) owned.capital = false;
+      }
+      tile.capital = true;
+      tile.estate = tile.estate === "port" ? "port" : (tile.estate || "town");
+      tile.troops = Math.max(12, tile.troops);
+      campaignRouteState.claimantSeatLabel = label || `${tile.q},${tile.r}`;
+      return true;
+    }
+
+    function grantSeverantRouteSeatForces(tile) {
+      if (!tile) return;
+      tile.troops += 8;
+      let granted = 0;
+      for (const neighbor of shuffled(neighbors(tile))) {
+        if (neighbor.owner !== playerFactionId() || neighbor.terrain !== "land") continue;
+        neighbor.troops += 4;
+        granted += 1;
+        if (granted >= 2) break;
+      }
+    }
+
+    function transferFactionRealmToPlayerCourt(queenFaction) {
+      const playerId = playerFactionId();
+      const home = factionById(queenFaction)?.home || null;
+      const originalSeat = factionCapitalTile(queenFaction) || (home ? getTile(home.q, home.r) : null);
+      if (!capturedQueens.includes(queenFaction)) {
+        capturedQueens.push(queenFaction);
+      }
+      const st = queenEntry(queenFaction);
+      st.joinOfferPending = false;
+      st.affairOfferPending = false;
+      st.elopeOfferPending = false;
+      st.treaty = "alliance";
+      st.trade = false;
+      st.affair = false;
+      st.assignment = "court";
+      st.refusedThisTurn = false;
+      st.routeStatus = "claimant";
+      st.lastRouteChangeRound = round;
+      if (leaderState[queenFaction]) {
+        leaderState[queenFaction].defeated = true;
+        leaderState[queenFaction].active = false;
+        leaderState[queenFaction].rebelAgainst = null;
+        leaderState[queenFaction].underAuthorityOf = null;
+      }
+      clearFactionRegimeIdentity(queenFaction);
+      for (const tile of tiles) {
+        if (tile.owner !== queenFaction) continue;
+        tile.owner = playerId;
+        tile.capital = false;
+        tile.troops = Math.max(4, tile.troops);
+        if (tile.duchessId) {
+          const duchess = getDuchess(tile.duchessId);
+          if (duchess) duchess.ownerFaction = playerId;
+        }
+      }
+      cleanupUnits();
+      refreshDormantAuthorities();
+      if (!originalSeat) return severantRouteSeatTile(queenFaction);
+      return getTile(originalSeat.q, originalSeat.r) || originalSeat;
+    }
+
+    function severantReleaseCapturedQueen(queenFaction, options = {}) {
+      if (queenFaction <= 0) return false;
+      const idx = capturedQueens.indexOf(queenFaction);
+      if (idx === -1) return false;
+      const authorityId = Number.isFinite(options.authorityId) ? Math.floor(options.authorityId) : null;
+      const hostileToPlayer = options.hostileToPlayer ?? authorityId === null;
+      capturedQueens.splice(idx, 1);
+      const st = queenEntry(queenFaction);
+      st.assignment = "court";
+      st.routeStatus = "gone";
+      st.lastRouteChangeRound = round;
+      st.forbiddenThisTurn = false;
+      st.refusedThisTurn = false;
+      st.joinOfferPending = false;
+      st.affairOfferPending = false;
+      st.elopeOfferPending = false;
+      st.morale = Math.max(18, st.morale - 12);
+      st.trust = Math.max(-100, st.trust - 14);
+      st.romance = Math.max(0, st.romance - 10);
+      st.attraction = Math.max(0, st.attraction - 6);
+      if (leaderState[queenFaction]) {
+        leaderState[queenFaction].defeated = false;
+        leaderState[queenFaction].active = false;
+        leaderState[queenFaction].rebelAgainst = hostileToPlayer ? playerFactionId() : null;
+        leaderState[queenFaction].underAuthorityOf = authorityId;
+      }
+      removeQueenUnitForFaction(queenFaction);
+      refreshDormantAuthorities();
+      return true;
+    }
+
+    function markElaraGoneForSeverantRoute() {
+      const elara = queenEntry(0);
+      elara.routeStatus = "gone";
+      elara.lastRouteChangeRound = round;
+      elara.forbiddenThisTurn = true;
+      elara.assignment = "court";
+      elara.morale = Math.max(10, elara.morale - 16);
+      applySeverantElaraNoReturnState(0);
+      removeQueenUnitForFaction(0);
+    }
+
+    function severantCourtSplit(claimantId, authorityId = null) {
+      const kept = [];
+      const departed = [];
+      for (const queenFaction of [...capturedQueens]) {
+        if (queenFaction <= 0 || queenFaction === claimantId) continue;
+        if (severantRouteQueenShouldFollow(queenFaction)) {
+          kept.push(queenFaction);
+          continue;
+        }
+        if (severantReleaseCapturedQueen(queenFaction, { authorityId, hostileToPlayer: false })) {
+          departed.push(queenFaction);
+        }
+      }
+      return { kept, departed };
+    }
+
+    function resolveSeverantRouteClaimantSetupLegacy(mode = "initial") {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") return false;
+      const claimant = campaignRouteClaimantQueen();
+      if (!claimant) return false;
+      syncSeverantRouteCourtAlignment();
+      const seat = severantRouteSeatTile(claimant.id);
+      if (!seat) return false;
+      const claimantState = queenEntry(claimant.id);
+      const elara = capturedQueens.includes(0) ? queenEntry(0) : null;
+      const matriarch = matriarchMatron();
+      movePlayerCapitalToTile(seat, `${claimant.leader}'s seat (${seat.q},${seat.r})`);
+      grantSeverantRouteSeatForces(seat);
+      campaignRouteState.setupDone = true;
+      campaignRouteState.lastRealignmentRound = round;
+      campaignRouteState.matriarchStanding = campaignRouteState.matriarchStanding === "sealed"
+        ? "sealed"
+        : "watched";
+      claimantState.routeStatus = "claimant";
+      claimantState.assignment = "court";
+      claimantState.forbiddenThisTurn = false;
+      claimantState.morale = Math.min(100, claimantState.morale + 20);
+      claimantState.trust = Math.min(100, claimantState.trust + 10);
+      claimantState.romance = Math.min(100, claimantState.romance + 8);
+      claimantState.attraction = Math.min(100, claimantState.attraction + 8);
+      if (elara) {
+        if (elara.routeStatus !== "contained") elara.routeStatus = "displaced";
+        elara.lastRouteChangeRound = round;
+        elara.forbiddenThisTurn = true;
+        elara.morale = Math.max(16, elara.morale - 14);
+        removeQueenUnitForFaction(0);
+      }
+      if (matriarch) {
+        matriarch.loyalty = clamp((matriarch.loyalty || 0) - 8, 0, 100);
+        matriarch.trust = clamp((matriarch.trust || 0) - 8, 0, 100);
+        matriarch.romance = clamp((matriarch.romance || 0) - 6, 0, 100);
+        matriarch.accessAuthority = Math.max(1, (matriarch.accessAuthority || 1) - 1);
+      }
+      for (const queenFaction of severantRouteFollowers()) {
+        if (queenFaction === claimant.id) continue;
+        queenEntry(queenFaction).morale = Math.min(100, queenEntry(queenFaction).morale + 4);
+      }
+      for (const queenFaction of severantRouteResisters()) {
+        queenEntry(queenFaction).morale = Math.max(0, queenEntry(queenFaction).morale - 6);
+      }
+      highSeverantState.influence = clamp(highSeverantState.influence + 10, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 8, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 4, 0, 100);
+      queueEventModal({
+        label: "Bad Route",
+        title: mode === "initial" ? "The Severant Relocates Your Court" : "The Severant Reassigns Your Claimant",
+        body: mode === "initial"
+          ? `Severant detachments close around you, strip Elara Castle of its old safety, and move you under the guard of a new public throne.\n\n${claimant.leader} is raised into the position Elara once held: the queen displayed to the realm while the High Severant and the last man decide what the war now means.\n\nYour former generals, spy handlers, and command aides do not come with you. The Severant replaces them with her own women before the new court even settles.\n\nNew seat: ${severantRouteSeatSummary()}\nFollowers ${severantRouteFollowers().length} • Resisters ${severantRouteResisters().length} • Matriarch ${matriarchSeverantStandingLabel()}`
+          : `${highSeverantProfile.hiddenName} changes which queen will publicly carry the bad route beneath you both.\n\n${claimant.leader} is now the claimant the Severant wants enthroned beneath your shared order.\n\nNew seat: ${severantRouteSeatSummary()}\nFollowers ${severantRouteFollowers().length} • Resisters ${severantRouteResisters().length}`,
+        portrait: queenPortraits[claimant.id] || QUEEN_PORTRAITS[claimant.id] || highSeverantPortrait(),
+        cta: mode === "initial" ? "Take The New Seat" : "Accept The Reassignment",
+      });
+      addLog(`${claimant.leader} is elevated as the Severant's claimant queen beneath you.`);
+      render();
+      return true;
+    }
+
+    function resolveSeverantRouteClaimantSetup(mode = "initial") {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") return false;
+      const claimant = campaignRouteClaimantQueen();
+      if (!claimant) return false;
+      const formerPlayerTiles = mode === "initial"
+        ? ownedTiles(playerFactionId()).map((tile) => ({ q: tile.q, r: tile.r }))
+        : [];
+      const formerPlayerCapital = mode === "initial" && playerCapitalTile()
+        ? { q: playerCapitalTile().q, r: playerCapitalTile().r }
+        : null;
+      const claimantWasInCourt = capturedQueens.includes(claimant.id);
+      if (mode === "initial" && claimantWasInCourt) return false;
+      const hiddenCourtId = mode === "initial"
+        ? severantHiddenCourtFactionId()
+        : campaignRouteState.hiddenCourtFactionId;
+      if (mode === "initial" && !Number.isFinite(hiddenCourtId)) return false;
+      const seat = claimantWasInCourt
+        ? severantRouteSeatTile(claimant.id)
+        : transferFactionRealmToPlayerCourt(claimant.id);
+      if (!seat) return false;
+      if (mode === "initial") {
+        installSeverantHiddenCourtFaction(hiddenCourtId, formerPlayerCapital);
+        transferRecordedTilesToFaction(formerPlayerTiles, hiddenCourtId);
+        campaignRouteState.hiddenCourtFactionId = hiddenCourtId;
+      }
+      assignSeverantClaimantIdentityToPlayer(claimant.id);
+      const claimantState = queenEntry(claimant.id);
+      const matriarch = matriarchMatron();
+      const split = mode === "initial"
+        ? severantCourtSplit(claimant.id, hiddenCourtId)
+        : { kept: severantRouteFollowers().filter((queenFaction) => queenFaction !== claimant.id), departed: [] };
+      if (mode === "initial") {
+        markElaraGoneForSeverantRoute();
+      }
+      if (mode === "initial") {
+        ensureSeverantCourtWomenSeeded(3, "the sealing of the Severant pact", true);
+      }
+      syncSeverantRouteCourtAlignment();
+      movePlayerCapitalToTile(seat, `${claimant.leader}'s seat (${seat.q},${seat.r})`);
+      grantSeverantRouteSeatForces(seat);
+      campaignRouteState.setupDone = true;
+      campaignRouteState.lastRealignmentRound = round;
+      campaignRouteState.matriarchStanding = mode === "initial"
+        ? "hidden_court"
+        : (campaignRouteState.matriarchStanding === "sealed" ? "sealed" : campaignRouteState.matriarchStanding);
+      claimantState.routeStatus = "claimant";
+      claimantState.assignment = "court";
+      claimantState.forbiddenThisTurn = false;
+      claimantState.morale = Math.min(100, claimantState.morale + 20);
+      claimantState.trust = Math.min(100, claimantState.trust + 10);
+      claimantState.romance = Math.min(100, claimantState.romance + 8);
+      claimantState.attraction = Math.min(100, claimantState.attraction + 8);
+      if (matriarch) {
+        matriarch.loyalty = clamp((matriarch.loyalty || 0) - (mode === "initial" ? 14 : 8), 0, 100);
+        matriarch.trust = clamp((matriarch.trust || 0) - (mode === "initial" ? 16 : 8), 0, 100);
+        matriarch.romance = clamp((matriarch.romance || 0) - (mode === "initial" ? 10 : 6), 0, 100);
+        matriarch.accessAuthority = Math.max(0, (matriarch.accessAuthority || 1) - (mode === "initial" ? 2 : 1));
+      }
+      for (const queenFaction of severantRouteFollowers()) {
+        if (queenFaction === claimant.id) continue;
+        queenEntry(queenFaction).morale = Math.min(100, queenEntry(queenFaction).morale + 4);
+      }
+      for (const queenFaction of severantRouteResisters()) {
+        queenEntry(queenFaction).morale = Math.max(0, queenEntry(queenFaction).morale - 6);
+      }
+      highSeverantState.influence = clamp(highSeverantState.influence + 10, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 8, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 4, 0, 100);
+      const keptNames = split.kept
+        .map((queenFaction) => factionById(queenFaction)?.leader || "Unknown")
+        .join(", ");
+      const departedNames = split.departed
+        .map((queenFaction) => factionById(queenFaction)?.leader || "Unknown")
+        .join(", ");
+      queueEventModal({
+        label: "Bad Route",
+        title: mode === "initial" ? "The Severant Relocates Your Court" : "The Severant Reassigns Your Claimant",
+        body: mode === "initial"
+          ? `${highSeverantProfile.hiddenName} does not leave you in Elara's old nest. She seizes ${claimant.leader}, folds that queen's realm into your command, and moves you straight into her capital beneath that queen's banner.\n\nEvery province you held with Elara is stripped away. Elara and the Matriarch break off with the Hidden Court, take your former lands, and now rule them as a hostile rival kingdom while hiding the Matriarch beyond your reach. The queens already under you are forced to choose: those who bend stay, and those who will not go over to Elara's side.\n\nYour old army and spy hierarchy are purged with the move. New Severant women are installed over the war office and intelligence channels before your first orders leave the capital.\n\nNew seat: ${severantRouteSeatSummary()}\nClaimant absorbed from ${claimant.name}\nFormer realm lost to Elara's Hidden Court\nStayed in court: ${keptNames || "No other queen followed immediately."}\nSplit away to Elara: ${departedNames || "No other queen broke away at the switch."}\nFollowers ${severantRouteFollowers().length} | Resisters ${severantRouteResisters().length} | Matriarch ${matriarchSeverantStandingLabel()}`
+          : `${highSeverantProfile.hiddenName} changes which queen will publicly carry the bad route beneath you both.\n\n${claimant.leader} is now the claimant the Severant wants enthroned beneath your shared order.\n\nNew seat: ${severantRouteSeatSummary()}\nFollowers ${severantRouteFollowers().length} | Resisters ${severantRouteResisters().length}`,
+        portrait: queenPortraits[claimant.id] || QUEEN_PORTRAITS[claimant.id] || highSeverantPortrait(),
+        cta: mode === "initial" ? "Take The New Seat" : "Accept The Reassignment",
+      });
+      addLog(
+        mode === "initial"
+          ? `${claimant.leader}'s capital becomes your new seat under the Severant pact while Elara seizes every former province you held and turns them into the Hidden Court's hostile realm.`
+          : `${claimant.leader} is elevated as the Severant's claimant queen beneath you.`
+      );
+      render();
+      return true;
+    }
+
+    function onSeverantRouteQueenSecured(queenFaction, sourceLabel = "captured") {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant" || !capturedQueens.includes(queenFaction)) return false;
+      if (!campaignRouteState.claimantQueenId && queenFaction > 0) {
+        campaignRouteState.claimantQueenId = queenFaction;
+      }
+      syncSeverantRouteCourtAlignment();
+      if (!campaignRouteState.setupDone && campaignRouteClaimantQueen()) {
+        return resolveSeverantRouteClaimantSetup("initial");
+      }
+      const faction = factionById(queenFaction);
+      const status = queenEntry(queenFaction).routeStatus;
+      if (faction && queenFaction > 0) {
+        addLog(
+          status === "resisting"
+            ? `${faction.leader} enters your court under the Severant pact and makes her disgust obvious.`
+            : `${faction.leader} is folded into the Severant pact after being ${sourceLabel}.`
+        );
+      }
+      maybeAdvanceSeverantObjectiveChain();
+      render();
+      return true;
+    }
+
+    function maybeResolveSeverantRouteClaimantSetup() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant" || campaignRouteState.setupDone) return false;
+      if (!campaignRouteClaimantQueen()) return false;
+      return resolveSeverantRouteClaimantSetup("initial");
+    }
+
+    function queueSeverantElaraPressureEvent() {
+      const elara = capturedQueens.includes(0) ? queenEntry(0) : null;
+      if (!elara || elara.routeStatus === "gone") return false;
+      queueEventModal({
+        label: "Bad Route",
+        title: "The Severant Wants Elara Cut Down",
+        body: `Elara still carries too much memory of the old Hidden Court for the Severant's comfort.\n\nShe wants Elara reduced from partner and shield to an example the rest of the harem will understand.\n\nElara status: ${severantRouteQueenStatusLabel(elara.routeStatus)} • Morale ${elara.morale}`,
+        portrait: queenPortraits[0] || QUEEN_PORTRAITS[0] || highSeverantPortrait(),
+        actions: [
+          {
+            label: "Strip Her Public Role",
+            onClick: () => {
+              elara.routeStatus = "contained";
+              elara.lastRouteChangeRound = round;
+              elara.forbiddenThisTurn = true;
+              elara.morale = Math.max(0, elara.morale - 10);
+              highSeverantState.respect = clamp(highSeverantState.respect + 6, 0, 100);
+              highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 4, 0, 100);
+              dismissEventModal(true);
+              addLog("You let the Severant strip Elara down into a watched symbol inside the court.");
+              render();
+            },
+          },
+          {
+            label: "Keep Her Leashed But Visible",
+            onClick: () => {
+              elara.routeStatus = "displaced";
+              elara.lastRouteChangeRound = round;
+              elara.forbiddenThisTurn = true;
+              highSeverantState.respect = clamp(highSeverantState.respect + 2, 0, 100);
+              dismissEventModal(true);
+              addLog("Elara remains in the court, but no longer at its center.");
+              render();
+            },
+          },
+          {
+            label: "Defy The Demand",
+            onClick: () => {
+              elara.morale = Math.min(100, elara.morale + 6);
+              dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum + 4, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect - 4, 0, 100);
+              highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 8, 0, 100);
+              dismissEventModal(true);
+              addLog("You refuse to let the Severant fully humiliate Elara, and the pact grows sharper for it.");
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function queueSeverantMatriarchPressureEvent() {
+      const matriarch = matriarchMatron();
+      if (!matriarch || campaignRouteState.matriarchStanding === "hidden_court") return false;
+      queueEventModal({
+        label: "Bad Route",
+        title: "The Matriarch's Wing Is Marked",
+        body: `The Severant does not trust the woman who once anchored the Hidden House.\n\nShe wants the Matriarch watched, limited, or sealed away so the old court cannot regrow around her.\n\nMatriarch status: ${matriarchSeverantStandingLabel()} • Loyalty ${matriarch.loyalty} • Trust ${matriarch.trust}`,
+        portrait: matriarch.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: "Seal Her Chambers",
+            onClick: () => {
+              campaignRouteState.matriarchStanding = "sealed";
+              matriarch.loyalty = clamp((matriarch.loyalty || 0) - 10, 0, 100);
+              matriarch.trust = clamp((matriarch.trust || 0) - 12, 0, 100);
+              matriarch.romance = clamp((matriarch.romance || 0) - 8, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect + 6, 0, 100);
+              dismissEventModal(true);
+              addLog("The Matriarch is sealed away from the active heart of the court.");
+              render();
+            },
+          },
+          {
+            label: "Put Her Under Watch",
+            onClick: () => {
+              campaignRouteState.matriarchStanding = "watched";
+              matriarch.loyalty = clamp((matriarch.loyalty || 0) - 5, 0, 100);
+              matriarch.trust = clamp((matriarch.trust || 0) - 6, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect + 2, 0, 100);
+              dismissEventModal(true);
+              addLog("The Matriarch remains in the court, but only under close Severant oversight.");
+              render();
+            },
+          },
+          {
+            label: "Keep Her Close Anyway",
+            onClick: () => {
+              matriarch.loyalty = clamp((matriarch.loyalty || 0) + 4, 0, 100);
+              matriarch.trust = clamp((matriarch.trust || 0) + 4, 0, 100);
+              dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum + 5, 0, 100);
+              highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 7, 0, 100);
+              dismissEventModal(true);
+              addLog("You keep the Matriarch near you despite the Severant's displeasure.");
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function queueSeverantDissenterEvent(queenFaction) {
+      const faction = factionById(queenFaction);
+      const st = queenEntry(queenFaction);
+      if (!faction || !st) return false;
+      queueEventModal({
+        label: "Bad Route",
+        title: `${faction.leader} Refuses The Pact`,
+        body: `${faction.leader} has not accepted what your alliance with the Severant makes of the court.\n\nShe is still inside your household, but not truly with you.\n\nStatus: ${severantRouteQueenStatusLabel(st.routeStatus)} • Morale ${st.morale} • Hate ${st.hate} • Fear ${st.fear}`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        actions: [
+          {
+            label: "Break Her Into Service",
+            onClick: () => {
+              st.routeStatus = "subdued";
+              st.lastRouteChangeRound = round;
+              st.forbiddenThisTurn = false;
+              st.assignment = "court";
+              st.morale = Math.max(0, st.morale - 14);
+              st.fear = clamp(st.fear + 12, 0, 100);
+              st.hate = clamp(st.hate + 8, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect + 4, 0, 100);
+              dismissEventModal(true);
+              addLog(`${faction.leader} is forced back into line beneath the Severant pact.`);
+              render();
+            },
+          },
+          {
+            label: "Offer Her Better Terms",
+            onClick: () => {
+              const score = st.trust + st.romance + st.attraction - st.hate + randomBetween(-18, 18);
+              if (score >= 170) {
+                st.routeStatus = "follower";
+                st.lastRouteChangeRound = round;
+                st.forbiddenThisTurn = false;
+                st.morale = Math.min(100, st.morale + 6);
+                st.trust = Math.min(100, st.trust + 3);
+                addLog(`${faction.leader} accepts a better place in the court and follows you after all.`);
+              } else {
+                st.routeStatus = "resisting";
+                st.forbiddenThisTurn = true;
+                st.morale = Math.max(0, st.morale - 4);
+                addLog(`${faction.leader} refuses the offer and remains openly against the pact.`);
+              }
+              dismissEventModal(true);
+              render();
+            },
+          },
+          {
+            label: "Keep Her Under Guard",
+            onClick: () => {
+              st.routeStatus = "resisting";
+              st.forbiddenThisTurn = true;
+              st.morale = Math.max(0, st.morale - 3);
+              dismissEventModal(true);
+              addLog(`${faction.leader} remains under guard while refusing to follow the Severant route.`);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerSeverantRoutePressureEvent() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant" || !campaignRouteState.setupDone) return false;
+      if (campaignRouteState.choiceRound >= round) return false;
+      if (campaignRouteState.lastPressureRound >= round - 2) return false;
+      const options = [];
+      const elara = capturedQueens.includes(0) ? queenEntry(0) : null;
+      if (elara && !["contained", "gone"].includes(elara.routeStatus)) options.push(() => queueSeverantElaraPressureEvent());
+      if (matriarchMatron() && !["sealed", "hidden_court"].includes(campaignRouteState.matriarchStanding)) options.push(() => queueSeverantMatriarchPressureEvent());
+      const dissenter = randomItem(severantRouteResisters().filter((queenFaction) => queenFaction > 0));
+      if (dissenter !== null && dissenter !== undefined) {
+        options.push(() => queueSeverantDissenterEvent(dissenter));
+      }
+      if (!options.length || Math.random() > 0.42) return false;
+      campaignRouteState.lastPressureRound = round;
+      return randomItem(options)();
+    }
+
+    function openSeverantCourtRoster() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") return false;
+      syncSeverantRouteCourtAlignment();
+      const claimant = campaignRouteClaimantQueen();
+      const followers = severantRouteFollowers()
+        .filter((queenFaction) => queenFaction > 0)
+        .map((queenFaction) => `${factionById(queenFaction)?.leader || "Unknown"} - ${severantRouteQueenStatusLabel(queenEntry(queenFaction).routeStatus)}`);
+      const resisters = severantRouteResisters()
+        .map((queenFaction) => `${queenFaction === 0 ? "Queen Elara" : (factionById(queenFaction)?.leader || "Unknown")} - ${severantRouteQueenStatusLabel(queenEntry(queenFaction).routeStatus)}`);
+      queueEventModal({
+        label: "Bad Route",
+        title: "The Court Splits Around You",
+        body: `Claimant ${claimant ? claimant.leader : "Unchosen"}\nSeat ${severantRouteSeatSummary()}\nOrder Reserve ${campaignRouteState.orderReserve}\nMatriarch ${matriarchSeverantStandingLabel()}\n\nFollowers:\n${followers.length ? followers.join("\n") : "None yet."}\n\nResisters:\n${resisters.length ? resisters.join("\n") : "No open resisters remain."}`,
+        portrait: claimant ? (queenPortraits[claimant.id] || QUEEN_PORTRAITS[claimant.id]) : highSeverantPortrait(),
+        cta: "Read The Court",
+      });
+      return true;
+    }
+
+    function deploySeverantDetachment() {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      if (campaignRouteState.side !== "severant" || !campaignRouteState.setupDone) {
+        addLog("The Severant has not fully seated her claimant court yet.");
+        return false;
+      }
+      if (campaignRouteState.lastDetachmentRound === round) {
+        addLog("You already deployed a Severant detachment this round.");
+        return false;
+      }
+      if (campaignRouteState.orderReserve < 4) {
+        addLog("You need 4 Order Reserve to deploy a Severant detachment.");
+        return false;
+      }
+      const seat = playerCapitalTile();
+      if (!seat) {
+        addLog("You need a stable claimant seat before Order detachments can deploy.");
+        return false;
+      }
+      campaignRouteState.orderReserve = Math.max(0, campaignRouteState.orderReserve - 4);
+      campaignRouteState.lastDetachmentRound = round;
+      seat.troops += 7;
+      let spread = 0;
+      for (const neighbor of shuffled(neighbors(seat))) {
+        if (neighbor.owner !== playerFactionId() || neighbor.terrain !== "land") continue;
+        neighbor.troops += 4;
+        spread += 1;
+        if (spread >= 2) break;
+      }
+      highSeverantState.influence = clamp(highSeverantState.influence + 2, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 1, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 1, 0, 100);
+      addLog("Order detachments arrive under the Severant's seal and reinforce the claimant court.");
+      render();
+      return true;
+    }
+
+    function disciplineSeverantResister() {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route disciplines court resisters this way.");
+        return false;
+      }
+      syncSeverantRouteCourtAlignment();
+      if (campaignRouteState.lastDisciplineRound === round) {
+        addLog("You already made an example of one resister this round.");
+        return false;
+      }
+      if (campaignRouteState.orderReserve < 3) {
+        addLog("You need 3 Order Reserve to discipline a resister.");
+        return false;
+      }
+      const targetId = randomItem(severantRouteResisters().filter((queenFaction) => queenFaction > 0));
+      if (targetId === null || targetId === undefined) {
+        addLog("No queen beyond Elara is openly resisting the Severant pact right now.");
+        return false;
+      }
+      const faction = factionById(targetId);
+      const st = queenEntry(targetId);
+      campaignRouteState.orderReserve = Math.max(0, campaignRouteState.orderReserve - 3);
+      campaignRouteState.lastDisciplineRound = round;
+      st.routeStatus = "subdued";
+      st.lastRouteChangeRound = round;
+      st.forbiddenThisTurn = false;
+      st.assignment = "court";
+      st.morale = Math.max(0, st.morale - 10);
+      st.fear = clamp(st.fear + 12, 0, 100);
+      st.hate = clamp(st.hate + 6, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 3, 0, 100);
+      highSeverantState.influence = clamp(highSeverantState.influence + 1, 0, 100);
+      queueEventModal({
+        label: "Bad Route",
+        title: `${faction.leader} Is Forced Into Line`,
+        body: `${faction.leader} resists the Severant pact until you decide the example has gone on long enough.\n\nOrder handlers, closed doors, and direct pressure finally break her into service beneath your court.\n\nShe is no longer following willingly, but she is no longer free to defy you either.`,
+        portrait: queenPortraits[targetId] || QUEEN_PORTRAITS[targetId],
+        cta: "Mark The Example",
+      });
+      addLog(`${faction.leader} is disciplined into submission beneath the Severant pact.`);
+      render();
+      return true;
+    }
+
+    function holdSeverantClaimantCoronation() {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route stages a claimant coronation.");
+        return false;
+      }
+      if (!campaignRouteState.setupDone) {
+        addLog("Seat the claimant court first before you stage a coronation.");
+        return false;
+      }
+      syncSeverantRouteCourtAlignment();
+      const claimant = campaignRouteClaimantQueen();
+      if (!claimant) {
+        addLog("No claimant queen has been named yet.");
+        return false;
+      }
+      if (severantClaimantCrowned()) {
+        addLog(`${claimant.leader} already carries the claimant crown for this route.`);
+        return false;
+      }
+      if (campaignRouteState.lastCoronationRound === round) {
+        addLog("The claimant has already been elevated before the court this round.");
+        return false;
+      }
+      if (treasury < 3) {
+        addLog("You need 3 treasury to stage a proper claimant coronation.");
+        return false;
+      }
+      const claimantState = queenEntry(claimant.id);
+      treasury -= 3;
+      campaignRouteState.lastCoronationRound = round;
+      campaignRouteState.claimantCrownedQueenId = claimant.id;
+      claimantState.morale = Math.min(100, claimantState.morale + 12);
+      claimantState.trust = Math.min(100, claimantState.trust + 6);
+      claimantState.romance = Math.min(100, claimantState.romance + 4);
+      const seat = playerCapitalTile();
+      if (seat) seat.troops += 5;
+      for (const queenFaction of severantRouteFollowers()) {
+        if (queenFaction === claimant.id) continue;
+        queenEntry(queenFaction).morale = Math.min(100, queenEntry(queenFaction).morale + 3);
+      }
+      for (const queenFaction of severantRouteResisters()) {
+        queenEntry(queenFaction).morale = Math.max(0, queenEntry(queenFaction).morale - 2);
+      }
+      highSeverantState.respect = clamp(highSeverantState.respect + 2, 0, 100);
+      highSeverantState.influence = clamp(highSeverantState.influence + 2, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 1, 0, 100);
+      queueEventModal({
+        label: "Bad Route",
+        title: `${claimant.leader} Is Displayed As Your Chosen Queen`,
+        body: `${claimant.leader} is paraded before the court as the queen the Severant selected to stand beneath you both.\n\nFollowers leave the chamber more certain of their place. Resisters leave it more aware that the pact is hardening into a permanent order.`,
+        portrait: queenPortraits[claimant.id] || QUEEN_PORTRAITS[claimant.id],
+        cta: "Seat The Claimant",
+      });
+      addLog(`${claimant.leader} is publicly elevated as the Severant's claimant queen.`);
+      maybeAdvanceSeverantObjectiveChain();
+      render();
+      return true;
+    }
+
+    function crownTheSeverant() {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureRestorationState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route crowns the High Severant.");
+        return false;
+      }
+      maybeAdvanceSeverantObjectiveChain();
+      if (campaignRouteState.severantObjectivePhase < 3) {
+        addLog("The Severant has not advanced you to her final phase yet.");
+        return false;
+      }
+      if (campaignRouteState.severantCrowned) {
+        addLog(`${highSeverantProfile.hiddenName} has already been crowned for this route.`);
+        return false;
+      }
+      const claimant = campaignRouteClaimantQueen();
+      if (!claimant || !severantClaimantCrowned()) {
+        addLog("Seat and formally crown your claimant queen first.");
+        return false;
+      }
+      if (!severantRouteFinalMapLocked()) {
+        addLog("No rival queen can remain active, hidden, or unsecured when you crown the Severant.");
+        return false;
+      }
+      if (treasury < 6) {
+        addLog("You need 6 treasury to stage the Severant's coronation.");
+        return false;
+      }
+      if (campaignRouteState.orderReserve < 8) {
+        addLog("You need 8 Order Reserve to secure the coronation chamber.");
+        return false;
+      }
+      treasury -= 6;
+      campaignRouteState.orderReserve = Math.max(0, campaignRouteState.orderReserve - 8);
+      campaignRouteState.severantCrowned = true;
+      const capital = playerCapitalTile();
+      if (capital) capital.troops += 10;
+      highSeverantState.influence = clamp(highSeverantState.influence + 6, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 6, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 3, 0, 100);
+      restorationState.orderContamination = clamp(restorationState.orderContamination + 4, 0, 100);
+      restorationState.publicDependence = clamp(restorationState.publicDependence + 2, 0, 100);
+      queueEventModal({
+        label: "Bad Route",
+        title: campaignRouteState.severantDoctrine === "continuity"
+          ? `${highSeverantProfile.hiddenName} Is Crowned In Secret`
+          : `${highSeverantProfile.hiddenName} Is Crowned`,
+        body: campaignRouteState.severantDoctrine === "continuity"
+          ? `The public world does not get to see the true shape of power.\n\nInside the sealed court, you place the crown on ${highSeverantProfile.hiddenName} while ${claimant.leader} remains the acceptable public face beyond the chamber. The Order survives because the real throne is once again hidden one layer deeper than the realm expects.`
+          : `With every rival throne already broken, you place the crown on ${highSeverantProfile.hiddenName} before the court she helped you build.\n\n${claimant.leader} remains the claimant queen beneath you both, but no one in the chamber mistakes where the real power now sits.`,
+        portrait: highSeverantPortrait(),
+        cta: "Seat Her On The Throne",
+      });
+      addLog(`${highSeverantProfile.hiddenName} is crowned as the central sovereign of your Severant pact.`);
+      maybeAdvanceSeverantObjectiveChain();
+      render();
+      return true;
+    }
+
+    function sealSeverantSuccessionCharter() {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureFertilityState();
+      ensureHighSeverantState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route seals the inner circle's succession charter.");
+        return false;
+      }
+      maybeAdvanceSeverantObjectiveChain();
+      if (campaignRouteState.severantObjectivePhase < 3) {
+        addLog("The Severant has not yet asked you to secure the inner circle.");
+        return false;
+      }
+      if (!campaignRouteState.severantCrowned) {
+        addLog("Crown the Severant first.");
+        return false;
+      }
+      if (campaignRouteState.successionSecured) {
+        addLog("The inner circle's succession charter is already sealed.");
+        return false;
+      }
+      const heirsNow = allHeirs().length;
+      if (heirsNow === 0 && (fertilityState.preservedSeed < 24 || fertilityState.logistics < 24)) {
+        addLog("You need at least one heir or stronger fertility logistics before the inner circle will sign onto succession.");
+        return false;
+      }
+      if (treasury < 4) {
+        addLog("You need 4 treasury to lock down the succession charter.");
+        return false;
+      }
+      if (campaignRouteState.orderReserve < 5) {
+        addLog("You need 5 Order Reserve to guard the charter and the women signing it.");
+        return false;
+      }
+      treasury -= 4;
+      campaignRouteState.orderReserve = Math.max(0, campaignRouteState.orderReserve - 5);
+      campaignRouteState.successionSecured = true;
+      fertilityState.preservedSeed = clamp(fertilityState.preservedSeed + 4, 0, 100);
+      fertilityState.logistics = clamp(fertilityState.logistics + 6, 0, 100);
+      fertilityState.publicTrust = clamp(fertilityState.publicTrust + 5, 0, 100);
+      dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum + 6, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 4, 0, 100);
+      highSeverantState.influence = clamp(highSeverantState.influence + 2, 0, 100);
+      const loyalCount = loyalHeirs().length;
+      queueEventModal({
+        label: "Bad Route",
+        title: "The Inner Circle Accepts The Succession Plan",
+        body: heirsNow > 0
+          ? `The women closest to the throne sign on because the future is no longer abstract.\n\nThere are already ${heirsNow} heir${heirsNow === 1 ? "" : "s"} in the line, ${loyalCount} of them already leaning firmly toward your house, and the charter now binds the court to protect that succession instead of improvising around it.`
+          : `No heir has emerged yet, but the machinery is ready for one.\n\nSecured seed stores, guarded clinics, and a signed succession charter give the inner circle a future to invest in, and that is enough for the women closest to the Severant to lock themselves to the regime.`,
+        portrait: highSeverantPortrait(),
+        cta: "Seal The Charter",
+      });
+      addLog("The Severant's inner circle signs onto a permanent succession plan beneath your rule.");
+      maybeAdvanceSeverantObjectiveChain();
+      render();
+      return true;
+    }
+
+    function renderCampaignRouteChoiceModal({ container, event }) {
+      const matriarch = matriarchMatron();
+      const hiddenCourtPortrait = matriarch?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0];
+      const [hiddenCourtAction, severantAction, waitAction] = event.actions || [];
+
+      const shell = document.createElement("div");
+      shell.className = "route-choice-shell";
+
+      const intro = document.createElement("div");
+      intro.className = "route-choice-intro";
+      intro.innerHTML = `<strong>Two futures open at once.</strong><br>${event.body}`;
+      shell.appendChild(intro);
+
+      const grid = document.createElement("div");
+      grid.className = "route-choice-grid";
+
+      const buildPane = ({ tone, eyebrow, title, portrait, text, buttonLabel, action }) => {
+        const pane = document.createElement("div");
+        pane.className = `route-choice-pane ${tone}`;
+
+        const badge = document.createElement("div");
+        badge.className = "route-choice-eyebrow";
+        badge.textContent = eyebrow;
+        pane.appendChild(badge);
+
+        const heading = document.createElement("div");
+        heading.className = "route-choice-title";
+        heading.textContent = title;
+        pane.appendChild(heading);
+
+        const img = document.createElement("img");
+        img.className = "route-choice-portrait";
+        if (tone === "severant") img.classList.add("high-severant-portrait");
+        img.src = portrait;
+        img.alt = `${title} portrait`;
+        pane.appendChild(img);
+
+        const copy = document.createElement("div");
+        copy.className = "route-choice-copy";
+        copy.textContent = text;
+        pane.appendChild(copy);
+
+        const btn = document.createElement("button");
+        btn.className = `route-choice-action ${tone}`;
+        btn.textContent = buttonLabel;
+        btn.disabled = Boolean(action?.disabled);
+        bindReliablePress(btn, () => {
+          if (action?.onClick) action.onClick();
+        });
+        pane.appendChild(btn);
+        return pane;
+      };
+
+      grid.appendChild(buildPane({
+        tone: "hidden-court",
+        eyebrow: "Purple Window",
+        title: "Stay With The Matriarch",
+        portrait: hiddenCourtPortrait,
+        text: "Elara remains your front woman. The Matriarch anchors the Hidden Court. Queens who come over can still trade ambition for sanctuary, intimacy, children, and a better life beyond the old seed-bank machine.",
+        buttonLabel: hiddenCourtAction?.label || "Stand With The Hidden Court",
+        action: hiddenCourtAction,
+      }));
+
+      grid.appendChild(buildPane({
+        tone: "severant",
+        eyebrow: "Red Window",
+        title: "Take The Severant's Hand",
+        portrait: highSeverantPortrait(),
+        text: "The High Severant offers detachments, order handlers, and the old fertility machine under her control. If you choose her, Elara's shelter ends, your old command is stripped away, and Severant women replace your generals and spy network.",
+        buttonLabel: severantAction?.label || "Accept The Severant's Pact",
+        action: severantAction,
+      }));
+
+      shell.appendChild(grid);
+
+      const footer = document.createElement("div");
+      footer.className = "route-choice-footer";
+      footer.textContent = event.meta || campaignRouteOpportunitySummary();
+      shell.appendChild(footer);
+
+      if (waitAction) {
+        const waitRow = document.createElement("div");
+        waitRow.className = "route-choice-wait";
+        const waitBtn = document.createElement("button");
+        waitBtn.className = "route-choice-wait-btn";
+        waitBtn.textContent = waitAction.label;
+        waitBtn.disabled = Boolean(waitAction.disabled);
+        bindReliablePress(waitBtn, () => {
+          if (waitAction.onClick) waitAction.onClick();
+        });
+        waitRow.appendChild(waitBtn);
+        shell.appendChild(waitRow);
+      }
+
+      container.appendChild(shell);
+    }
+
+    function chooseCampaignRoute(side) {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureRestorationState();
+      if (campaignRouteState.side) return false;
+      if (side !== "hidden_court" && side !== "severant") return false;
+      campaignRouteState.side = side;
+      campaignRouteState.choiceRound = round;
+      campaignRouteState.deferUntilRound = 0;
+      campaignRouteState.severantObjectivePhase = 0;
+      campaignRouteState.severantBriefedPhase = 0;
+      campaignRouteState.severantRewardedPhase = 0;
+      campaignRouteState.claimantCrownedQueenId = null;
+      campaignRouteState.severantCrowned = false;
+      campaignRouteState.successionSecured = false;
+      campaignRouteState.lastObjectiveAdvanceRound = -1;
+      campaignRouteState.severantCommandInstalled = false;
+      if (side === "hidden_court") {
+        campaignRouteState.orderReserve = 0;
+        dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum + 10, 0, 100);
+        dynastyState.counterIntelRating = clamp(dynastyState.counterIntelRating + 12, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 8, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination - 6, 0, 100);
+        highSeverantState.exposure = clamp(highSeverantState.exposure + 6, 0, 100);
+        highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 8, 0, 100);
+        addLog("You bind yourself to the Hidden Court, keeping Elara and the Matriarch as the center of your war.");
+        queueEventModal({
+          label: "Campaign Route",
+          title: "You Choose The Hidden Court",
+          body: `You commit to Elara, the Matriarch, and the hidden house that kept you alive long enough to fight.\n\nQueens who come over are no longer just trophies or opportunists. They are offered sanctuary, closeness, children, and a better lot in life beyond the Severant's locked seed banks.\n\nThe High Severant now stands clearly on the other side of the war.`,
+          portrait: queenPortraits[0] || QUEEN_PORTRAITS[0],
+          cta: "Defend The Hidden Court",
+        });
+      } else {
+        campaignRouteState.claimantQueenId = syncCampaignRouteClaimantQueen()?.id || null;
+        campaignRouteState.orderReserve = Math.max(campaignRouteState.orderReserve, 6);
+        dynastyState.knownThreat = true;
+        dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum - 6, 0, 100);
+        highSeverantProfile.directAudienceUnlocked = true;
+        highSeverantProfile.safehouseKnown = true;
+        highSeverantState.interest = clamp(highSeverantState.interest + 14, 0, 100);
+        highSeverantState.respect = clamp(highSeverantState.respect + 12, 0, 100);
+        highSeverantState.obsession = clamp(highSeverantState.obsession + 14, 0, 100);
+        highSeverantState.influence = clamp(highSeverantState.influence + 8, 0, 100);
+        highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 12, 0, 100);
+        highSeverantProfile.seduction = clamp(highSeverantProfile.seduction + 12, 0, 100);
+        highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 18, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination + 12, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence + 8, 0, 100);
+        const claimant = campaignRouteClaimantQueen();
+        addLog("You accept the High Severant's pact. This is the bad route.");
+        queueEventModal({
+          label: "Bad Route",
+          title: "You Take The Severant's Hand",
+          body: `You stop treating ${highSeverantProfile.hiddenName} as a hidden enemy and start treating her as a partner in rule.\n\nTo her, you are the ring of power itself: the last man, the last living source of new children, and the prize every queen would surrender kingdoms to possess. In return, she turns Order handlers, sealed detachments, and fertility infrastructure toward your command.${claimant ? `\n\n${claimant.leader} is the first queen she marks as a chosen claimant beneath you both.` : `\n\nShe still expects you to secure a queen she can raise beneath you both as her chosen claimant.`}\n\nElara and the Matriarch are no longer your shelter in this route. They are obstacles standing between you and the throne the Severant wants to build through you.\n\nYour old generals, spy handlers, and field structure do not survive the switch. The Severant replaces them with her own women the moment she takes possession of your war.`,
+          portrait: highSeverantPortrait(),
+          cta: "Seal The Pact",
+        });
+        syncSeverantRouteCourtAlignment();
+        maybeResolveSeverantRouteClaimantSetup();
+        installSeverantCommandRoster();
+        maybeAdvanceSeverantObjectiveChain();
+      }
+      render();
+      return true;
+    }
+
+    function queueCampaignRouteChoice(forceOpen = false) {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureHighSeverantProfile();
+      if (!forceOpen && !campaignRouteEligible()) return false;
+      campaignRouteState.lastOfferRound = round;
+      queueEventModal({
+        label: "Campaign Route",
+        title: "Choose Your Side",
+        body: `The war has reached the point where hiding behind improvisation is no longer enough.\n\nThe Hidden Court offers one future: Elara remains your front, the Matriarch anchors the house, and rival queens can be pulled into your orbit with sanctuary, closeness, children, and a better life beyond the old seed-bank machine.\n\nThe High Severant offers another. To her, you are the ring of power itself. If you go to her, she will feed you troops, preserve the old fertility infrastructure under her hand, and turn you against Elara, the Matriarch, and every court still trying to claim the throne.\n\nThis choice locks the shape of the campaign.\n\n${campaignRouteOpportunitySummary()}`,
+        meta: campaignRouteOpportunitySummary(),
+        wide: true,
+        blackout: true,
+        render: renderCampaignRouteChoiceModal,
+        actions: [
+          {
+            label: "Stand With The Hidden Court",
+            onClick: () => {
+              dismissEventModal();
+              chooseCampaignRoute("hidden_court");
+            },
+          },
+          {
+            label: "Accept The Severant's Pact",
+            onClick: () => {
+              dismissEventModal();
+              chooseCampaignRoute("severant");
+            },
+          },
+          {
+            label: "Wait",
+            onClick: () => {
+              campaignRouteState.deferUntilRound = round + 2;
+              dismissEventModal();
+              addLog("You delay the side choice and keep both futures alive a little longer.");
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerCampaignRouteChoice() {
+      ensureCampaignRouteState();
+      if (!campaignRouteEligible()) return false;
+      if (round < campaignRouteState.deferUntilRound) return false;
+      if (campaignRouteState.lastOfferRound === round) return false;
+      return queueCampaignRouteChoice();
+    }
+
+    function openCampaignRouteReview() {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (!campaignRouteState.side) {
+        if (queueCampaignRouteChoice()) return true;
+        queueEventModal({
+          label: "Campaign Route",
+          title: "No Side Chosen Yet",
+          body: `You are still operating under the Hidden Court's protection, but the formal fork has not opened yet.\n\nKeep pushing deeper into the Severant war until her pressure becomes impossible to ignore.\n\n${campaignRouteOpportunitySummary()}`,
+          portrait: queenPortraits[0] || QUEEN_PORTRAITS[0],
+          cta: "Hold The Line",
+        });
+        return true;
+      }
+      const claimant = campaignRouteClaimantQueen();
+      const body = campaignRouteState.side === "hidden_court"
+        ? `You have committed to the Hidden Court.\n\nElara remains your public shield, the Matriarch remains the private sovereign of the house, and queens who cross over do so for intimacy, sanctuary, children, and a better life beside the last man rather than submission to the old system.\n\nChoice made on round ${campaignRouteState.choiceRound}.`
+        : `You have committed to the Severant's side. This is the bad route.\n\n${highSeverantProfile.hiddenName} now treats you as the center of her future order, whether that means open joint rule or a secret restoration of the old misandrist machine.\n\nDoctrine ${severantDoctrineLabel()}${claimant ? ` - Claimant ${claimant.leader}` : " - Claimant not yet chosen"}\nSeat ${severantRouteSeatSummary()} • Followers ${severantRouteFollowers().length} • Resisters ${severantRouteResisters().length} • Matriarch ${matriarchSeverantStandingLabel()} • Order Reserve ${campaignRouteState.orderReserve}\nCurrent Objective: ${severantObjectivePhaseTitle()}\n${severantObjectiveProgressText()}\nChoice made on round ${campaignRouteState.choiceRound}.`;
+      queueEventModal({
+        label: "Campaign Route",
+        title: campaignRouteState.side === "hidden_court" ? "Hidden Court Doctrine" : "Severant Pact Doctrine",
+        body,
+        portrait: campaignRouteState.side === "hidden_court"
+          ? (queenPortraits[0] || QUEEN_PORTRAITS[0])
+          : highSeverantPortrait(),
+        cta: "Acknowledge",
+      });
+      return true;
+    }
+
+    function cycleSeverantDoctrine() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route uses the dark alliance and continuity ending doctrines.");
+        return false;
+      }
+      campaignRouteState.severantDoctrine = campaignRouteState.severantDoctrine === "dark_alliance"
+        ? "continuity"
+        : "dark_alliance";
+      addLog(`Severant doctrine set to ${severantDoctrineLabel().toLowerCase()}.`);
+      render();
+      return true;
+    }
+
+    function cycleSeverantClaimantQueen() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Only the Severant route names a claimant queen beneath you.");
+        return false;
+      }
+      if (campaignRouteState.severantCrowned) {
+        addLog("The claimant throne is locked once the Severant herself has been crowned.");
+        return false;
+      }
+      const candidates = campaignRouteClaimantCandidates();
+      if (!candidates.length) {
+        campaignRouteState.claimantQueenId = null;
+        addLog("Secure another queen first if you want the Severant to name a claimant beneath you.");
+        render();
+        return false;
+      }
+      const currentIndex = candidates.findIndex((faction) => faction.id === campaignRouteState.claimantQueenId);
+      const next = candidates[(currentIndex + 1 + candidates.length) % candidates.length];
+      campaignRouteState.claimantQueenId = next.id;
+      campaignRouteState.claimantCrownedQueenId = null;
+      syncSeverantRouteCourtAlignment();
+      if (campaignRouteState.setupDone) {
+        resolveSeverantRouteClaimantSetup("reseat");
+      }
+      addLog(`${next.leader} is now the claimant queen the Severant favors beneath you.`);
+      render();
+      return true;
+    }
+
+    function applyCampaignRouteTurnEffects() {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureRestorationState();
+      if (campaignRouteState.side === "hidden_court") {
+        dynastyState.counterIntelRating = clamp(dynastyState.counterIntelRating + 1, 0, 100);
+        dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum + 1, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 1, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination - 1, 0, 100);
+        return;
+      }
+      if (campaignRouteState.side !== "severant") return;
+      const capital = playerCapitalTile();
+      if (capital) capital.troops += 2;
+      treasury += 1;
+      campaignRouteState.orderReserve = Math.min(
+        24,
+        campaignRouteState.orderReserve + 2 + Math.floor(severantRouteFollowers().length / 2)
+      );
+      highSeverantState.influence = clamp(highSeverantState.influence + 1, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 1, 0, 100);
+      restorationState.orderContamination = clamp(restorationState.orderContamination + 2, 0, 100);
+      restorationState.publicDependence = clamp(restorationState.publicDependence + 1, 0, 100);
+      dynastyState.loyalistMomentum = clamp(dynastyState.loyalistMomentum - 1, 0, 100);
+      const claimant = campaignRouteClaimantQueen();
+      if (claimant) {
+        const state = queenEntry(claimant.id);
+        state.morale = clamp(state.morale + 2, 0, 100);
+      }
+      maybeAdvanceSeverantObjectiveChain();
+    }
+
+    function severantVictoryEndingData() {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      const claimant = campaignRouteClaimantQueen();
+      if (campaignRouteState.severantDoctrine === "continuity") {
+        return {
+          label: "Continuity Ending",
+          title: "The Old Order Continues",
+          modalBody: `${highSeverantProfile.hiddenName} does not need to stand trial in this future. After the rebellion is erased and every rival crown is broken, you crown her inside a sealed court instead.\n\nThe public world keeps its illusions, the claimant throne remains the acceptable face of rule${claimant ? ` through ${claimant.leader}` : ""}, and the true regime survives one chamber deeper with its succession already locked down.\n\nThis is not liberation. It is continuity with you sealed inside it.`,
+          summary: `${highSeverantProfile.hiddenName} survives and formalizes the old order around you. Rebellion is erased, rival crowns are destroyed, and the realm hardens into a continuity state built on secrecy, dependency, and the Severant's restored rule.`,
+        };
+      }
+      return {
+        label: "Dark Alliance",
+        title: "You Reign Beside The Severant",
+        modalBody: `You do not punish ${highSeverantProfile.hiddenName}. You rule with her.\n\nAfter you erase the rebellion, destroy every rival crown, and seat her on the throne, power matters more than doctrine. ${claimant ? `${claimant.leader} remains the claimant queen beneath you both,` : "The claimant court remains beneath you both,"} and the inner circle's future is already nailed down by the succession plan you forced into place.\n\nElara, the Matriarch, and every rival queen who fought for another future are discarded so the two of you can reign supreme.`,
+        summary: `You side with ${highSeverantProfile.hiddenName} instead of breaking her. The rebellion dies, the rival crowns fall, and the realm ends beneath a dark alliance built around the throne you helped her secure.`,
+      };
+    }
+
+    function unsecuredSeverantQueens() {
+      return FACTIONS.filter((faction) =>
+        !faction.isHuman &&
+        !capturedQueens.includes(faction.id) &&
+        !leaderState[faction.id]?.defeated
+      );
+    }
+
+    function severantQueenSecurityLine(faction) {
+      if (!faction) return "Unknown queen";
+      const rebelAgainst = leaderState[faction.id]?.rebelAgainst;
+      if (rebelAgainst !== null && rebelAgainst !== undefined) {
+        return `${faction.leader} still rules as a rebel queen against ${factionById(rebelAgainst)?.leader || "a rival court"}.`;
+      }
+      if (leaderState[faction.id]?.active) {
+        return `${faction.leader} still holds open authority on the map.`;
+      }
+      return `${faction.leader} still survives off-field in the underground and has not been secured.`;
+    }
+
+    function allQueensSecuredForSeverant() {
+      return unsecuredSeverantQueens().length === 0;
+    }
+
+    function severantRouteFinalMapLocked() {
+      const alive = activeFactions();
+      return allQueensSecuredForSeverant() &&
+        dormantQueens().length === 0 &&
+        alive.length === 1 &&
+        alive[0]?.id === playerFactionId();
+    }
+
+    function severantRouteVictoryReady() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") return false;
+      const innerCircle = severantInnerCircleSnapshot();
+      return severantRouteFinalMapLocked() &&
+        innerCircle.claimantCrowned &&
+        innerCircle.severantCrowned &&
+        innerCircle.successionSecured;
+    }
+
+    function unresolvedSeverantQueenSummary(limit = 3) {
+      const unresolved = unsecuredSeverantQueens();
+      if (!unresolved.length) return "Every queen is now secured.";
+      const lines = unresolved.slice(0, limit).map((faction) => severantQueenSecurityLine(faction));
+      if (unresolved.length > limit) lines.push(`${unresolved.length - limit} more queen${unresolved.length - limit === 1 ? "" : "s"} remain outside your grip.`);
+      return lines.join("\n");
+    }
+
+    function severantJudgmentReady() {
+      return highSeverantProfile.captive &&
+        highSeverantProfile.confrontationOutcome !== "judged" &&
+        severantRouteFinalMapLocked();
+    }
+
+    function highSeverantPregnancyStatusLabel() {
+      ensureHighSeverantProfile();
+      if (!highSeverantProfile.pregnant) return highSeverantProfile.children > 0 ? `Children ${highSeverantProfile.children}` : "No Heir";
+      const turnsLeft = Math.max(0, highSeverantProfile.pregnancyDueRound - round);
+      if (turnsLeft <= 1) return `Late Pregnancy • Heirs ${highSeverantProfile.children}`;
+      if (turnsLeft === 2) return `Pregnant • Mid Term • Heirs ${highSeverantProfile.children}`;
+      return `Pregnant • Early Term • Heirs ${highSeverantProfile.children}`;
+    }
+
+    function tryHighSeverantPregnancy(sourceLabel, intensity = 1) {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (highSeverantProfile.pregnant || highSeverantProfile.confrontationOutcome !== "judged") return false;
+      const chance = Math.min(
+        0.72,
+        0.14 +
+        intensity * 0.1 +
+        Math.max(0, highSeverantState.respect) / 260 +
+        Math.max(0, highSeverantState.obsession) / 220 +
+        Math.max(0, highSeverantProfile.seduction) / 500
+      );
+      if (Math.random() > chance) return false;
+      highSeverantProfile.pregnant = true;
+      highSeverantProfile.pregnancyStartRound = round;
+      highSeverantProfile.pregnancyDueRound = round + 3 + Math.floor(Math.random() * 2);
+      highSeverantProfile.pregnancyOrigin = sourceLabel;
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 4, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 2, 0, 100);
+      queueEventModal({
+        label: "Final Womb",
+        title: `${highSeverantProfile.hiddenName} Carries Your Child`,
+        body: `${highSeverantProfile.hiddenName} realizes that the punishment did not end with chains and judgment.\n\nYour use of her as the last womb has taken root. The former mistress of the ${SEVERANT_ORDER_NAME} now carries your child, and even she cannot mistake what that makes her body mean inside the world she tried to control.`,
+        portrait: highSeverantPortrait(),
+        cta: "Continue",
+      });
+      addLog(`${highSeverantProfile.hiddenName} becomes pregnant after ${sourceLabel.toLowerCase()}.`);
+      return true;
+    }
+
+    function resolveHighSeverantPregnancy() {
+      ensureHighSeverantProfile();
+      if (!highSeverantProfile.pregnant || highSeverantProfile.pregnancyDueRound > round) return false;
+      highSeverantProfile.pregnant = false;
+      highSeverantProfile.pregnancyStartRound = -1;
+      highSeverantProfile.pregnancyDueRound = -1;
+      highSeverantProfile.children = (highSeverantProfile.children || 0) + 1;
+      const origin = highSeverantProfile.pregnancyOrigin || "post-judgment intimacy";
+      highSeverantProfile.pregnancyOrigin = null;
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 6, 0, 100);
+      highSeverantProfile.fear = clamp(highSeverantProfile.fear + 4, 0, 100);
+      const heir = createHeirFromBirth({
+        type: "severant",
+        id: "high_severant",
+        name: highSeverantProfile.hiddenName,
+      });
+      queueEventModal({
+        label: "Birth",
+        title: `${highSeverantProfile.hiddenName} Gives Birth`,
+        body: `${highSeverantProfile.hiddenName} gives birth after ${origin.toLowerCase()}.\n\n${heir.name} is hidden inside your line like any other son, and the woman who once tried to master every throne is left serving the future she failed to stop.`,
+        portrait: highSeverantPortrait(),
+        cta: "Acknowledge The Heir",
+      });
+      addLog(`${highSeverantProfile.hiddenName} gives birth within your court.`);
+      return true;
+    }
+
+    function highSeverantCourtAccessReady() {
+      ensureCampaignRouteState();
+      return campaignRouteState.side === "severant";
+    }
+
+    function noteHighSeverantInteraction() {
+      highSeverantProfile.lastInteractionRound = round;
+    }
+
+    function converseWithHighSeverant() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (!highSeverantCourtAccessReady()) return false;
+      if (highSeverantProfile.converseUsedThisTurn) {
+        addLog(`${highSeverantProfile.hiddenName} has already spent private words on you this turn.`);
+        return false;
+      }
+      highSeverantProfile.converseUsedThisTurn = true;
+      noteHighSeverantInteraction();
+      highSeverantState.interest = clamp(highSeverantState.interest + 4, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 2, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 3, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 2, 0, 100);
+      queueEventModal({
+        label: "Severant Pact",
+        title: `A Quiet Conversation With ${highSeverantProfile.hiddenName}`,
+        body: `${highSeverantProfile.hiddenName} drops the public pose and speaks to you in the low, measured voice she saves for moments that matter.\n\nShe wants to know whether you are still useful, still dangerous, and still willing to keep choosing her side over the women who hid you first.\n\nInterest ${highSeverantState.interest} • Respect ${highSeverantState.respect} • Fascination ${highSeverantProfile.fascination}`,
+        portrait: highSeverantPortrait(),
+        cta: "Keep Her Close",
+      });
+      render();
+      return true;
+    }
+
+    function flirtWithHighSeverant() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (!highSeverantCourtAccessReady()) return false;
+      if (highSeverantProfile.flirtUsedThisTurn) {
+        addLog(`${highSeverantProfile.hiddenName} has already taken enough teasing from you this turn.`);
+        return false;
+      }
+      highSeverantProfile.flirtUsedThisTurn = true;
+      noteHighSeverantInteraction();
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 4, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 5, 0, 100);
+      highSeverantProfile.seduction = clamp(highSeverantProfile.seduction + 4, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 3, 0, 100);
+      queueEventModal({
+        label: "Severant Pact",
+        title: `${highSeverantProfile.hiddenName} Leans Into The Game`,
+        body: `She meets your flirtation without embarrassment and without surrender.\n\nFor her, even desire is political, but she enjoys the chance to let that calculation look like warmth when it keeps you circling closer.\n\nObsession ${highSeverantState.obsession} • Fascination ${highSeverantProfile.fascination} • Seduction ${highSeverantProfile.seduction}`,
+        portrait: highSeverantPortrait(),
+        cta: "Press Closer",
+      });
+      render();
+      return true;
+    }
+
+    function giftHighSeverant() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (!highSeverantCourtAccessReady()) return false;
+      if (highSeverantProfile.giftUsedThisTurn) {
+        addLog(`${highSeverantProfile.hiddenName} has already accepted a gift from you this turn.`);
+        return false;
+      }
+      if (treasury < 1) {
+        addLog("You need at least 1 treasury to give the Severant something worthy.");
+        return false;
+      }
+      treasury -= 1;
+      highSeverantProfile.giftUsedThisTurn = true;
+      noteHighSeverantInteraction();
+      highSeverantState.respect = clamp(highSeverantState.respect + 4, 0, 100);
+      highSeverantState.influence = clamp(highSeverantState.influence + 1, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 2, 0, 100);
+      queueEventModal({
+        label: "Severant Pact",
+        title: `You Present ${highSeverantProfile.hiddenName} With A Gift`,
+        body: `You hand over something chosen for impact rather than sentiment, and she recognizes the difference immediately.\n\nIt pleases her less as luxury than as proof that you understand what kind of woman she is trying to remain while the war closes around her.\n\nTreasury ${treasury} • Respect ${highSeverantState.respect} • Influence ${highSeverantState.influence}`,
+        portrait: highSeverantPortrait(),
+        cta: "Let Her Keep It",
+      });
+      render();
+      return true;
+    }
+
+    function letHighSeverantSpoilYou() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (!highSeverantCourtAccessReady()) return false;
+      if (highSeverantProfile.spoilUsedThisTurn) {
+        addLog(`${highSeverantProfile.hiddenName} has already indulged you once this turn.`);
+        return false;
+      }
+      highSeverantProfile.spoilUsedThisTurn = true;
+      noteHighSeverantInteraction();
+      treasury += 1;
+      highSeverantState.influence = clamp(highSeverantState.influence + 2, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 3, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 2, 0, 100);
+      queueEventModal({
+        label: "Severant Pact",
+        title: `${highSeverantProfile.hiddenName} Dotes On You`,
+        body: `She chooses indulgence instead of distance and makes sure you feel the difference.\n\nWhether it comes as comfort, privilege, or carefully staged attention, the message is the same: when you obey the pact, she wants you rewarded for it.\n\nTreasury ${treasury} • Influence ${highSeverantState.influence} • Hostility ${highSeverantProfile.hostility}`,
+        portrait: highSeverantPortrait(),
+        cta: "Take The Reward",
+      });
+      render();
+      return true;
+    }
+
+    function privateIntimacyWithHighSeverant() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (!highSeverantCourtAccessReady()) return false;
+      if (highSeverantProfile.confrontationOutcome === "judged") {
+        return intimacyWithHighSeverant();
+      }
+      if (highSeverantProfile.intimacyUsedThisTurn) {
+        addLog(`${highSeverantProfile.hiddenName} has already had you to herself this turn.`);
+        return false;
+      }
+      highSeverantProfile.intimacyUsedThisTurn = true;
+      noteHighSeverantInteraction();
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 6, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 3, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 6, 0, 100);
+      highSeverantProfile.seduction = clamp(highSeverantProfile.seduction + 5, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 4, 0, 100);
+      queueEventModal({
+        label: "Severant Pact",
+        title: `A Private Night With ${highSeverantProfile.hiddenName}`,
+        body: `For one night she stops pretending your value is only strategic.\n\nThe High Severant treats closeness with the same intensity she brings to power, using the moment to bind desire, reward, and control together until the pact between you feels harder to separate from the war itself.\n\nRespect ${highSeverantState.respect} • Obsession ${highSeverantState.obsession} • Seduction ${highSeverantProfile.seduction}`,
+        portrait: highSeverantPortrait(),
+        cta: "Keep The Pact Warm",
+      });
+      render();
+      return true;
+    }
+
+    function intimacyWithHighSeverant() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (highSeverantProfile.confrontationOutcome !== "judged") {
+        addLog(`${highSeverantDisplayName()} is not yet broken into the post-judgment state you want.`);
+        return false;
+      }
+      if (highSeverantProfile.intimacyUsedThisTurn) {
+        addLog(`${highSeverantProfile.hiddenName} has already been used this turn.`);
+        return false;
+      }
+      highSeverantProfile.intimacyUsedThisTurn = true;
+      noteHighSeverantInteraction();
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 5, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 2, 0, 100);
+      highSeverantProfile.fear = clamp(highSeverantProfile.fear + 3, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 2, 0, 100);
+      queueEventModal({
+        label: "Last Womb",
+        title: `You Use ${highSeverantProfile.hiddenName}`,
+        body: `${highSeverantProfile.hiddenName} no longer sits above the board as a hidden sovereign. After judgment, she remains in your power as the last womb you chose to keep.\n\nThe encounter is no longer a negotiation between rivals. It is a reminder that the woman who once tried to shape the world through every other queen now answers directly to your will.`,
+        portrait: highSeverantPortrait(),
+        cta: "Continue",
+      });
+      tryHighSeverantPregnancy("Last Womb", 1.18);
+      render();
+      return true;
+    }
+
+    function resolveHighSeverantJudgment() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      if (!severantJudgmentReady()) return false;
+      highSeverantProfile.confrontationOutcome = "judged";
+      highSeverantProfile.captive = true;
+      highSeverantProfile.escaped = false;
+      highSeverantProfile.judgedRound = round;
+      highSeverantState.influence = 0;
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 12, 0, 100);
+      highSeverantProfile.fear = clamp(highSeverantProfile.fear + 24, 0, 100);
+      addLog(`With every queen secured, ${highSeverantProfile.hiddenName} is dragged before your court for judgment and broken to your will.`);
+      queueEventModal({
+        label: "Final Judgment",
+        title: `${highSeverantProfile.hiddenName} Faces Punishment`,
+        body: `${highSeverantProfile.hiddenName} can no longer hide behind rival crowns, underground claimants, or puppet courts. Every queen she might have used as a shield now stands inside your order.\n\nYou drag the mistress of the ${SEVERANT_ORDER_NAME} before the court she thought she would manipulate forever. She stands trial for her crimes, loses the last illusion of full control, and is bent to your will under chains, sentence, and possession.\n\nThe realm is yours, but the campaign does not have to end here. She remains in your hands after judgment.`,
+        portrait: highSeverantPortrait(),
+        cta: "Pass Sentence",
+      });
+      showEndingScreen(
+        "Severant Punished",
+        `${highSeverantProfile.hiddenName} is captured alive, stripped of her hidden network, tried for the crimes of the ${SEVERANT_ORDER_NAME}, and forced under your command after every queen on the board and in the underground has been secured. The realm can continue afterward, with the former High Severant kept in your court as the last womb.`,
+        playerFactionId()
+      );
+      render();
+      return true;
+    }
+
+    function triggerSeverantPuppetEscape() {
+      ensureHighSeverantProfile();
+      ensureHighSeverantState();
+      const unresolved = unsecuredSeverantQueens();
+      const puppet = randomItem(unresolved);
+      highSeverantProfile.captive = false;
+      highSeverantProfile.escaped = true;
+      highSeverantProfile.confrontationOutcome = "shielded_by_queen";
+      highSeverantProfile.safehouseKnown = false;
+      highSeverantState.influence = clamp(highSeverantState.influence - 5, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 10, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 9, 0, 100);
+      highSeverantProfile.fear = clamp(highSeverantProfile.fear + 6, 0, 100);
+      if (puppet) {
+        const state = queenEntry(puppet.id);
+        state.hate = clamp(state.hate + 4, 0, 100);
+        state.fear = clamp(state.fear + 5, 0, 100);
+        state.underworldRiseSupport = clamp((state.underworldRiseSupport || 0) + 1, 0, 100);
+        const capital = factionCapitalTile(puppet.id);
+        if (capital) capital.troops += 4;
+      }
+      addLog(`${highSeverantDisplayName()} avoids judgment by slipping behind an unsecured queen instead of standing trial.`);
+      queueEventModal({
+        label: "Puppet Escape",
+        title: `${highSeverantDisplayName()} Hides Behind Another Queen`,
+        body: puppet
+          ? `${highSeverantDisplayName()} sees the trap closing and refuses to face punishment while any queen still stands outside your hand.\n\nShe routes herself through ${puppet.leader}, turning that woman into a living shield, witness, and fallback court.\n\nSecure every queen, including the underground ones, before you try to drag the mistress of the Order into chains.\n\n${severantQueenSecurityLine(puppet)}`
+          : `${highSeverantDisplayName()} escapes the moment she realizes some part of the queen network still lies outside your control.\n\nSecure every queen, including the underground ones, before you try to drag the mistress of the Order into chains.`,
+        portrait: highSeverantPortrait(),
+        cta: "Understood",
+      });
+      render();
+      return true;
+    }
+
+    function deepenHighSeverantDossier(amount = 1) {
+      ensureHighSeverantProfile();
+      highSeverantProfile.dossierStage = clamp(highSeverantProfile.dossierStage + amount, 0, 4);
+      if (highSeverantProfile.dossierStage >= 2) highSeverantProfile.directAudienceUnlocked = true;
+    }
+
+    function openHighSeverantDossier() {
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      const stage = highSeverantProfile.dossierStage;
+      const identityLine = stage >= 3 || dynastyState.highSeverantExposure >= 60
+        ? `${highSeverantProfile.hiddenName} - ${highSeverantProfile.trueTitle}`
+        : stage >= 1 || dynastyState.knownThreat
+        ? `${highSeverantProfile.publicName} - ${highSeverantProfile.trueTitle}`
+        : `${highSeverantProfile.coverTitle} - a hidden strategic hand inside ${SEVERANT_ORDER_NAME}`;
+      const notes = stage >= 3
+        ? `${highSeverantProfile.notes} She is now personal enough to taunt, bait, and study as a woman rather than a rumor.`
+        : `${highSeverantProfile.notes} You still know more about her pressure than her face.`;
+      queueEventModal({
+        label: "Hidden Adversary",
+        title: `${highSeverantDisplayName()} Dossier`,
+        body: `${identityLine}\n\n${notes}\n\nInfluence ${highSeverantState.influence} • Interest ${highSeverantState.interest} • Respect ${highSeverantState.respect} • Obsession ${highSeverantState.obsession} • Exposure ${highSeverantState.exposure}\n\nFascination ${highSeverantProfile.fascination} • Hostility ${highSeverantProfile.hostility} • Seduction ${highSeverantProfile.seduction} • Fear ${highSeverantProfile.fear} • Composure ${highSeverantProfile.composure}`,
+        portrait: highSeverantPortrait(),
+      });
+    }
+
+    function studyHighSeverantDossier() {
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (treasury < 2) {
+        addLog(`You need 2 treasury to deepen the dossier on ${highSeverantDisplayName()}.`);
+        return;
+      }
+      treasury -= 2;
+      deepenHighSeverantDossier(1);
+      dynastyState.highSeverantExposure = clamp(dynastyState.highSeverantExposure + 10, 0, 100);
+      highSeverantState.exposure = clamp(highSeverantState.exposure + 8, 0, 100);
+      highSeverantProfile.fear = clamp(highSeverantProfile.fear + 4, 0, 100);
+      addLog(`Your people build a cleaner dossier on ${highSeverantDisplayName()}, turning rumor into profile.`);
+      render();
+    }
+
+    function sendBaitToHighSeverant() {
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (!dynastyState.knownThreat && highSeverantProfile.dossierStage < 1) {
+        addLog("You do not have a stable line to her yet.");
+        return;
+      }
+      if (highSeverantProfile.lastInteractionRound === round) {
+        addLog(`${highSeverantDisplayName()} has already been personally engaged this round.`);
+        return;
+      }
+      highSeverantProfile.lastInteractionRound = round;
+      highSeverantState.interest = clamp(highSeverantState.interest + 7, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 5, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 8, 0, 100);
+      highSeverantProfile.seduction = clamp(highSeverantProfile.seduction + 6, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility - 2, 0, 100);
+      addLog(`You send a controlled bait line back through the dark, and ${highSeverantDisplayName()} answers by leaning closer instead of backing away.`);
+      render();
+    }
+
+    function provokeHighSeverant() {
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (highSeverantProfile.lastInteractionRound === round) {
+        addLog(`${highSeverantDisplayName()} has already been personally engaged this round.`);
+        return;
+      }
+      highSeverantProfile.lastInteractionRound = round;
+      highSeverantState.respect = clamp(highSeverantState.respect + 4, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 8, 0, 100);
+      highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 6, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 5, 0, 100);
+      highSeverantProfile.fear = clamp(highSeverantProfile.fear + 3, 0, 100);
+      addLog(`You strike at ${highSeverantDisplayName()}'s pride directly. She does not soften, but she starts treating you as a personal opponent instead of a problem.`);
+      render();
+    }
+
+    function openHighSeverantAudience() {
+      ensureDynastyState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (highSeverantProfile.captive) {
+        if (resolveHighSeverantJudgment()) return;
+        if (highSeverantProfile.confrontationOutcome === "judged") {
+          queueEventModal({
+            label: "High Severant",
+            title: `${highSeverantProfile.hiddenName} Remains In Your Court`,
+            body: `${highSeverantProfile.hiddenName} has already been judged, stripped of her hidden sovereignty, and kept in your hands after the realm's formal victory.\n\nShe remains available as a post-judgment captive rather than an unresolved boss.\n\nFamily: ${highSeverantPregnancyStatusLabel()}`,
+            portrait: highSeverantPortrait(),
+          });
+          return;
+        }
+        queueEventModal({
+          label: "High Severant",
+          title: `${highSeverantProfile.hiddenName} Is In Chains`,
+          body: `${highSeverantProfile.hiddenName} is already in your hands.\n\nBut she is not yet ready for final punishment. As long as even one queen remains outside your grip, she can still imagine a rival court, a puppet throne, or an underground refuge buying her time.\n\nQueens still unsecured: ${unsecuredSeverantQueens().length}\n\n${unresolvedSeverantQueenSummary()}`,
+          portrait: highSeverantPortrait(),
+        });
+        return;
+      }
+      if (highSeverantProfile.confrontationOutcome === "escaped") {
+        queueEventModal({
+          label: "High Severant",
+          title: "Her Chamber Stands Empty",
+          body: `You reached one of ${highSeverantDisplayName()}'s hidden chambers too late. She burned evidence, abandoned part of the network, and slipped away.\n\nShe is still in the game, but now she knows exactly how close you came.`,
+          portrait: highSeverantPortrait(),
+        });
+        return;
+      }
+      if (!highSeverantProfile.directAudienceUnlocked && !highSeverantProfile.safehouseKnown) {
+        addLog("You have not traced a secure enough line to her safehouse yet.");
+        return;
+      }
+      const loyal = loyalHeirs().length;
+      const trapScore = dynastyState.counterIntelRating + dynastyState.orderCellsBroken * 12 + dynastyState.highSeverantExposure + loyal * 6;
+      const defenseScore = highSeverantState.influence + highSeverantProfile.intrigue + Math.floor(highSeverantProfile.composure / 2);
+      const unresolvedCount = unsecuredSeverantQueens().length;
+      const finalApproachBody = `Your spies, defectors, and household loyalists have finally done what once seemed impossible: they have narrowed her movements to a real chamber, a real route, and a real night.\n\nTrap Pressure ${trapScore} • Her Counterplay ${defenseScore}\nQueens still unsecured ${unresolvedCount}\n\nIf you move now, you can try to seize her, speak to her face to face, or burn the place from afar and force her deeper into the dark.${allQueensSecuredForSeverant() ? "" : `\n\nBut she still has queens outside your hand. If you spring the trap before every queen is secured, she will try to hide behind a puppet court instead of facing punishment.\n\n${unresolvedSeverantQueenSummary()}`}`;
+      queueEventModal({
+        label: "Final Approach",
+        title: `A Road Opens To ${highSeverantDisplayName()}`,
+        body: `Your spies, defectors, and household loyalists have finally done what once seemed impossible: they have narrowed her movements to a real chamber, a real route, and a real night.\n\nTrap Pressure ${trapScore} • Her Counterplay ${defenseScore}\n\nIf you move now, you can try to seize her, speak to her face to face, or burn the place from afar and force her deeper into the dark.`,
+        portrait: highSeverantPortrait(),
+        actions: [
+          {
+            label: "Spring The Trap",
+            onClick: () => {
+              dismissEventModal();
+              if (!allQueensSecuredForSeverant()) {
+                triggerSeverantPuppetEscape();
+                return;
+              }
+              const roll = trapScore + randomBetween(-18, 22) - defenseScore;
+              if (roll >= 6) {
+                highSeverantProfile.captive = true;
+                highSeverantProfile.confrontationOutcome = "captured";
+                highSeverantProfile.escaped = false;
+                highSeverantState.influence = clamp(highSeverantState.influence - 18, 0, 100);
+                highSeverantState.exposure = clamp(highSeverantState.exposure + 15, 0, 100);
+                highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 8, 0, 100);
+                highSeverantProfile.fear = clamp(highSeverantProfile.fear + 18, 0, 100);
+                addLog(`You finally seize ${highSeverantProfile.hiddenName} alive and drag the hidden war into the open.`);
+                queueEventModal({
+                  label: "High Severant Captured",
+                  title: `${highSeverantProfile.hiddenName} Falls Into Your Hands`,
+                  body: `The woman behind the curtain is real, breathing, furious, and no longer untouchable.\n\nShe carries herself like a sovereign even now, but the chamber is yours, the exits are yours, and the network that once moved invisibly around her is suddenly not enough.\n\nInfluence ${highSeverantState.influence} • Fear ${highSeverantProfile.fear} • Hostility ${highSeverantProfile.hostility}`,
+                  portrait: highSeverantPortrait(),
+                });
+                maybeFinishGame();
+              } else {
+                highSeverantProfile.captive = false;
+                highSeverantProfile.escaped = true;
+                highSeverantProfile.confrontationOutcome = "escaped";
+                highSeverantState.influence = clamp(highSeverantState.influence - 6, 0, 100);
+                highSeverantState.obsession = clamp(highSeverantState.obsession + 12, 0, 100);
+                highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 10, 0, 100);
+                highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 7, 0, 100);
+                addLog(`${highSeverantDisplayName()} slips the net at the last moment, but she has to abandon part of her machine to do it.`);
+                queueEventModal({
+                  label: "She Escapes",
+                  title: `${highSeverantDisplayName()} Burns Her Own Trail`,
+                  body: `You were close enough to smell the smoke from her retreat, but not close enough to close your hand around her.\n\nShe escapes stripped of part of her network, and the war between you becomes unmistakably personal.`,
+                  portrait: highSeverantPortrait(),
+                });
+              }
+              render();
+            },
+          },
+          {
+            label: "Take The Audience",
+            onClick: () => {
+              dismissEventModal();
+              highSeverantProfile.directAudienceUnlocked = true;
+              highSeverantProfile.safehouseKnown = true;
+              highSeverantState.interest = clamp(highSeverantState.interest + 8, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect + 6, 0, 100);
+              highSeverantState.obsession = clamp(highSeverantState.obsession + 7, 0, 100);
+              highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 10, 0, 100);
+              highSeverantProfile.seduction = clamp(highSeverantProfile.seduction + 8, 0, 100);
+              addLog(`You take a direct audience with ${highSeverantDisplayName()} and confirm that the hidden enemy is flesh, voice, ego, and hunger.`);
+              queueEventModal({
+                label: "Direct Audience",
+                title: `You Stand Before ${highSeverantDisplayName()}`,
+                body: `She is calmer than rumor, more self-possessed than fear, and far too intelligent to waste the moment on theatrics.\n\nShe studies you the way a ruler studies a weapon that might yet be turned.\n\nInterest ${highSeverantState.interest} • Respect ${highSeverantState.respect} • Obsession ${highSeverantState.obsession}\nFascination ${highSeverantProfile.fascination} • Seduction ${highSeverantProfile.seduction} • Hostility ${highSeverantProfile.hostility}`,
+                portrait: highSeverantPortrait(),
+              });
+              render();
+            },
+          },
+          {
+            label: "Burn The Safehouse",
+            onClick: () => {
+              dismissEventModal();
+              dynastyState.orderCellsBroken += 1;
+              dynastyState.highSeverantExposure = clamp(dynastyState.highSeverantExposure + 12, 0, 100);
+              highSeverantState.influence = clamp(highSeverantState.influence - 10, 0, 100);
+              highSeverantProfile.escaped = true;
+              highSeverantProfile.confrontationOutcome = "burned_out";
+              highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 12, 0, 100);
+              highSeverantProfile.fear = clamp(highSeverantProfile.fear + 6, 0, 100);
+              addLog(`You torch one of ${highSeverantDisplayName()}'s hidden chambers and force her further into retreat.`);
+              queueEventModal({
+                label: "Safehouse Burned",
+                title: `The Chamber Goes Up In Flame`,
+                body: `You deny her the room, the records, the comforts, and the illusion of permanence.\n\nShe escapes the fire, but not the cost. A hidden sovereign with fewer chambers is still dangerous, but less secure than she was before.`,
+                portrait: highSeverantPortrait(),
+              });
+              render();
+            },
+          },
+        ],
+      });
+    }
+
+    function cycleRestorationPolicy(key) {
+      ensureRestorationState();
+      const cycles = {
+        clinicPolicy: ["keep_running", "seize_rebrand", "phase_out", "destroy_fast"],
+        bankPolicy: ["legacy_control", "supervised_release", "distributed_reform", "family_restoration"],
+        publicStory: ["stability_first", "truth_in_stages", "total_exposure"],
+      };
+      const cycle = cycles[key];
+      if (!cycle) return;
+      const current = restorationState[key];
+      const index = cycle.indexOf(current);
+      restorationState[key] = cycle[(index + 1) % cycle.length];
+      addLog(`Reconstruction policy shifts to ${restorationPolicyLabel(key, restorationState[key])}.`);
+      render();
+    }
+
+    function investInRestoration(kind) {
+      ensureRestorationState();
+      if (kind === "reserves") {
+        if (treasury < 3) {
+          addLog("You need 3 treasury to reinforce population reserves.");
+          return;
+        }
+        treasury -= 3;
+        restorationState.reserveStock = clamp(restorationState.reserveStock + 12, 0, 100);
+        restorationState.populationStability = clamp(restorationState.populationStability + 4, 0, 100);
+        addLog("You reinforce sperm-bank reserves and keep the recovery apparatus from panicking.");
+      } else if (kind === "clinics") {
+        if (treasury < 2) {
+          addLog("You need 2 treasury to secure and retrain former Severant clinics.");
+          return;
+        }
+        treasury -= 2;
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 8, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination - 6, 0, 100);
+        addLog("You spend heavily on securing clinics, retraining staff, and replacing hidden Order doctrine.");
+      } else if (kind === "messaging") {
+        if (treasury < 2) {
+          addLog("You need 2 treasury to fund a public transition campaign.");
+          return;
+        }
+        treasury -= 2;
+        restorationState.publicDependence = clamp(restorationState.publicDependence - 4, 0, 100);
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk - 6, 0, 100);
+        addLog("You fund a careful public campaign to keep truth from turning into immediate panic.");
+      }
+      render();
+    }
+
+    function maybeTriggerRestorationCrisis() {
+      ensureRestorationState();
+      if (restorationState.lastCrisisRound === round) return false;
+      if (restorationState.withdrawalRisk < 62 && restorationState.populationStability > 34 && restorationState.reserveStock > 22) return false;
+      restorationState.lastCrisisRound = round;
+      queueEventModal({
+        label: "Reconstruction",
+        title: "The Old World Starts To Shake",
+        body: `You are still ruling through systems the ${SEVERANT_ORDER_NAME} built. Pull too hard, and people panic. Leave too much intact, and the old regime breathes through your hands.\n\nPopulation Stability ${restorationState.populationStability} • Reserve Stock ${restorationState.reserveStock} • Withdrawal Risk ${restorationState.withdrawalRisk} • Order Contamination ${restorationState.orderContamination}`,
+        portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: "Spend To Stabilize",
+            onClick: () => {
+              dismissEventModal();
+              if (treasury >= 3) {
+                treasury -= 3;
+                restorationState.populationStability = clamp(restorationState.populationStability + 8, 0, 100);
+                restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk - 10, 0, 100);
+                addLog("You pour money into keeping the transition from breaking public life apart.");
+              } else {
+                addLog("You lack the treasury to fully stabilize the reconstruction crisis.");
+              }
+              render();
+            },
+          },
+          {
+            label: "Slow The Transition",
+            onClick: () => {
+              dismissEventModal();
+              restorationState.infrastructureDependency = clamp(restorationState.infrastructureDependency + 6, 0, 100);
+              restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk - 8, 0, 100);
+              restorationState.reformProgress = clamp(restorationState.reformProgress - 3, 0, 100);
+              addLog("You slow the dismantling process and buy time, at the cost of letting more Severant structure survive.");
+              render();
+            },
+          },
+          {
+            label: "Push Through The Pain",
+            onClick: () => {
+              dismissEventModal();
+              restorationState.reformProgress = clamp(restorationState.reformProgress + 8, 0, 100);
+              restorationState.orderContamination = clamp(restorationState.orderContamination - 10, 0, 100);
+              restorationState.populationStability = clamp(restorationState.populationStability - 8, 0, 100);
+              for (const tile of ownedTiles(playerFactionId()).filter((tile) => tile.terrain === "land")) {
+                const systems = ensureTileSystems(tile);
+                systems.unrest = clamp(systems.unrest + 3, 0, 100);
+                systems.loyalty = clamp(systems.loyalty - 2, 0, 100);
+              }
+              addLog("You force reform onward and accept unrest rather than leaving the old machine alive.");
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerInfrastructureSubversion(provinces) {
+      ensureRestorationState();
+      ensureHighSeverantState();
+      const target = randomItem((provinces || []).filter((tile) => {
+        const systems = ensureTileSystems(tile);
+        return systems.severantContamination >= 58 || systems.severantDependency >= 68;
+      }));
+      if (!target || Math.random() > 0.24) return false;
+      const systems = ensureTileSystems(target);
+      queueEventModal({
+        label: "Severant Sabotage",
+        title: `${duchessRegionName(target)} Twitches Under Old Control`,
+        body: `One of the old clinic-distribution lines or reserve routes in ${duchessRegionName(target)} is still answering to habits the ${SEVERANT_ORDER_NAME} wrote into the world long before you touched it.\n\nLocal Dependency ${systems.severantDependency} • Contamination ${systems.severantContamination} • Withdrawal Stress ${systems.withdrawalStress}`,
+        portrait: queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: "Purge The Route",
+            onClick: () => {
+              dismissEventModal();
+              systems.severantContamination = clamp(systems.severantContamination - 16, 0, 100);
+              systems.severantDependency = clamp(systems.severantDependency - 8, 0, 100);
+              systems.unrest = clamp(systems.unrest + 5, 0, 100);
+              systems.withdrawalStress = clamp(systems.withdrawalStress + 8, 0, 100);
+              restorationState.reformProgress = clamp(restorationState.reformProgress + 4, 0, 100);
+              addLog(`You rip a compromised Severant route out of ${duchessRegionName(target)}, and the province shakes under the sudden strain.`);
+              render();
+            },
+          },
+          {
+            label: "Contain Quietly",
+            onClick: () => {
+              dismissEventModal();
+              systems.severantContamination = clamp(systems.severantContamination - 8, 0, 100);
+              systems.loyalty = clamp(systems.loyalty + 2, 0, 100);
+              systems.unrest = clamp(systems.unrest + 1, 0, 100);
+              restorationState.populationStability = clamp(restorationState.populationStability + 2, 0, 100);
+              addLog(`You quietly isolate the compromised infrastructure in ${duchessRegionName(target)} and keep the province from panicking.`);
+              render();
+            },
+          },
+          {
+            label: "Let A Defector Trace It",
+            onClick: () => {
+              dismissEventModal();
+              const defector = randomItem(activeSeverantDefectors());
+              if (defector) {
+                systems.severantContamination = clamp(systems.severantContamination - 10, 0, 100);
+                highSeverantState.exposure = clamp(highSeverantState.exposure + 6, 0, 100);
+                defector.trust = clamp((defector.trust || 0) + 3, 0, 100);
+                addLog(`${defector.name} traces the sabotage chain in ${duchessRegionName(target)} back toward deeper Severant channels.`);
+              } else {
+                systems.severantContamination = clamp(systems.severantContamination - 4, 0, 100);
+                addLog(`Without a turned insider, your investigators only partly trace the sabotage in ${duchessRegionName(target)}.`);
+              }
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerHighSeverantPolicyContact(provinces) {
+      ensureRestorationState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureCampaignRouteState();
+      if (campaignRouteState.side === "severant") return false;
+      if (!dynastyState.knownThreat || highSeverantState.lastContactRound === round) return false;
+      const unstableProvince = randomItem((provinces || []).filter((tile) => ensureTileSystems(tile).withdrawalStress >= 18 || ensureTileSystems(tile).severantDependency >= 70));
+      if (!unstableProvince || Math.random() > 0.28) return false;
+      highSeverantState.lastContactRound = round;
+      highSeverantState.contactStage = Math.max(highSeverantState.contactStage, 1);
+      deepenHighSeverantDossier(1);
+      queueEventModal({
+        label: "Hidden Correspondence",
+        title: `${HIGH_SEVERANT_TITLE} Reaches Through The Wires`,
+        body: `A message reaches you through channels that should not exist anymore.\n\nShe does not threaten first. She explains.\n\n${duchessRegionName(unstableProvince)} is straining because you are dismantling a system she spent generations perfecting. She offers guidance, claims she can spare you chaos, and asks only that you stop pretending the world can be reborn without passing through her hands.\n\nInterest ${highSeverantState.interest} • Influence ${highSeverantState.influence} • Exposure ${highSeverantState.exposure}`,
+        portrait: highSeverantPortrait(),
+        actions: [
+          {
+            label: "Accept Her Technical Guidance",
+            onClick: () => {
+              dismissEventModal();
+              restorationState.populationStability = clamp(restorationState.populationStability + 5, 0, 100);
+              restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk - 5, 0, 100);
+              restorationState.orderContamination = clamp(restorationState.orderContamination + 5, 0, 100);
+              highSeverantState.influence = clamp(highSeverantState.influence + 10, 0, 100);
+              highSeverantState.interest = clamp(highSeverantState.interest + 6, 0, 100);
+              highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 4, 0, 100);
+              highSeverantProfile.seduction = clamp(highSeverantProfile.seduction + 5, 0, 100);
+              addLog(`${HIGH_SEVERANT_TITLE} gives you just enough truth to stabilize the crisis and just enough poison to deepen her hold.`);
+              render();
+            },
+          },
+          {
+            label: "Feed Her False Compliance",
+            onClick: () => {
+              dismissEventModal();
+              highSeverantState.exposure = clamp(highSeverantState.exposure + 8, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect + 5, 0, 100);
+              highSeverantState.interest = clamp(highSeverantState.interest + 4, 0, 100);
+              highSeverantProfile.fear = clamp(highSeverantProfile.fear + 4, 0, 100);
+              highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 3, 0, 100);
+              restorationState.reformProgress = clamp(restorationState.reformProgress + 3, 0, 100);
+              addLog(`You pretend to listen and use the contact itself as a line back toward ${HIGH_SEVERANT_TITLE}.`);
+              render();
+            },
+          },
+          {
+            label: "Reject Her And Purge Harder",
+            onClick: () => {
+              dismissEventModal();
+              restorationState.reformProgress = clamp(restorationState.reformProgress + 5, 0, 100);
+              restorationState.populationStability = clamp(restorationState.populationStability - 3, 0, 100);
+              highSeverantState.respect = clamp(highSeverantState.respect + 3, 0, 100);
+              highSeverantState.obsession = clamp(highSeverantState.obsession + 6, 0, 100);
+              highSeverantState.interest = clamp(highSeverantState.interest + 5, 0, 100);
+              highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 5, 0, 100);
+              highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 4, 0, 100);
+              addLog(`You refuse her hand entirely, and the hidden war between you becomes more personal.`);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function resolveRestorationTurn() {
+      ensureRestorationState();
+      ensureHighSeverantState();
+      const provinces = ownedTiles(playerFactionId()).filter((tile) => tile.terrain === "land");
+      const averageUnrest = provinces.length
+        ? provinces.reduce((sum, tile) => sum + ensureTileSystems(tile).unrest, 0) / provinces.length
+        : 0;
+      const averageProsperity = provinces.length
+        ? provinces.reduce((sum, tile) => sum + ensureTileSystems(tile).prosperity, 0) / provinces.length
+        : 0;
+      for (const tile of provinces) {
+        const systems = ensureTileSystems(tile);
+        if (restorationState.clinicPolicy === "keep_running") {
+          systems.severantDependency = clamp(systems.severantDependency + 1, 0, 100);
+          systems.severantContamination = clamp(systems.severantContamination + 1, 0, 100);
+          systems.withdrawalStress = clamp(systems.withdrawalStress - 1, 0, 100);
+        } else if (restorationState.clinicPolicy === "seize_rebrand") {
+          systems.severantDependency = clamp(systems.severantDependency - 1, 0, 100);
+          systems.severantContamination = clamp(systems.severantContamination - 2, 0, 100);
+        } else if (restorationState.clinicPolicy === "phase_out") {
+          systems.severantDependency = clamp(systems.severantDependency - 3, 0, 100);
+          systems.withdrawalStress = clamp(systems.withdrawalStress + 2, 0, 100);
+          systems.severantContamination = clamp(systems.severantContamination - 1, 0, 100);
+        } else if (restorationState.clinicPolicy === "destroy_fast") {
+          systems.severantDependency = clamp(systems.severantDependency - 6, 0, 100);
+          systems.withdrawalStress = clamp(systems.withdrawalStress + 5, 0, 100);
+          systems.severantContamination = clamp(systems.severantContamination - 2, 0, 100);
+        }
+        systems.unrest = clamp(systems.unrest + Math.max(0, Math.floor((systems.withdrawalStress - 18) / 10)), 0, 100);
+      }
+
+      if (restorationState.clinicPolicy === "keep_running") {
+        restorationState.populationStability = clamp(restorationState.populationStability + 2, 0, 100);
+        restorationState.infrastructureDependency = clamp(restorationState.infrastructureDependency + 2, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination + 1, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress - 1, 0, 100);
+      } else if (restorationState.clinicPolicy === "seize_rebrand") {
+        restorationState.populationStability = clamp(restorationState.populationStability + 1, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination - 2, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 2, 0, 100);
+      } else if (restorationState.clinicPolicy === "phase_out") {
+        restorationState.infrastructureDependency = clamp(restorationState.infrastructureDependency - 3, 0, 100);
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk + 2, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 3, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination - 3, 0, 100);
+      } else if (restorationState.clinicPolicy === "destroy_fast") {
+        restorationState.infrastructureDependency = clamp(restorationState.infrastructureDependency - 7, 0, 100);
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk + 8, 0, 100);
+        restorationState.populationStability = clamp(restorationState.populationStability - 5, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 5, 0, 100);
+        restorationState.orderContamination = clamp(restorationState.orderContamination - 5, 0, 100);
+      }
+
+      if (restorationState.bankPolicy === "legacy_control") {
+        restorationState.reserveStock = clamp(restorationState.reserveStock + 1, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence + 2, 0, 100);
+        restorationState.birthRecovery = clamp(restorationState.birthRecovery + 1, 0, 100);
+      } else if (restorationState.bankPolicy === "supervised_release") {
+        restorationState.birthRecovery = clamp(restorationState.birthRecovery + 2, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence - 1, 0, 100);
+      } else if (restorationState.bankPolicy === "distributed_reform") {
+        restorationState.birthRecovery = clamp(restorationState.birthRecovery + 3, 0, 100);
+        restorationState.reserveStock = clamp(restorationState.reserveStock - 2, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence - 3, 0, 100);
+      } else if (restorationState.bankPolicy === "family_restoration") {
+        restorationState.birthRecovery = clamp(restorationState.birthRecovery + 4, 0, 100);
+        restorationState.reserveStock = clamp(restorationState.reserveStock - 4, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence - 4, 0, 100);
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk + 2, 0, 100);
+      }
+
+      if (restorationState.publicStory === "stability_first") {
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk - 1, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress - 1, 0, 100);
+      } else if (restorationState.publicStory === "truth_in_stages") {
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk - 2, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 1, 0, 100);
+      } else if (restorationState.publicStory === "total_exposure") {
+        restorationState.withdrawalRisk = clamp(restorationState.withdrawalRisk + 4, 0, 100);
+        restorationState.publicDependence = clamp(restorationState.publicDependence - 4, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 3, 0, 100);
+      }
+
+      restorationState.populationStability = clamp(
+        restorationState.populationStability +
+        Math.floor((averageProsperity - averageUnrest) / 14) +
+        Math.floor((restorationState.birthRecovery - restorationState.withdrawalRisk) / 22),
+        0,
+        100
+      );
+      if (restorationState.withdrawalRisk >= 55) {
+        for (const tile of provinces) {
+          const systems = ensureTileSystems(tile);
+          systems.unrest = clamp(systems.unrest + 1, 0, 100);
+        }
+      }
+      if (restorationState.orderContamination >= 60) {
+        dynastyState.severantProgress = clamp(dynastyState.severantProgress + 2, 0, 100);
+      }
+      if (maybeTriggerHighSeverantPolicyContact(provinces)) return;
+      if (maybeTriggerInfrastructureSubversion(provinces)) return;
+      maybeTriggerRestorationCrisis();
+    }
+
+    function normalizeHeir(heir) {
+      const clone = { ...heir };
+      clone.id = clone.id || `heir_${nextHeirId++}`;
+      clone.name = clone.name || generateHeirName();
+      clone.birthRound = Number.isFinite(clone.birthRound) ? clone.birthRound : round;
+      clone.age = Number.isFinite(clone.age) ? clone.age : Math.max(0, round - clone.birthRound);
+      clone.stage = clone.stage || heirStageFromAge(clone.age);
+      clone.hidden = clone.hidden !== false;
+      clone.exposed = Boolean(clone.exposed);
+      clone.motherType = clone.motherType || "unknown";
+      clone.motherId = clone.motherId ?? null;
+      clone.motherName = clone.motherName || "Unknown Mother";
+      clone.guardianType = clone.guardianType || "mother";
+      clone.guardianId = clone.guardianId ?? null;
+      clone.affection = clamp(Number.isFinite(clone.affection) ? clone.affection : 48, 0, 100);
+      clone.respect = clamp(Number.isFinite(clone.respect) ? clone.respect : 42, 0, 100);
+      clone.fear = clamp(Number.isFinite(clone.fear) ? clone.fear : 8, 0, 100);
+      clone.resentment = clamp(Number.isFinite(clone.resentment) ? clone.resentment : 0, 0, 100);
+      clone.maturity = clamp(Number.isFinite(clone.maturity) ? clone.maturity : 6, 0, 100);
+      clone.corruption = clamp(Number.isFinite(clone.corruption) ? clone.corruption : 0, 0, 100);
+      clone.discipline = clamp(Number.isFinite(clone.discipline) ? clone.discipline : 44, 0, 100);
+      clone.security = clamp(Number.isFinite(clone.security) ? clone.security : 52, 0, 100);
+      clone.exposure = clamp(Number.isFinite(clone.exposure) ? clone.exposure : 12, 0, 100);
+      clone.ambition = clamp(Number.isFinite(clone.ambition) ? clone.ambition : 24, 0, 100);
+      clone.instability = clamp(Number.isFinite(clone.instability) ? clone.instability : 8, 0, 100);
+      clone.haremSize = Math.max(0, Math.floor(clone.haremSize || 0));
+      clone.haremPressure = clamp(Number.isFinite(clone.haremPressure) ? clone.haremPressure : 0, 0, 100);
+      clone.householdOrder = clamp(Number.isFinite(clone.householdOrder) ? clone.householdOrder : 50, 0, 100);
+      clone.householdDecadence = clamp(Number.isFinite(clone.householdDecadence) ? clone.householdDecadence : 12, 0, 100);
+      clone.householdLoyaltyToSon = clamp(Number.isFinite(clone.householdLoyaltyToSon) ? clone.householdLoyaltyToSon : 56, 0, 100);
+      clone.householdLoyaltyToYou = clamp(Number.isFinite(clone.householdLoyaltyToYou) ? clone.householdLoyaltyToYou : 52, 0, 100);
+      clone.householdInfiltration = clamp(Number.isFinite(clone.householdInfiltration) ? clone.householdInfiltration : 0, 0, 100);
+      clone.householdAttendants = clamp(Number.isFinite(clone.householdAttendants) ? clone.householdAttendants : 0, 0, 100);
+      clone.householdFavor = clamp(Number.isFinite(clone.householdFavor) ? clone.householdFavor : 0, 0, 100);
+      clone.brotherRespect = clamp(Number.isFinite(clone.brotherRespect) ? clone.brotherRespect : 52, 0, 100);
+      clone.brotherRivalry = clamp(Number.isFinite(clone.brotherRivalry) ? clone.brotherRivalry : 12, 0, 100);
+      clone.brotherInfluence = clamp(Number.isFinite(clone.brotherInfluence) ? clone.brotherInfluence : 0, 0, 100);
+      clone.maternalInfluence = clamp(Number.isFinite(clone.maternalInfluence) ? clone.maternalInfluence : 40, 0, 100);
+      clone.maternalFavor = clamp(Number.isFinite(clone.maternalFavor) ? clone.maternalFavor : 50, 0, 100);
+      clone.maternalAgenda = clone.maternalAgenda || "stabilize";
+      clone.successionClaim = clamp(Number.isFinite(clone.successionClaim) ? clone.successionClaim : 32, 0, 100);
+      clone.disinherited = Boolean(clone.disinherited);
+      clone.loyalty = clamp(Number.isFinite(clone.loyalty) ? clone.loyalty : 56, 0, 100);
+      clone.loyalistReadiness = clamp(Number.isFinite(clone.loyalistReadiness) ? clone.loyalistReadiness : 24, 0, 100);
+      clone.rebelReadiness = clamp(Number.isFinite(clone.rebelReadiness) ? clone.rebelReadiness : 0, 0, 100);
+      clone.rival = Boolean(clone.rival);
+      clone.status = clone.status || "hidden";
+      clone.notes = clone.notes || "Born of your line and watched for signs of greatness or ruin.";
+      clone.lastActionRound = Number.isFinite(clone.lastActionRound) ? clone.lastActionRound : -1;
+      clone.lastGrowthRound = Number.isFinite(clone.lastGrowthRound) ? clone.lastGrowthRound : clone.birthRound;
+      clone.lastDisciplineRound = Number.isFinite(clone.lastDisciplineRound) ? clone.lastDisciplineRound : -1;
+      clone.lastRewardRound = Number.isFinite(clone.lastRewardRound) ? clone.lastRewardRound : -1;
+      return clone;
+    }
+
+    function ensureDynastyState() {
+      if (!dynastyState) {
+        dynastyState = {
+          severantAwareness: 18,
+          knownThreat: false,
+          rivalHouseholdPressure: 0,
+          loyalistMomentum: 0,
+          lastCrisisRound: -1,
+          activeRivalHeirId: null,
+          severantProgress: 0,
+          lastSeverantStrikeRound: -1,
+          namedHeirId: null,
+          successionTension: 0,
+          capturedOrderAgents: [],
+          lastMaternalConflictRound: -1,
+          lastSuccessionCrisisRound: -1,
+          counterIntelRating: 0,
+          lastOrderCellRaidRound: -1,
+          orderCellsBroken: 0,
+          highSeverantExposure: 0,
+          confrontationStage: 0,
+        };
+      }
+      dynastyState.severantAwareness = clamp(Number.isFinite(dynastyState.severantAwareness) ? dynastyState.severantAwareness : 18, 0, 100);
+      dynastyState.rivalHouseholdPressure = clamp(Number.isFinite(dynastyState.rivalHouseholdPressure) ? dynastyState.rivalHouseholdPressure : 0, 0, 100);
+      dynastyState.loyalistMomentum = clamp(Number.isFinite(dynastyState.loyalistMomentum) ? dynastyState.loyalistMomentum : 0, 0, 100);
+      dynastyState.knownThreat = Boolean(dynastyState.knownThreat);
+      dynastyState.lastCrisisRound = Number.isFinite(dynastyState.lastCrisisRound) ? dynastyState.lastCrisisRound : -1;
+      dynastyState.activeRivalHeirId = dynastyState.activeRivalHeirId || null;
+      dynastyState.severantProgress = clamp(Number.isFinite(dynastyState.severantProgress) ? dynastyState.severantProgress : 0, 0, 100);
+      dynastyState.lastSeverantStrikeRound = Number.isFinite(dynastyState.lastSeverantStrikeRound) ? dynastyState.lastSeverantStrikeRound : -1;
+      dynastyState.namedHeirId = dynastyState.namedHeirId || null;
+      dynastyState.successionTension = clamp(Number.isFinite(dynastyState.successionTension) ? dynastyState.successionTension : 0, 0, 100);
+      dynastyState.capturedOrderAgents = Array.isArray(dynastyState.capturedOrderAgents) ? dynastyState.capturedOrderAgents : [];
+      dynastyState.lastMaternalConflictRound = Number.isFinite(dynastyState.lastMaternalConflictRound) ? dynastyState.lastMaternalConflictRound : -1;
+      dynastyState.lastSuccessionCrisisRound = Number.isFinite(dynastyState.lastSuccessionCrisisRound) ? dynastyState.lastSuccessionCrisisRound : -1;
+      dynastyState.counterIntelRating = clamp(Number.isFinite(dynastyState.counterIntelRating) ? dynastyState.counterIntelRating : 0, 0, 100);
+      dynastyState.lastOrderCellRaidRound = Number.isFinite(dynastyState.lastOrderCellRaidRound) ? dynastyState.lastOrderCellRaidRound : -1;
+      dynastyState.orderCellsBroken = Math.max(0, Math.floor(dynastyState.orderCellsBroken || 0));
+      dynastyState.highSeverantExposure = clamp(Number.isFinite(dynastyState.highSeverantExposure) ? dynastyState.highSeverantExposure : 0, 0, 100);
+      dynastyState.confrontationStage = Math.max(0, Math.floor(dynastyState.confrontationStage || 0));
+    }
+
+    function recalculateHeirAlignment(heir) {
+      heir.loyalty = clamp(
+        heir.affection * 0.34 +
+        heir.respect * 0.34 +
+        heir.maturity * 0.22 -
+        heir.resentment * 0.24 -
+        heir.corruption * 0.16 -
+        Math.max(0, heir.haremPressure - 20) * 0.18,
+        0,
+        100
+      );
+      heir.loyalistReadiness = clamp(
+        heir.loyalty * 0.58 +
+        heir.maturity * 0.24 +
+        heir.respect * 0.18 -
+        heir.resentment * 0.2 -
+        heir.corruption * 0.12,
+        0,
+        100
+      );
+      heir.rebelReadiness = clamp(
+        heir.resentment * 0.42 +
+        heir.corruption * 0.3 +
+        heir.ambition * 0.24 +
+        heir.instability * 0.22 +
+        Math.max(0, heir.haremPressure - 25) * 0.18 -
+        heir.maturity * 0.2 -
+        heir.security * 0.08,
+        0,
+        100
+      );
+      heir.rival = heir.stage === "young_adult" && heir.rebelReadiness >= 78;
+      heir.status = heir.rival
+        ? "rival"
+        : heir.stage === "young_adult"
+        ? (heir.hidden ? "hidden_young_adult" : "public_heir")
+        : heir.stage;
+    }
+
+    function createHeirFromBirth(mother) {
+      ensureDynastyState();
+      const leadMatron = matriarchMatron();
+      const heir = normalizeHeir({
+        id: `heir_${nextHeirId++}`,
+        name: generateHeirName(),
+        birthRound: round,
+        age: 0,
+        stage: "hidden",
+        hidden: true,
+        exposed: false,
+        motherType: mother.type,
+        motherId: mother.id,
+        motherName: mother.name,
+        guardianType: leadMatron?.specialRole === "matriarch" ? "matriarch" : "mother",
+        guardianId: leadMatron?.id || mother.id || null,
+        affection: 46 + Math.floor(Math.random() * 8),
+        respect: 38 + Math.floor(Math.random() * 10),
+        fear: 0,
+        resentment: 0,
+        maturity: 4,
+        corruption: 0,
+        discipline: 42,
+        security: leadMatron ? 66 : 54,
+        exposure: 8,
+        ambition: 18 + Math.floor(Math.random() * 10),
+        instability: 6,
+        maternalInfluence: 42 + Math.floor(Math.random() * 10),
+        maternalFavor: 54 + Math.floor(Math.random() * 10),
+        maternalAgenda: "shield",
+        successionClaim: 28 + Math.floor(Math.random() * 10),
+        notes: `${mother.name} has borne a son of your line. He is being kept out of sight while your household decides who may know.`,
+      });
+      recalculateHeirAlignment(heir);
+      heirs.push(heir);
+      dynastyState.severantAwareness = clamp(dynastyState.severantAwareness + 1, 0, 100);
+      return heir;
+    }
+
+    function allHeirs() {
+      ensureDynastyState();
+      heirs = (heirs || []).map((heir) => normalizeHeir(heir));
+      return heirs;
+    }
+
+    function heirById(heirId) {
+      return allHeirs().find((heir) => heir.id === heirId) || null;
+    }
+
+    function dynastyInstability() {
+      return allHeirs().reduce((sum, heir) => sum + Math.max(0, heir.instability - 35), 0);
+    }
+
+    function severantPressureOnHeir(heir) {
+      ensureDynastyState();
+      return clamp(
+        dynastyState.severantAwareness * 0.34 +
+        heir.exposure * 0.42 +
+        heir.resentment * 0.34 +
+        heir.instability * 0.26 -
+        heir.security * 0.38 -
+        heir.maturity * 0.18,
+        0,
+        100
+      );
+    }
+
+    function loyalHeirs() {
+      return allHeirs().filter((heir) => !heir.rival && heir.loyalistReadiness >= 70);
+    }
+
+    function compromisedHeirs() {
+      return allHeirs().filter((heir) => heir.corruption >= 45 || heir.rebelReadiness >= 58);
+    }
+
+    function activeSeverantDefectors() {
+      return (prisonState?.prisoners || []).filter((prisoner) => prisoner.category === "severant_defector");
+    }
+
+    function normalizeSeverantCourtWoman(profile) {
+      if (!profile || !["severant_defector", "severant_court_woman"].includes(profile.category)) return null;
+      profile.id = profile.id || `severant_court_${profile.orderAgentId || Date.now()}`;
+      profile.name = profile.name || "Order Attendant";
+      profile.title = profile.title || `${SEVERANT_ORDER_NAME} Court Woman`;
+      if (!profile.portrait || isHighSeverantPortraitSource(profile.portrait)) {
+        profile.portrait = derivedSeverantCourtPortrait(profile);
+      }
+      profile.assignment = profile.assignment || "household";
+      profile.trust = clamp(Number.isFinite(profile.trust) ? profile.trust : 54, 0, 100);
+      profile.devotion = clamp(Number.isFinite(profile.devotion) ? profile.devotion : 42, 0, 100);
+      profile.romance = clamp(Number.isFinite(profile.romance) ? profile.romance : 8, 0, 100);
+      profile.attraction = clamp(Number.isFinite(profile.attraction) ? profile.attraction : 12, 0, 100);
+      profile.usefulness = clamp(Number.isFinite(profile.usefulness) ? profile.usefulness : 58, 0, 100);
+      profile.falseLoyaltyRisk = clamp(Number.isFinite(profile.falseLoyaltyRisk) ? profile.falseLoyaltyRisk : 18, 0, 100);
+      profile.cover = clamp(Number.isFinite(profile.cover) ? profile.cover : 24, 0, 100);
+      profile.notes = profile.notes || `${profile.name} serves inside the Severant household under direct pact authority.`;
+      profile.children = Math.max(0, Math.floor(profile.children || 0));
+      profile.pregnant = Boolean(profile.pregnant);
+      profile.pregnancyStartRound = Number.isFinite(profile.pregnancyStartRound) ? profile.pregnancyStartRound : -1;
+      profile.pregnancyDueRound = Number.isFinite(profile.pregnancyDueRound) ? profile.pregnancyDueRound : -1;
+      profile.pregnancyOrigin = profile.pregnancyOrigin || null;
+      profile.converseUsedThisTurn = Boolean(profile.converseUsedThisTurn);
+      profile.flirtUsedThisTurn = Boolean(profile.flirtUsedThisTurn);
+      profile.giftUsedThisTurn = Boolean(profile.giftUsedThisTurn);
+      profile.spoilUsedThisTurn = Boolean(profile.spoilUsedThisTurn);
+      profile.intimacyUsedThisTurn = Boolean(profile.intimacyUsedThisTurn);
+      return profile;
+    }
+
+    function activeSeverantCourtWomen() {
+      ensureCampaignRouteState();
+      const roster = [
+        ...(Array.isArray(campaignRouteState.severantCourtWomen) ? campaignRouteState.severantCourtWomen : []),
+        ...activeSeverantDefectors(),
+      ];
+      const seen = new Set();
+      return roster
+        .map((profile) => normalizeSeverantCourtWoman(profile))
+        .filter((profile) => {
+          if (!profile || seen.has(profile.id)) return false;
+          seen.add(profile.id);
+          return true;
+        });
+    }
+
+    function nextSeverantCourtSeedProfile() {
+      const used = new Set(
+        activeSeverantCourtWomen()
+          .map((profile) => profile.orderAgentId)
+          .filter(Boolean)
+      );
+      const available = SEVERANT_ORDER_OPERATIVES.filter((profile) => !used.has(profile.id));
+      return randomItem(available.length ? available : SEVERANT_ORDER_OPERATIVES) || SEVERANT_ORDER_OPERATIVES[0];
+    }
+
+    function createSeededSeverantCourtWoman(assignment = "household", sourceLabel = "the pact") {
+      ensureCampaignRouteState();
+      const profile = nextSeverantCourtSeedProfile();
+      if (!profile) return null;
+      const woman = normalizeSeverantCourtWoman({
+        category: "severant_court_woman",
+        id: `severant_court_${profile.id}`,
+        orderAgentId: profile.id,
+        name: profile.name,
+        title: profile.title,
+        portrait: profile.portrait || null,
+        assignment,
+        trust: 64 + randomBetween(-6, 8),
+        devotion: 58 + randomBetween(-6, 10),
+        romance: 16 + randomBetween(-4, 8),
+        attraction: 20 + randomBetween(-4, 10),
+        usefulness: 62 + randomBetween(-6, 8),
+        falseLoyaltyRisk: 10 + randomBetween(0, 10),
+        cover: 28 + randomBetween(-8, 8),
+        notes: `${profile.name} is attached to your household by ${highSeverantProfile.hiddenName} through ${sourceLabel}. She serves as part of the inner Severant wing rather than as a prisoner.`,
+      });
+      campaignRouteState.severantCourtWomen.push(woman);
+      return woman;
+    }
+
+    function ensureSeverantCourtWomenSeeded(minCount = 3, sourceLabel = "the pact", announce = false) {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") return 0;
+      if (!Array.isArray(campaignRouteState.severantCourtWomen)) {
+        campaignRouteState.severantCourtWomen = [];
+      }
+      const assignments = ["household", "intel", "nursery", "household"];
+      let created = 0;
+      while (activeSeverantCourtWomen().length < minCount) {
+        const assignment = assignments[(campaignRouteState.severantCourtWomen.length + created) % assignments.length];
+        if (!createSeededSeverantCourtWoman(assignment, sourceLabel)) break;
+        created += 1;
+      }
+      if (announce && created > 0) {
+        addLog(`${highSeverantProfile.hiddenName} folds ${created} Severant women directly into your household the moment the pact hardens.`);
+      }
+      return created;
+    }
+
+    function severantCourtAssignmentLabel(profile) {
+      return ({
+        household: "Household Wing",
+        nursery: "Nursery Wing",
+        prison: "Discipline Wing",
+        intel: "Intelligence Wing",
+      })[profile?.assignment] || "Inner Service";
+    }
+
+    function severantCourtPregnancyStatusLabel(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman) return "No Heir";
+      if (!woman.pregnant) return woman.children > 0 ? `Children ${woman.children}` : "No Heir";
+      const turnsLeft = Math.max(0, woman.pregnancyDueRound - round);
+      if (turnsLeft <= 1) return `Late Pregnancy - Children ${woman.children}`;
+      if (turnsLeft === 2) return `Pregnant - Mid Term - Children ${woman.children}`;
+      return `Pregnant - Early Term - Children ${woman.children}`;
+    }
+
+    function severantCourtBondLabel(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman) return "Controlled";
+      const score =
+        (woman.trust || 0) * 0.34 +
+        (woman.devotion || 0) * 0.3 +
+        (woman.romance || 0) * 0.2 +
+        (woman.attraction || 0) * 0.16;
+      if (score >= 76) return "Devoted";
+      if (score >= 58) return "Steady";
+      if (score >= 40) return "Bound";
+      return "Controlled";
+    }
+
+    function severantCourtPortrait(profile) {
+      return profile?.portrait || derivedSeverantCourtPortrait(profile) || basePortraitFallbackForFaction(playerFactionId());
+    }
+
+    function queueSeverantCourtReaction(profile, title, label, body) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman) return false;
+      queueEventModal({
+        label,
+        title,
+        body,
+        portrait: severantCourtPortrait(woman),
+        cta: "Continue",
+      });
+      return true;
+    }
+
+    function trySeverantCourtPregnancy(profile, sourceLabel, intensity = 1) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman || woman.pregnant) return false;
+      const chance = Math.min(
+        0.58,
+        0.1 +
+        intensity * 0.08 +
+        Math.max(0, woman.trust || 0) / 360 +
+        Math.max(0, woman.devotion || 0) / 320 +
+        Math.max(0, woman.romance || 0) / 280 +
+        Math.max(0, woman.attraction || 0) / 320
+      );
+      if (Math.random() > chance) return false;
+      woman.pregnant = true;
+      woman.pregnancyStartRound = round;
+      woman.pregnancyDueRound = round + 3 + Math.floor(Math.random() * 2);
+      woman.pregnancyOrigin = sourceLabel;
+      woman.devotion = clamp((woman.devotion || 0) + 4, 0, 100);
+      woman.trust = clamp((woman.trust || 0) + 3, 0, 100);
+      queueSeverantCourtReaction(
+        woman,
+        `${woman.name} Carries Your Child`,
+        "Severant Court Pregnancy",
+        `${woman.name} realizes that your recent closeness has left her pregnant.\n\nInside the Severant household, that does more than change her body. It binds one more woman of the old Order directly into your line and deepens her stake in staying useful under your roof.`
+      );
+      addLog(`${woman.name} becomes pregnant after ${sourceLabel.toLowerCase()}.`);
+      return true;
+    }
+
+    function resolveSeverantCourtPregnancies() {
+      for (const profile of activeSeverantCourtWomen()) {
+        if (!profile.pregnant || profile.pregnancyDueRound > round) continue;
+        profile.pregnant = false;
+        profile.pregnancyStartRound = -1;
+        profile.pregnancyDueRound = -1;
+        const origin = profile.pregnancyOrigin || "service wing intimacy";
+        profile.pregnancyOrigin = null;
+        profile.children = (profile.children || 0) + 1;
+        profile.devotion = clamp((profile.devotion || 0) + 6, 0, 100);
+        profile.trust = clamp((profile.trust || 0) + 5, 0, 100);
+        profile.romance = clamp((profile.romance || 0) + 5, 0, 100);
+        const heir = createHeirFromBirth({
+          type: "severant_defector",
+          id: profile.id,
+          name: profile.name,
+        });
+        queueSeverantCourtReaction(
+          profile,
+          `${profile.name} Gives Birth`,
+          "Severant Court Birth",
+          `${profile.name} gives birth safely within the Severant service wing after ${origin.toLowerCase()}.\n\n${heir.name} is folded into your hidden line like any other son, and the woman who once served the old Order now finds her future tied to your household beyond doubt.`
+        );
+        addLog(`${profile.name} gives birth within the Severant household.`);
+      }
+    }
+
+    function converseSeverantCourtWoman(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman || woman.converseUsedThisTurn) return false;
+      woman.converseUsedThisTurn = true;
+      woman.trust = clamp((woman.trust || 0) + 4, 0, 100);
+      woman.devotion = clamp((woman.devotion || 0) + 2, 0, 100);
+      queueSeverantCourtReaction(
+        woman,
+        `${woman.name} Settles At Your Side`,
+        "Severant Service",
+        `${woman.name} drops her professional mask for a little while and answers you plainly.\n\nThe conversation leaves her more personally bound to your household and more eager to keep her place inside the Severant court secure.`
+      );
+      render();
+      return true;
+    }
+
+    function flirtSeverantCourtWoman(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman || woman.flirtUsedThisTurn) return false;
+      woman.flirtUsedThisTurn = true;
+      woman.attraction = clamp((woman.attraction || 0) + 6, 0, 100);
+      woman.romance = clamp((woman.romance || 0) + 5, 0, 100);
+      woman.devotion = clamp((woman.devotion || 0) + 2, 0, 100);
+      queueSeverantCourtReaction(
+        woman,
+        `${woman.name} Answers The Invitation`,
+        "Severant Service",
+        `${woman.name} meets your attention with the careful warmth of a woman who knows the household runs on favor as much as duty.\n\nShe leaves wanting more of your notice, not less.`
+      );
+      render();
+      return true;
+    }
+
+    function giftSeverantCourtWoman(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman || woman.giftUsedThisTurn) return false;
+      if (treasury < 1) {
+        addLog("You need 1 treasury to reward a woman of the Severant service wing.");
+        return false;
+      }
+      treasury = Math.max(0, treasury - 1);
+      woman.giftUsedThisTurn = true;
+      woman.trust = clamp((woman.trust || 0) + 4, 0, 100);
+      woman.devotion = clamp((woman.devotion || 0) + 4, 0, 100);
+      woman.romance = clamp((woman.romance || 0) + 2, 0, 100);
+      queueSeverantCourtReaction(
+        woman,
+        `${woman.name} Accepts Your Reward`,
+        "Severant Service",
+        `${woman.name} accepts the reward with obvious relief and quiet pride.\n\nIn this wing of the court, tangible favor means safety, closeness, and another reason to keep serving you well.`
+      );
+      render();
+      return true;
+    }
+
+    function severantCourtWomanSpoilPlayer(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman || woman.spoilUsedThisTurn) return false;
+      woman.spoilUsedThisTurn = true;
+      const treasuryGift = 1 + ((woman.usefulness || 0) >= 68 ? 1 : 0);
+      treasury += treasuryGift;
+      woman.trust = clamp((woman.trust || 0) + 3, 0, 100);
+      woman.romance = clamp((woman.romance || 0) + 3, 0, 100);
+      woman.devotion = clamp((woman.devotion || 0) + 2, 0, 100);
+      queueSeverantCourtReaction(
+        woman,
+        `${woman.name} Finds A Way To Dote On You`,
+        "Severant Service",
+        `${woman.name} uses her access, old contacts, and household leverage to make your day easier and a little richer.\n\nTreasury +${treasuryGift}.`
+      );
+      render();
+      return true;
+    }
+
+    function intimacySeverantCourtWoman(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman || woman.intimacyUsedThisTurn) return false;
+      woman.intimacyUsedThisTurn = true;
+      const bond = severantCourtBondLabel(woman);
+      woman.romance = clamp((woman.romance || 0) + (bond === "Devoted" ? 9 : bond === "Steady" ? 8 : 7), 0, 100);
+      woman.attraction = clamp((woman.attraction || 0) + (bond === "Controlled" ? 5 : 6), 0, 100);
+      woman.devotion = clamp((woman.devotion || 0) + 4, 0, 100);
+      woman.trust = clamp((woman.trust || 0) + (bond === "Controlled" ? 3 : 4), 0, 100);
+      queueSeverantCourtReaction(
+        woman,
+        `${woman.name} Gives Herself To The Moment`,
+        "Severant Service",
+        `${woman.name} lets the distance of role and discipline fall away for a little while.\n\nIn the private quiet of the service wing, the moment feels less like routine obedience and more like a woman choosing to be close to the center of the power she now serves.`
+      );
+      const intensity = bond === "Devoted"
+        ? 1.18
+        : bond === "Steady"
+        ? 1.12
+        : bond === "Bound"
+        ? 1.06
+        : 1.02;
+      trySeverantCourtPregnancy(woman, "Severant Court Intimacy", intensity);
+      render();
+      return true;
+    }
+
+    function refreshCounterIntelRating() {
+      ensureDynastyState();
+      dynastyState.counterIntelRating = clamp(
+        activeSeverantDefectors().reduce((sum, prisoner) => {
+          const assignmentBonus = prisoner.assignment === "intel"
+            ? 14
+            : prisoner.assignment === "nursery"
+            ? 10
+            : prisoner.assignment === "household"
+            ? 8
+            : 4;
+          return sum + (prisoner.trust || 0) * 0.22 + (prisoner.usefulness || 0) * 0.18 + assignmentBonus - (prisoner.falseLoyaltyRisk || 0) * 0.12;
+        }, 0),
+        0,
+        100
+      );
+    }
+
+    function resolveLoyalSonSupport(rivalHeir) {
+      const roster = allHeirs().filter((heir) => heir.id !== rivalHeir.id);
+      const loyalists = [];
+      const hesitant = [];
+      const traitors = [];
+      for (const heir of roster) {
+        if (heir.loyalistReadiness >= 72 && heir.resentment < 40) loyalists.push(heir);
+        else if (heir.rebelReadiness >= 64 || heir.corruption >= 48) traitors.push(heir);
+        else hesitant.push(heir);
+      }
+      return { loyalists, hesitant, traitors };
+    }
+
+    function queueSeverantHeirEvent(heir) {
+      ensureDynastyState();
+      dynastyState.lastSeverantStrikeRound = round;
+      dynastyState.knownThreat = true;
+      dynastyState.severantProgress = clamp(dynastyState.severantProgress + 8, 0, 100);
+      queueEventModal({
+        label: "Severant Plot",
+        title: `${HIGH_SEVERANT_TITLE} Reaches For ${heir.name}`,
+        body: `One of your hidden warnings proves true. Women tied to ${SEVERANT_ORDER_NAME} have started circling ${heir.name}.\n\nThey are offering secrecy, praise, and the promise that he should belong to himself instead of to your discipline.\n\nSecurity ${heir.security} • Exposure ${heir.exposure} • Corruption ${heir.corruption}`,
+        portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: "Hide Him Deeper",
+            onClick: () => {
+              dismissEventModal();
+              heir.hidden = true;
+              heir.exposed = false;
+              heir.security = clamp(heir.security + 10, 0, 100);
+              heir.exposure = clamp(heir.exposure - 12, 0, 100);
+              heir.affection = clamp(heir.affection - 2, 0, 100);
+              heir.notes = `${heir.name} has been buried deeper in the inner house after signs of ${SEVERANT_ORDER_NAME} reach.`;
+              addLog(`You pull ${heir.name} back into deeper concealment as agents of ${SEVERANT_ORDER_NAME} begin to circle.`);
+              recalculateHeirAlignment(heir);
+              render();
+            },
+          },
+          {
+            label: "Give Him Counsel",
+            onClick: () => {
+              dismissEventModal();
+              heir.affection = clamp(heir.affection + 5, 0, 100);
+              heir.respect = clamp(heir.respect + 5, 0, 100);
+              heir.corruption = clamp(heir.corruption - 6, 0, 100);
+              heir.maturity = clamp(heir.maturity + 3, 0, 100);
+              heir.notes = `${heir.name} has been spoken to directly about honeyed enemies and the way false freedom is sold.`;
+              addLog(`You speak to ${heir.name} directly and cut some of ${SEVERANT_ORDER_NAME}'s poison out of him.`);
+              recalculateHeirAlignment(heir);
+              render();
+            },
+          },
+          {
+            label: "Set The Matriarch On It",
+            onClick: () => {
+              dismissEventModal();
+              const matriarch = matriarchMatron();
+              heir.guardianType = "matriarch";
+              heir.guardianId = matriarch?.id || null;
+              heir.security = clamp(heir.security + 14, 0, 100);
+              heir.corruption = clamp(heir.corruption - 8, 0, 100);
+              heir.resentment = clamp(heir.resentment + 1, 0, 100);
+              heir.notes = `${heir.name} is now under the Matriarch's direct watch after a ${SEVERANT_ORDER_NAME} reach toward him.`;
+              addLog(`The Matriarch takes direct control of ${heir.name}'s safety and strips ${SEVERANT_ORDER_NAME}'s reach back.`);
+              recalculateHeirAlignment(heir);
+              render();
+            },
+          },
+        ],
+      });
+    }
+
+    function createSeverantOperativePrisoner(sourceLabel = "court intrigue", linkedHeir = null) {
+      const profile = pickSeverantOperativeProfile();
+      const operative = addPrisoner({
+        category: "severant_operative",
+        orderAgentId: profile.id,
+        name: profile.name,
+        title: `${profile.title} of ${SEVERANT_ORDER_NAME}`,
+        portrait: profile.portrait || null,
+        originFaction: null,
+        spirit: clamp(58 + randomBetween(-10, 12), 0, 100),
+        fear: clamp(26 + randomBetween(-6, 16), 0, 100),
+        compliance: clamp(18 + randomBetween(-8, 10), 0, 100),
+        health: clamp(64 + randomBetween(-8, 12), 0, 100),
+        notes: `Taken during ${sourceLabel}. Specialty: ${profile.specialty}.${linkedHeir ? ` She had been circling ${linkedHeir.name}.` : ""}`,
+        cover: clamp(68 + randomBetween(-10, 10), 0, 100),
+        fanaticism: clamp(72 + randomBetween(-12, 10), 0, 100),
+        usefulness: clamp(54 + randomBetween(-10, 14), 0, 100),
+        brokenness: clamp(6 + randomBetween(0, 8), 0, 100),
+        falseLoyaltyRisk: clamp(78 + randomBetween(-10, 10), 0, 100),
+        linkedHeirId: linkedHeir?.id || null,
+        assignment: "cell",
+        trust: 0,
+      });
+      if (operative) {
+        dynastyState.severantProgress = clamp(dynastyState.severantProgress - 8, 0, 100);
+        addLog(`${operative.name} of ${SEVERANT_ORDER_NAME} is dragged out of the shadows and thrown into your prison block.`);
+      }
+      return operative;
+    }
+
+    function maybeCaptureSeverantOperative(sourceLabel, linkedHeir = null, baseChance = 0.4) {
+      const chance = clamp(baseChance + (linkedHeir ? linkedHeir.householdInfiltration / 220 : 0) + (matronState.protectionLevel || 1) * 0.05, 0.12, 0.9);
+      if (Math.random() > chance) return null;
+      return createSeverantOperativePrisoner(sourceLabel, linkedHeir);
+    }
+
+    function resolveRivalHeirConflict(rivalHeir, approach = "loyalist") {
+      if (!rivalHeir) return;
+      ensureDynastyState();
+      const support = resolveLoyalSonSupport(rivalHeir);
+      const loyalPower = support.loyalists.reduce((sum, heir) => sum + heir.loyalistReadiness + heir.maturity, 0);
+      const rivalPower = rivalHeir.rebelReadiness + rivalHeir.ambition + rivalHeir.corruption * 0.8 + support.traitors.reduce((sum, heir) => sum + heir.rebelReadiness, 0);
+      const pressureBonus = approach === "loyalist"
+        ? dynastyState.loyalistMomentum + support.hesitant.length * 8
+        : approach === "matriarch"
+        ? (matriarchMatron()?.insight || 0) * 0.6 + (matriarchMatron()?.authority || 0) * 0.4
+        : 20;
+      const victoryMargin = loyalPower + pressureBonus - rivalPower;
+      if (victoryMargin >= 22) {
+        rivalHeir.rival = false;
+        rivalHeir.rebelReadiness = clamp(rivalHeir.rebelReadiness - 28, 0, 100);
+        rivalHeir.resentment = clamp(rivalHeir.resentment + 6, 0, 100);
+        rivalHeir.corruption = clamp(rivalHeir.corruption - 10, 0, 100);
+        rivalHeir.security = clamp(rivalHeir.security + 6, 0, 100);
+        rivalHeir.notes = `${rivalHeir.name} was brought to heel after your loyal sons stood beside you and broke his faction before it could flower into open rebellion.`;
+        support.loyalists.forEach((heir) => {
+          heir.affection = clamp(heir.affection + 5, 0, 100);
+          heir.respect = clamp(heir.respect + 6, 0, 100);
+          heir.maturity = clamp(heir.maturity + 4, 0, 100);
+          heir.notes = `${heir.name} stood by your side when a brother tested the dynasty.`;
+          recalculateHeirAlignment(heir);
+        });
+        dynastyState.activeRivalHeirId = null;
+        addLog(`Your loyal sons close ranks around you and ${rivalHeir.name}'s challenge collapses.`);
+        queueEventModal({
+          label: "Dynasty Holds",
+          title: `Loyal Sons Stand With You`,
+          body: `${support.loyalists.length ? support.loyalists.map((heir) => heir.name).join(", ") : "Your household"} stand with you when ${rivalHeir.name} pushes too far.\n\nThe challenge breaks before it becomes a true fracture, and the whole dynasty learns who still commands it.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          cta: "Order Is Restored",
+        });
+      } else if (victoryMargin >= 0) {
+        rivalHeir.rival = false;
+        rivalHeir.rebelReadiness = clamp(rivalHeir.rebelReadiness - 16, 0, 100);
+        rivalHeir.resentment = clamp(rivalHeir.resentment + 10, 0, 100);
+        rivalHeir.corruption = clamp(rivalHeir.corruption - 4, 0, 100);
+        rivalHeir.notes = `${rivalHeir.name} bends the knee for now, but not out of peace. He yields because he was checked before he was ready.`;
+        dynastyState.activeRivalHeirId = null;
+        addLog(`${rivalHeir.name} is forced back into line, though the peace feels temporary.`);
+      } else {
+        dynastyState.activeRivalHeirId = rivalHeir.id;
+        dynastyState.severantProgress = clamp(dynastyState.severantProgress + 16, 0, 100);
+        rivalHeir.rival = true;
+        rivalHeir.rebelReadiness = clamp(rivalHeir.rebelReadiness + 10, 0, 100);
+        rivalHeir.corruption = clamp(rivalHeir.corruption + 8, 0, 100);
+        rivalHeir.haremPressure = clamp(rivalHeir.haremPressure + 10, 0, 100);
+        rivalHeir.notes = `${rivalHeir.name} slips the net and begins attracting weaker brothers, wounded pride, and whispers from ${SEVERANT_ORDER_NAME} around himself.`;
+        support.traitors.forEach((heir) => {
+          heir.notes = `${heir.name} is quietly feeding strength to ${rivalHeir.name}.`;
+          heir.corruption = clamp(heir.corruption + 6, 0, 100);
+          recalculateHeirAlignment(heir);
+        });
+        queueEventModal({
+          label: "Dynastic Fracture",
+          title: `${rivalHeir.name} Finds Followers`,
+          body: `${rivalHeir.name} does not stand alone. ${support.traitors.length ? `${support.traitors.map((heir) => heir.name).join(", ")} drift toward him,` : "Some weaker sons and servants drift toward him,"} and ${HIGH_SEVERANT_TITLE}'s hand is suddenly easier to feel inside the household.\n\nThis is no longer just disobedience. It is the start of a dynastic wound.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          cta: "The House Splits",
+        });
+      }
+      recalculateHeirAlignment(rivalHeir);
+      render();
+    }
+
+    function endDynastyCampaign(title, label, body, endingSummary) {
+      gameOver = true;
+      endTurnBtn.disabled = true;
+      autoTurnBtn.disabled = true;
+      resistanceBtn.disabled = true;
+      addLog(title);
+      queueEventModal({
+        label,
+        title,
+        body,
+        portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        cta: "Witness The End",
+      });
+      showEndingScreen(title, endingSummary, playerFactionId());
+      render();
+    }
+
+    function maybeResolveDynastyEndings() {
+      ensureDynastyState();
+      if (gameOver) return true;
+      const roster = allHeirs();
+      if (!roster.length) return false;
+      const rivals = roster.filter((heir) => heir.rival);
+      const loyalists = loyalHeirs();
+      const compromised = compromisedHeirs();
+      if (dynastyState.severantProgress >= 100) {
+        endDynastyCampaign(
+          `${HIGH_SEVERANT_TITLE} Wins`,
+          "Severant Victory",
+          `The hidden war inside your household is over, and you lost it.\n\n${SEVERANT_ORDER_NAME} closes over your sons, your court, and your name. Loyal women are cut away, compromised heirs are harvested into its hidden state, and the truth of your dynasty is folded into a history written by her hand.`,
+          `${HIGH_SEVERANT_TITLE} completes the work she began in whispers. Your bloodline is absorbed into ${SEVERANT_ORDER_NAME}, your sons are taken out of your keeping, and the world above is taught a cleaner lie than the life you actually lived.`
+        );
+        return true;
+      }
+      if (rivals.length >= 2 || (rivals.length >= 1 && loyalists.length === 0 && compromised.length >= 2 && dynastyState.rivalHouseholdPressure >= 85)) {
+        const rivalNames = rivals.map((heir) => heir.name).join(", ");
+        endDynastyCampaign(
+          "Dynasty Collapse",
+          "Civil Ruin",
+          `${rivalNames || "Your sons"} no longer test you one at a time. The line has split.\n\nBrothers raid each other's households, weaker sons choose the strongest predator they can find, and the women around them stop asking whether the house can be saved. They begin asking which fragment will survive the fire.`,
+          "Your sons turn the dynasty inward until it tears itself open. Rival households form, loyal resistance never fully coheres, and the hidden enemy only has to widen the crack you already gave her."
+        );
+        return true;
+      }
+      return false;
+    }
+
+    function maybeTriggerHeirIncident() {
+      const youngAdults = allHeirs().filter((heir) => heir.stage === "young_adult");
+      if (!youngAdults.length || Math.random() > 0.22) return;
+      const heir = randomItem(youngAdults);
+      if (!heir) return;
+      if (heir.householdInfiltration >= 58) {
+        queueEventModal({
+          label: "Heir Incident",
+          title: `${heir.name}'s Household Leaks`,
+          body: `${heir.name}'s bedchambers have become too porous. One of his women, or one of the women around them, has been feeding whispers into the wrong dark.\n\nYou can move quietly and capture the snake, or let the rot continue while you watch for a bigger catch.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          actions: [
+            {
+              label: "Seize The Operative",
+              onClick: () => {
+                dismissEventModal();
+                maybeCaptureSeverantOperative(`${heir.name}'s leaked household`, heir, 0.75);
+                heir.householdInfiltration = clamp(heir.householdInfiltration - 20, 0, 100);
+                render();
+              },
+            },
+            {
+              label: "Watch A Little Longer",
+              onClick: () => {
+                dismissEventModal();
+                heir.corruption = clamp(heir.corruption + 4, 0, 100);
+                heir.householdInfiltration = clamp(heir.householdInfiltration + 6, 0, 100);
+                dynastyState.severantProgress = clamp(dynastyState.severantProgress + 5, 0, 100);
+                addLog(`You leave ${heir.name}'s household under quiet watch, hoping to expose a deeper chain.`);
+                render();
+              },
+            },
+          ],
+        });
+        return;
+      }
+      if (heir.haremPressure >= 68 || heir.householdDecadence >= 70) {
+        queueEventModal({
+          label: "Heir Incident",
+          title: `${heir.name} Overreaches`,
+          body: `${heir.name} has started reaching beyond his own chambers, testing whether the women around his brothers or even yours can be treated as part of his pleasure.\n\nIf you leave this unanswered, the rest of the sons will learn the wrong lesson.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          actions: [
+            {
+              label: "Discipline Him",
+              onClick: () => {
+                dismissEventModal();
+                disciplineHeir(heir, "measured");
+              },
+            },
+            {
+              label: "Take Women Back",
+              onClick: () => {
+                dismissEventModal();
+                manageHeirHarem(heir, "reclaim");
+              },
+            },
+          ],
+        });
+        return;
+      }
+      if (heir.loyalistReadiness >= 74 && youngAdults.length > 1) {
+        const rival = randomItem(youngAdults.filter((candidate) => candidate.id !== heir.id));
+        if (!rival) return;
+        queueEventModal({
+          label: "Heir Incident",
+          title: `${heir.name} Warns You`,
+          body: `${heir.name} comes to you before the household sleeps and warns that ${rival.name} is attracting the wrong kind of attention.\n\nA loyal son like this can help you keep the rest in line if you reward him properly.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          actions: [
+            {
+              label: "Reward The Warning",
+              onClick: () => {
+                dismissEventModal();
+                rewardHeir(heir, "praise");
+                rival.householdInfiltration = clamp(rival.householdInfiltration + 4, 0, 100);
+                rival.corruption = clamp(rival.corruption + 2, 0, 100);
+                render();
+              },
+            },
+            {
+              label: "Investigate Quietly",
+              onClick: () => {
+                dismissEventModal();
+                rival.householdOrder = clamp(rival.householdOrder - 4, 0, 100);
+                rival.householdInfiltration = clamp(rival.householdInfiltration + 8, 0, 100);
+                maybeCaptureSeverantOperative(`${rival.name}'s household watch`, rival, 0.4);
+                render();
+              },
+            },
+          ],
+        });
+      }
+    }
+
+    function maybeAdvanceSeverantReveal() {
+      ensureDynastyState();
+      if (gameOver) return;
+      const compromised = compromisedHeirs();
+      if (!dynastyState.knownThreat && (dynastyState.severantProgress >= 30 || compromised.length >= 2)) {
+        dynastyState.knownThreat = true;
+        queueEventModal({
+          label: "Hidden Enemy",
+          title: "A Name Rises From The Nursery Walls",
+          body: `Too many warnings now rhyme.\n\nAttendants disappear, sons repeat phrases no loyal tutor taught them, and the matrons finally give the hidden enemy two names: ${HIGH_SEVERANT_TITLE}, and her machine behind the curtain, ${SEVERANT_ORDER_NAME}.\n\nShe is not a rumor anymore. She is inside the logic of your household.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          cta: "Remember Her Name",
+        });
+      }
+      if (dynastyState.severantProgress >= 65 && dynastyState.lastSeverantStrikeRound !== round) {
+        dynastyState.lastSeverantStrikeRound = round;
+        queueEventModal({
+          label: "Severant Revealed",
+          title: `${HIGH_SEVERANT_TITLE} Steps Out Of Shadow`,
+          body: `The hidden faction stops behaving like a whisper and starts behaving like a state.\n\nCoordinated thefts, guided seductions, broken attendants, and compromised sons all point in one direction: ${SEVERANT_ORDER_NAME}. ${HIGH_SEVERANT_TITLE} is no longer merely touching your line. She is contesting it openly from the dark.`,
+          portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+          cta: "The Hidden War Opens",
+        });
+      }
+    }
+
+    function dynastyLoyalistWarBonus() {
+      const loyalCount = loyalHeirs().length;
+      return Math.min(4, Math.floor((dynastyState.loyalistMomentum || 0) / 20) + Math.floor(loyalCount / 2));
+    }
+
+    function designateNamedHeir(heir) {
+      if (!heir) return;
+      ensureDynastyState();
+      const previous = heirById(dynastyState.namedHeirId);
+      if (previous && previous.id !== heir.id) {
+        previous.successionClaim = clamp(previous.successionClaim - 12, 0, 100);
+        previous.resentment = clamp(previous.resentment + 8, 0, 100);
+        previous.notes = `${previous.name} was passed over when you named another son as principal heir.`;
+        recalculateHeirAlignment(previous);
+      }
+      dynastyState.namedHeirId = heir.id;
+      heir.disinherited = false;
+      heir.successionClaim = clamp(Math.max(heir.successionClaim, 78), 0, 100);
+      heir.respect = clamp(heir.respect + 8, 0, 100);
+      heir.maturity = clamp(heir.maturity + 4, 0, 100);
+      heir.ambition = clamp(heir.ambition + 5, 0, 100);
+      heir.notes = `${heir.name} is publicly marked as the leading continuation of your line. Every brother will now measure himself against that choice.`;
+      addLog(`You name ${heir.name} as your principal heir.`);
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function disinheritHeir(heir) {
+      if (!heir) return;
+      ensureDynastyState();
+      if (dynastyState.namedHeirId === heir.id) dynastyState.namedHeirId = null;
+      heir.disinherited = true;
+      heir.successionClaim = clamp(heir.successionClaim - 24, 0, 100);
+      heir.resentment = clamp(heir.resentment + 12, 0, 100);
+      heir.haremPressure = clamp(heir.haremPressure + 8, 0, 100);
+      heir.notes = `${heir.name} has been cut out of succession unless he earns his way back.`;
+      addLog(`You disinherit ${heir.name} and cut his claim out from under him.`);
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function restoreHeirClaim(heir) {
+      if (!heir) return;
+      heir.disinherited = false;
+      heir.successionClaim = clamp(Math.max(heir.successionClaim, 36), 0, 100);
+      heir.affection = clamp(heir.affection + 3, 0, 100);
+      heir.resentment = clamp(heir.resentment - 5, 0, 100);
+      heir.notes = `${heir.name} is allowed back into the line of succession, though not yet above every brother.`;
+      addLog(`You restore ${heir.name} to the succession line.`);
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function manageMotherPolitics(heir, action) {
+      if (!heir) return;
+      if (action === "shield") {
+        heir.maternalInfluence = clamp(heir.maternalInfluence + 6, 0, 100);
+        heir.maternalFavor = clamp(heir.maternalFavor + 4, 0, 100);
+        heir.security = clamp(heir.security + 8, 0, 100);
+        heir.exposure = clamp(heir.exposure - 5, 0, 100);
+        heir.notes = `${heirMotherLabel(heir)} quietly thickens the walls around ${heir.name} and screens the women allowed near him.`;
+        addLog(`${heirMotherLabel(heir)} quietly shields ${heir.name} from outside reach.`);
+      } else if (action === "lobby") {
+        heir.maternalInfluence = clamp(heir.maternalInfluence + 8, 0, 100);
+        heir.successionClaim = clamp(heir.successionClaim + 10, 0, 100);
+        heir.ambition = clamp(heir.ambition + 4, 0, 100);
+        heir.brotherRivalry = clamp(heir.brotherRivalry + 6, 0, 100);
+        heir.notes = `${heirMotherLabel(heir)} starts speaking for ${heir.name} more openly and reminding the household that he was born to matter.`;
+        addLog(`${heirMotherLabel(heir)} lobbies for ${heir.name}'s standing in the house.`);
+      } else if (action === "rebuke") {
+        heir.maternalFavor = clamp(heir.maternalFavor - 6, 0, 100);
+        heir.discipline = clamp(heir.discipline + 5, 0, 100);
+        heir.maturity = clamp(heir.maturity + 4, 0, 100);
+        heir.resentment = clamp(heir.resentment - 2, 0, 100);
+        heir.haremPressure = clamp(heir.haremPressure - 4, 0, 100);
+        heir.notes = `${heirMotherLabel(heir)} checks ${heir.name} from inside his own household and forces him to remember his place.`;
+        addLog(`${heirMotherLabel(heir)} helps rebuke ${heir.name} before he grows too wild.`);
+      } else if (action === "agenda") {
+        const cycle = ["shield", "elevate", "stabilize", "humble"];
+        const index = cycle.indexOf(heir.maternalAgenda || "stabilize");
+        heir.maternalAgenda = cycle[(index + 1) % cycle.length];
+        heir.notes = `${heirMotherLabel(heir)} shifts her private agenda around ${heir.name} to "${MATERNAL_AGENDAS[heir.maternalAgenda]}".`;
+        addLog(`${heirMotherLabel(heir)} changes how she means to shape ${heir.name}.`);
+      }
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function maybeTriggerMaternalCourtEvent() {
+      ensureDynastyState();
+      const youngAdults = allHeirs().filter((heir) => heir.stage === "young_adult" && heir.maternalInfluence >= 45);
+      if (youngAdults.length < 2 || dynastyState.lastMaternalConflictRound === round || Math.random() > 0.24) return;
+      const sorted = [...youngAdults].sort((a, b) => (b.maternalInfluence + b.successionClaim) - (a.maternalInfluence + a.successionClaim));
+      const primary = sorted[0];
+      const challenger = randomItem(sorted.slice(1, Math.min(sorted.length, 4)));
+      if (!primary || !challenger) return;
+      const primaryMother = heirMotherProfile(primary);
+      const challengerMother = heirMotherProfile(challenger);
+      dynastyState.lastMaternalConflictRound = round;
+      queueEventModal({
+        label: "Court Mothers",
+        title: `${primaryMother.name} And ${challengerMother.name} Collide`,
+        body: `${primaryMother.title}, all ${primaryMother.temperament} grace and sharpened certainty, is pressing ${primary.name}'s future as if the house already belongs to him.\n\nAcross from her, ${challengerMother.title} answers with the confidence of a ${challengerMother.temperament} woman who refuses to let her son's line be treated as secondary.\n\n${primary.name}: Claim ${primary.successionClaim} • Maternal Influence ${primary.maternalInfluence}\n${challenger.name}: Claim ${challenger.successionClaim} • Maternal Influence ${challenger.maternalInfluence}`,
+        portrait: primaryMother.portrait || challengerMother.portrait || matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: `Back ${primary.name}`,
+            onClick: () => {
+              dismissEventModal();
+              primary.successionClaim = clamp(primary.successionClaim + 10, 0, 100);
+              primary.maternalInfluence = clamp(primary.maternalInfluence + 6, 0, 100);
+              challenger.resentment = clamp(challenger.resentment + 8, 0, 100);
+              challenger.brotherRivalry = clamp(challenger.brotherRivalry + 6, 0, 100);
+              dynastyState.successionTension = clamp(dynastyState.successionTension + 8, 0, 100);
+              addLog(`You let ${primaryMother.name} win the room and strengthen ${primary.name}'s standing.`);
+              recalculateHeirAlignment(primary);
+              recalculateHeirAlignment(challenger);
+              render();
+            },
+          },
+          {
+            label: "Force A Truce",
+            onClick: () => {
+              dismissEventModal();
+              primary.maternalInfluence = clamp(primary.maternalInfluence - 3, 0, 100);
+              challenger.maternalInfluence = clamp(challenger.maternalInfluence - 3, 0, 100);
+              primary.maturity = clamp(primary.maturity + 3, 0, 100);
+              challenger.maturity = clamp(challenger.maturity + 3, 0, 100);
+              dynastyState.successionTension = clamp(dynastyState.successionTension - 10, 0, 100);
+              addLog(`You force both mothers to stand down before their factionalism hardens into open camps.`);
+              recalculateHeirAlignment(primary);
+              recalculateHeirAlignment(challenger);
+              render();
+            },
+          },
+          {
+            label: `Back ${challenger.name}`,
+            onClick: () => {
+              dismissEventModal();
+              challenger.successionClaim = clamp(challenger.successionClaim + 10, 0, 100);
+              challenger.maternalInfluence = clamp(challenger.maternalInfluence + 6, 0, 100);
+              primary.resentment = clamp(primary.resentment + 8, 0, 100);
+              primary.brotherRivalry = clamp(primary.brotherRivalry + 6, 0, 100);
+              dynastyState.successionTension = clamp(dynastyState.successionTension + 8, 0, 100);
+              addLog(`You let ${challengerMother.name} seize the room and raise ${challenger.name}'s standing.`);
+              recalculateHeirAlignment(primary);
+              recalculateHeirAlignment(challenger);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerSuccessionCrisis() {
+      ensureDynastyState();
+      const claimants = allHeirs().filter((heir) => heir.stage === "young_adult" && !heir.disinherited && heir.successionClaim >= 55);
+      if (claimants.length < 2 || dynastyState.successionTension < 58 || dynastyState.lastSuccessionCrisisRound === round) return false;
+      const sorted = [...claimants].sort((a, b) => (b.successionClaim + b.brotherRivalry + b.ambition) - (a.successionClaim + a.brotherRivalry + a.ambition));
+      const frontRunner = sorted[0];
+      const rival = sorted[1];
+      if (!frontRunner || !rival) return false;
+      dynastyState.lastSuccessionCrisisRound = round;
+      queueEventModal({
+        label: "Succession Crisis",
+        title: "The Household Demands Clarity",
+        body: `The matter of succession can no longer remain a private pressure inside your walls.\n\nAttendants have chosen favorites. Mothers are counting allies. Brothers are testing one another in smaller humiliations that look very much like rehearsals.\n\n${frontRunner.name}: Claim ${frontRunner.successionClaim} • Rivalry ${frontRunner.brotherRivalry}\n${rival.name}: Claim ${rival.successionClaim} • Rivalry ${rival.brotherRivalry}`,
+        portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: `Confirm ${frontRunner.name}`,
+            onClick: () => {
+              dismissEventModal();
+              designateNamedHeir(frontRunner);
+              rival.resentment = clamp(rival.resentment + 6, 0, 100);
+              rival.brotherRivalry = clamp(rival.brotherRivalry + 6, 0, 100);
+              dynastyState.successionTension = clamp(dynastyState.successionTension - 12, 0, 100);
+              addLog(`You end the ambiguity and formally confirm ${frontRunner.name} before the whole household.`);
+              render();
+            },
+          },
+          {
+            label: "Delay With Discipline",
+            onClick: () => {
+              dismissEventModal();
+              disciplineHeir(frontRunner, "measured");
+              disciplineHeir(rival, "measured");
+              frontRunner.successionClaim = clamp(frontRunner.successionClaim - 4, 0, 100);
+              rival.successionClaim = clamp(rival.successionClaim - 4, 0, 100);
+              dynastyState.successionTension = clamp(dynastyState.successionTension - 6, 0, 100);
+              addLog(`You delay the crisis by reminding both sons that claim without obedience means nothing.`);
+              render();
+            },
+          },
+          {
+            label: `Elevate ${rival.name} Instead`,
+            onClick: () => {
+              dismissEventModal();
+              designateNamedHeir(rival);
+              frontRunner.resentment = clamp(frontRunner.resentment + 10, 0, 100);
+              frontRunner.brotherRivalry = clamp(frontRunner.brotherRivalry + 8, 0, 100);
+              dynastyState.successionTension = clamp(dynastyState.successionTension + 4, 0, 100);
+              addLog(`You upset every assumption in the house by raising ${rival.name} over the presumed front-runner.`);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function resolveDefectorOperations() {
+      ensureDynastyState();
+      const defectors = activeSeverantDefectors();
+      if (!defectors.length) {
+        dynastyState.counterIntelRating = 0;
+        return;
+      }
+      let progressDrop = 0;
+      for (const defector of defectors) {
+        const trust = defector.trust || 0;
+        const usefulness = defector.usefulness || 0;
+        const risk = defector.falseLoyaltyRisk || 0;
+        if (defector.assignment === "intel") {
+          progressDrop += Math.max(1, Math.floor((trust + usefulness) / 32));
+          const target = randomItem(allHeirs().filter((heir) => heir.householdInfiltration >= 25 || heir.corruption >= 20));
+          if (target) {
+            target.householdInfiltration = clamp(target.householdInfiltration - Math.max(2, Math.floor(trust / 22)), 0, 100);
+            target.corruption = clamp(target.corruption - Math.max(1, Math.floor(usefulness / 30)), 0, 100);
+          }
+        } else if (defector.assignment === "nursery") {
+          for (const heir of allHeirs().filter((heir) => heir.hidden || heir.stage === "child")) {
+            heir.security = clamp(heir.security + 2, 0, 100);
+            heir.exposure = clamp(heir.exposure - 1, 0, 100);
+          }
+        } else if (defector.assignment === "household") {
+          const target = randomItem(allHeirs().filter((heir) => heir.stage === "young_adult"));
+          if (target) {
+            target.householdInfiltration = clamp(target.householdInfiltration - 3, 0, 100);
+            target.householdOrder = clamp(target.householdOrder + 2, 0, 100);
+          }
+        } else if (defector.assignment === "prison") {
+          const operative = randomItem((prisonState?.prisoners || []).filter((prisoner) => prisoner.category === "severant_operative"));
+          if (operative) {
+            operative.cover = clamp((operative.cover || 0) - 6, 0, 100);
+            operative.fanaticism = clamp((operative.fanaticism || 0) - 4, 0, 100);
+            operative.compliance = clamp((operative.compliance || 0) + 4, 0, 100);
+          }
+        }
+        if (risk >= 78 && Math.random() < 0.08) {
+          dynastyState.severantProgress = clamp(dynastyState.severantProgress + 5, 0, 100);
+          defector.notes = `${defector.name} may have fed something back into ${SEVERANT_ORDER_NAME} while working under your roof.`;
+        }
+      }
+      dynastyState.severantProgress = clamp(dynastyState.severantProgress - progressDrop, 0, 100);
+      refreshCounterIntelRating();
+    }
+
+    function maybeTriggerSeverantCellRaid() {
+      ensureDynastyState();
+      const defectors = activeSeverantDefectors();
+      if (!dynastyState.knownThreat || !defectors.length || dynastyState.counterIntelRating < 38 || dynastyState.lastOrderCellRaidRound === round) return false;
+      if (Math.random() > 0.24) return false;
+      const leadDefector = [...defectors].sort((a, b) => ((b.trust || 0) + (b.usefulness || 0)) - ((a.trust || 0) + (a.usefulness || 0)))[0];
+      if (!leadDefector) return false;
+      dynastyState.lastOrderCellRaidRound = round;
+      queueEventModal({
+        label: "Order Cell",
+        title: `A ${SEVERANT_ORDER_NAME} Cell Is Exposed`,
+        body: `${leadDefector.name} delivers a narrow window and a real location: a live cell of ${SEVERANT_ORDER_NAME} moving women, messages, and conditioning stock through one of its hidden corridors.\n\nIf you strike now, you can break part of the network. If you wait, you may follow it closer to ${HIGH_SEVERANT_TITLE} herself.\n\nCounterintel ${dynastyState.counterIntelRating} • Cells Broken ${dynastyState.orderCellsBroken} • Exposure ${dynastyState.highSeverantExposure}`,
+        portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+        actions: [
+          {
+            label: "Raid The Cell",
+            onClick: () => {
+              dismissEventModal();
+              dynastyState.orderCellsBroken += 1;
+              dynastyState.severantProgress = clamp(dynastyState.severantProgress - 14, 0, 100);
+              dynastyState.highSeverantExposure = clamp(dynastyState.highSeverantExposure + 10, 0, 100);
+              maybeCaptureSeverantOperative(`${SEVERANT_ORDER_NAME} cell raid`, null, 0.82);
+              addLog(`You raid a live ${SEVERANT_ORDER_NAME} cell and tear a piece of its network out by the root.`);
+              render();
+            },
+          },
+          {
+            label: "Shadow The Cell",
+            onClick: () => {
+              dismissEventModal();
+              dynastyState.highSeverantExposure = clamp(dynastyState.highSeverantExposure + 16, 0, 100);
+              dynastyState.severantProgress = clamp(dynastyState.severantProgress + 3, 0, 100);
+              leadDefector.trust = clamp((leadDefector.trust || 0) + 4, 0, 100);
+              addLog(`You hold your hand and use ${leadDefector.name}'s contact trail to look deeper into ${SEVERANT_ORDER_NAME}.`);
+              render();
+            },
+          },
+          {
+            label: "Turn It Into Bait",
+            onClick: () => {
+              dismissEventModal();
+              dynastyState.orderCellsBroken += 1;
+              dynastyState.highSeverantExposure = clamp(dynastyState.highSeverantExposure + 22, 0, 100);
+              dynastyState.severantProgress = clamp(dynastyState.severantProgress - 8, 0, 100);
+              leadDefector.falseLoyaltyRisk = clamp((leadDefector.falseLoyaltyRisk || 0) + 8, 0, 100);
+              addLog(`You feed a poisoned trail back through the exposed cell and try to make ${SEVERANT_ORDER_NAME} lead you upward.`);
+              render();
+            },
+          },
+        ],
+      });
+      return true;
+    }
+
+    function maybeTriggerHighSeverantConfrontation() {
+      ensureDynastyState();
+      ensureHighSeverantProfile();
+      ensureCampaignRouteState();
+      if (campaignRouteState.side === "severant") return false;
+      if (!dynastyState.knownThreat) return false;
+      const stage = dynastyState.confrontationStage || 0;
+      const readyForFirst = stage < 1 && dynastyState.orderCellsBroken >= 1 && dynastyState.highSeverantExposure >= 18;
+      const readyForSecond = stage < 2 && dynastyState.orderCellsBroken >= 2 && dynastyState.highSeverantExposure >= 36;
+      const readyForThird = stage < 3 && dynastyState.orderCellsBroken >= 3 && dynastyState.highSeverantExposure >= 60;
+      if (!(readyForFirst || readyForSecond || readyForThird)) return false;
+      dynastyState.confrontationStage = stage + 1;
+      if (dynastyState.confrontationStage === 1) {
+        queueEventModal({
+          label: "High Severant",
+          title: "Her Shape Enters The War",
+          body: `${SEVERANT_ORDER_NAME} is no longer just a hidden machine. Through broken cells and defectors' whispers, you now have the first real outline of ${HIGH_SEVERANT_TITLE}'s movement, voice, and hand.\n\nShe is still hidden, but no longer faceless.`,
+          portrait: highSeverantPortrait(),
+          cta: "Mark Her Pattern",
+        });
+        deepenHighSeverantDossier(1);
+        highSeverantProfile.fear = clamp(highSeverantProfile.fear + 5, 0, 100);
+        highSeverantProfile.safehouseKnown = true;
+      } else if (dynastyState.confrontationStage === 2) {
+        queueEventModal({
+          label: "High Severant",
+          title: "She Begins To Answer You",
+          body: `Your pressure on ${SEVERANT_ORDER_NAME} has become personal enough that the network starts moving like a wounded state.\n\nRoutes close. New handlers appear. Compromised women disappear before your men arrive. ${HIGH_SEVERANT_TITLE} knows someone is finally cutting toward her.`,
+          portrait: highSeverantPortrait(),
+          cta: "Press Harder",
+        });
+        deepenHighSeverantDossier(1);
+        highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 6, 0, 100);
+        highSeverantProfile.hostility = clamp(highSeverantProfile.hostility + 4, 0, 100);
+        highSeverantProfile.safehouseKnown = true;
+      } else {
+        queueEventModal({
+          label: "High Severant",
+          title: "The Road To Her Opens",
+          body: `You have broken enough cells and traced enough orders that the hidden war is no longer abstract.\n\nFor the first time, you are not merely containing ${SEVERANT_ORDER_NAME}. You are approaching the chamber where ${HIGH_SEVERANT_TITLE} believes herself untouchable.`,
+          portrait: highSeverantPortrait(),
+          cta: "Prepare The Final Hunt",
+        });
+        deepenHighSeverantDossier(1);
+        highSeverantProfile.directAudienceUnlocked = true;
+        highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 8, 0, 100);
+        highSeverantProfile.safehouseKnown = true;
+      }
+      return true;
+    }
+
+    function applyLoyalSonTurnSupport(factionId) {
+      if (!isPlayerControlledFaction(factionId)) return;
+      const loyal = loyalHeirs();
+      if (!loyal.length) return;
+      const cap = playerCapitalTile();
+      const warBonus = dynastyLoyalistWarBonus();
+      if (cap && warBonus > 0) {
+        cap.troops += warBonus;
+      }
+      treasury += Math.min(2, Math.floor(loyal.length / 2));
+      humanMovesRemaining = Math.min(HUMAN_MOVES_PER_TURN + 2, HUMAN_MOVES_PER_TURN + Math.floor(loyal.length / 3));
+      addLog(`${loyal.length} loyal son${loyal.length === 1 ? "" : "s"} steady the dynasty this turn${warBonus > 0 ? `, adding +${warBonus} capital troops` : ""}.`);
+    }
+
+    function qualifiesForDynastyVictory(winner) {
+      if (!winner || winner.id !== playerFactionId()) return false;
+      const roster = allHeirs();
+      if (!roster.length) return false;
+      if (dynastyState.severantProgress >= 45) return false;
+      if (roster.some((heir) => heir.rival || heir.corruption >= 45)) return false;
+      if (loyalHeirs().length < Math.max(1, Math.floor(roster.length / 2))) return false;
+      return true;
+    }
+
+    function setHeirGuardian(heir, guardianType) {
+      const matriarch = matriarchMatron();
+      heir.guardianType = guardianType;
+      if (guardianType === "matriarch" && matriarch) {
+        heir.guardianId = matriarch.id;
+        heir.security = clamp(heir.security + 10, 0, 100);
+        heir.maturity = clamp(heir.maturity + 4, 0, 100);
+        heir.notes = `${heir.name} is being raised under the Matriarch's eye.`;
+      } else if (guardianType === "lead_matron") {
+        heir.guardianId = matriarch?.id || null;
+        heir.security = clamp(heir.security + 8, 0, 100);
+        heir.maturity = clamp(heir.maturity + 2, 0, 100);
+      } else if (guardianType === "guard_captain") {
+        heir.guardianId = null;
+        heir.security = clamp(heir.security + 12, 0, 100);
+        heir.respect = clamp(heir.respect + 3, 0, 100);
+        heir.affection = clamp(heir.affection - 2, 0, 100);
+      } else if (guardianType === "safe_estate") {
+        heir.guardianId = null;
+        heir.security = clamp(heir.security + 6, 0, 100);
+        heir.exposure = clamp(heir.exposure - 8, 0, 100);
+      } else {
+        heir.guardianId = heir.motherId;
+        heir.affection = clamp(heir.affection + 4, 0, 100);
+      }
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function disciplineHeir(heir, mode = "measured") {
+      if (!heir) return;
+      if (mode === "measured") {
+        heir.respect = clamp(heir.respect + 6, 0, 100);
+        heir.fear = clamp(heir.fear + 5, 0, 100);
+        heir.maturity = clamp(heir.maturity + 6, 0, 100);
+        heir.discipline = clamp(heir.discipline + 8, 0, 100);
+        heir.resentment = clamp(heir.resentment + 2, 0, 100);
+        heir.instability = clamp(heir.instability - 5, 0, 100);
+        heir.haremPressure = clamp(heir.haremPressure - 6, 0, 100);
+        heir.notes = `${heir.name} has been corrected firmly but cleanly, with enough discipline to teach restraint.`;
+        addLog(`You discipline ${heir.name} with measured force. He grows steadier without fully turning against you.`);
+      } else if (mode === "harsh") {
+        heir.fear = clamp(heir.fear + 12, 0, 100);
+        heir.respect = clamp(heir.respect + 2, 0, 100);
+        heir.resentment = clamp(heir.resentment + 10, 0, 100);
+        heir.corruption = clamp(heir.corruption + 8, 0, 100);
+        heir.discipline = clamp(heir.discipline + 4, 0, 100);
+        heir.instability = clamp(heir.instability + 3, 0, 100);
+        heir.notes = `${heir.name} obeys outwardly after a harsher punishment, but the wound under it may not heal cleanly.`;
+        addLog(`You punish ${heir.name} harshly. Obedience comes quickly, but bitterness takes root beneath it.`);
+      } else {
+        heir.affection = clamp(heir.affection + 5, 0, 100);
+        heir.respect = clamp(heir.respect + 4, 0, 100);
+        heir.resentment = clamp(heir.resentment - 3, 0, 100);
+        heir.maturity = clamp(heir.maturity + 4, 0, 100);
+        heir.discipline = clamp(heir.discipline + 3, 0, 100);
+        heir.instability = clamp(heir.instability - 3, 0, 100);
+        heir.notes = `${heir.name} receives correction with reassurance, teaching him that your rule is meant to shape rather than merely crush him.`;
+        addLog(`You guide ${heir.name} back into line without breaking his trust in you.`);
+      }
+      heir.lastDisciplineRound = round;
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function rewardHeir(heir, kind = "praise") {
+      if (!heir) return;
+      if (kind === "praise") {
+        heir.affection = clamp(heir.affection + 6, 0, 100);
+        heir.respect = clamp(heir.respect + 4, 0, 100);
+        heir.maturity = clamp(heir.maturity + 3, 0, 100);
+        heir.resentment = clamp(heir.resentment - 2, 0, 100);
+        heir.notes = `${heir.name} has been praised and reminded that loyalty earns visible honor in your house.`;
+        addLog(`You praise ${heir.name} and reinforce the kind of maturity you want your sons to embody.`);
+      } else if (kind === "grant_woman") {
+        heir.haremSize += 1;
+        heir.haremPressure = clamp(heir.haremPressure - 10, 0, 100);
+        heir.affection = clamp(heir.affection + 4, 0, 100);
+        heir.ambition = clamp(heir.ambition + 4, 0, 100);
+        heir.householdFavor = clamp(heir.householdFavor + 8, 0, 100);
+        heir.householdLoyaltyToSon = clamp(heir.householdLoyaltyToSon + 5, 0, 100);
+        heir.householdOrder = clamp(heir.householdOrder + 2, 0, 100);
+        heir.householdDecadence = clamp(heir.householdDecadence + 4, 0, 100);
+        heir.notes = `${heir.name} has been granted a woman to anchor his own household. It calms him for now, but also feeds his sense of stature.`;
+        addLog(`You grant ${heir.name} a woman for his household, rewarding loyalty while feeding his growing ambition.`);
+      } else if (kind === "strip_privileges") {
+        heir.haremPressure = clamp(heir.haremPressure - 12, 0, 100);
+        heir.resentment = clamp(heir.resentment + 6, 0, 100);
+        heir.instability = clamp(heir.instability - 2, 0, 100);
+        heir.householdFavor = clamp(heir.householdFavor - 10, 0, 100);
+        heir.householdOrder = clamp(heir.householdOrder + 3, 0, 100);
+        heir.notes = `${heir.name} has had privileges stripped away until he remembers that your house is not his to plunder.`;
+        addLog(`You strip privileges from ${heir.name}, reminding him that indulgence can be taken away as quickly as it is granted.`);
+      }
+      heir.lastRewardRound = round;
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function manageHeirHarem(heir, action) {
+      if (!heir || heir.stage !== "young_adult") return;
+      if (action === "inspect") {
+        heir.householdOrder = clamp(heir.householdOrder + 6, 0, 100);
+        heir.householdLoyaltyToYou = clamp(heir.householdLoyaltyToYou + 8, 0, 100);
+        heir.householdInfiltration = clamp(heir.householdInfiltration - 6, 0, 100);
+        heir.householdFavor = clamp(heir.householdFavor - 3, 0, 100);
+        heir.resentment = clamp(heir.resentment + 2, 0, 100);
+        heir.notes = `${heir.name}'s household has been inspected from top to bottom. Secrets shrink, but he does not love the scrutiny.`;
+        addLog(`You inspect ${heir.name}'s household and remind everyone there that it ultimately answers to you.`);
+      } else if (action === "attendants") {
+        if (treasury < 1) {
+          addLog("You need 1 treasury to seed a son's household with loyal attendants.");
+          return;
+        }
+        treasury -= 1;
+        heir.householdAttendants = clamp(heir.householdAttendants + 12, 0, 100);
+        heir.householdLoyaltyToYou = clamp(heir.householdLoyaltyToYou + 10, 0, 100);
+        heir.householdInfiltration = clamp(heir.householdInfiltration - 8, 0, 100);
+        heir.householdOrder = clamp(heir.householdOrder + 4, 0, 100);
+        heir.notes = `Loyal attendants now circulate through ${heir.name}'s chambers, reporting the atmosphere back toward you.`;
+        addLog(`You seed ${heir.name}'s household with attendants loyal to you.`);
+      } else if (action === "purge") {
+        heir.householdInfiltration = clamp(heir.householdInfiltration - 14, 0, 100);
+        heir.householdOrder = clamp(heir.householdOrder + 5, 0, 100);
+        heir.householdLoyaltyToSon = clamp(heir.householdLoyaltyToSon - 6, 0, 100);
+        heir.householdLoyaltyToYou = clamp(heir.householdLoyaltyToYou + 6, 0, 100);
+        heir.resentment = clamp(heir.resentment + 4, 0, 100);
+        heir.notes = `${heir.name}'s harem has been purged of doubtful women and compromised attendants.`;
+        addLog(`You purge suspect women and servants from ${heir.name}'s household.`);
+        if (heir.householdInfiltration >= 30) {
+          maybeCaptureSeverantOperative(`${heir.name}'s household purge`, heir, 0.52);
+        }
+      } else if (action === "expand") {
+        heir.haremSize += 1;
+        heir.householdDecadence = clamp(heir.householdDecadence + 8, 0, 100);
+        heir.householdFavor = clamp(heir.householdFavor + 10, 0, 100);
+        heir.householdLoyaltyToSon = clamp(heir.householdLoyaltyToSon + 4, 0, 100);
+        heir.haremPressure = clamp(heir.haremPressure - 6, 0, 100);
+        heir.notes = `${heir.name}'s household grows wider, pleasing him but making discipline harder to maintain.`;
+        addLog(`You allow ${heir.name}'s harem to expand.`);
+      } else if (action === "break_up") {
+        const removed = Math.min(2, heir.haremSize);
+        heir.haremSize = Math.max(0, heir.haremSize - removed);
+        heir.householdDecadence = clamp(heir.householdDecadence - 12, 0, 100);
+        heir.householdOrder = clamp(heir.householdOrder + 8, 0, 100);
+        heir.householdFavor = clamp(heir.householdFavor - 14, 0, 100);
+        heir.resentment = clamp(heir.resentment + 8, 0, 100);
+        heir.haremPressure = clamp(heir.haremPressure + 4, 0, 100);
+        heir.notes = `${heir.name}'s household has been cut down before it could become a private court against you.`;
+        addLog(`You break up part of ${heir.name}'s harem before it hardens into a rival household.`);
+      } else if (action === "reclaim") {
+        if (heir.haremSize <= 0) {
+          addLog(`${heir.name} has no women in his household to take back.`);
+          return;
+        }
+        heir.haremSize = Math.max(0, heir.haremSize - 1);
+        heir.householdFavor = clamp(heir.householdFavor - 18, 0, 100);
+        heir.householdLoyaltyToSon = clamp(heir.householdLoyaltyToSon - 10, 0, 100);
+        heir.householdLoyaltyToYou = clamp(heir.householdLoyaltyToYou + 4, 0, 100);
+        heir.resentment = clamp(heir.resentment + 12, 0, 100);
+        heir.haremPressure = clamp(heir.haremPressure + 10, 0, 100);
+        heir.notes = `You take a favored woman back out of ${heir.name}'s household, reminding him that nothing in his chambers exists beyond your reach.`;
+        addLog(`You take a woman back from ${heir.name}'s household and humiliate his claim over it.`);
+      }
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function toggleHeirExposure(heir) {
+      if (!heir) return;
+      heir.hidden = !heir.hidden;
+      heir.exposed = !heir.hidden;
+      heir.exposure = clamp(heir.exposure + (heir.hidden ? -12 : 16), 0, 100);
+      heir.security = clamp(heir.security + (heir.hidden ? 6 : -4), 0, 100);
+      heir.notes = heir.hidden
+        ? `${heir.name} has been pulled back into the shadows where ${SEVERANT_ORDER_NAME}'s eyes will have a harder time reaching him.`
+        : `${heir.name} is now being shown more openly as part of your line, strengthening legitimacy while increasing danger.`;
+      addLog(heir.hidden
+        ? `${heir.name} is hidden more deeply within your household.`
+        : `${heir.name} is presented more openly before the court.`);
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function reinforceHeirSecurity(heir) {
+      if (!heir) return;
+      if (treasury < 1) {
+        addLog("You need 1 treasury to strengthen a son's security detail.");
+        return;
+      }
+      treasury -= 1;
+      heir.security = clamp(heir.security + 12, 0, 100);
+      heir.exposure = clamp(heir.exposure - 5, 0, 100);
+      heir.notes = `${heir.name} now has a thicker security screen and stricter access around his chambers.`;
+      addLog(`A tighter security cordon is placed around ${heir.name}.`);
+      recalculateHeirAlignment(heir);
+      render();
+    }
+
+    function resolveHeirTurn() {
+      ensureDynastyState();
+      const roster = allHeirs();
+      if (!roster.length) return;
+      const unstableCount = roster.filter((heir) => heir.instability >= 55 || heir.rival).length;
+      dynastyState.rivalHouseholdPressure = clamp(unstableCount * 12 + Math.round(dynastyInstability() * 0.08), 0, 100);
+      dynastyState.loyalistMomentum = clamp(roster.reduce((sum, heir) => sum + Math.max(0, heir.loyalistReadiness - 55), 0) * 0.1, 0, 100);
+      const namedHeir = heirById(dynastyState.namedHeirId);
+      for (const heir of roster) {
+        heir.age = Math.max(0, round - heir.birthRound);
+        const previousStage = heir.stage;
+        heir.stage = heirStageFromAge(heir.age);
+        if (previousStage !== heir.stage) {
+          heir.notes = `${heir.name} grows into a new stage of life: ${heirStageLabel(heir.stage)}.`;
+          addLog(`${heir.name} advances to ${heirStageLabel(heir.stage).toLowerCase()}.`);
+        }
+        heir.maturity = clamp(heir.maturity + (heir.discipline >= 45 && heir.discipline <= 72 ? 3 : heir.discipline < 35 ? -2 : 1), 0, 100);
+        if (heir.discipline < 35) {
+          heir.instability = clamp(heir.instability + 5, 0, 100);
+          heir.haremPressure = clamp(heir.haremPressure + 4, 0, 100);
+        } else if (heir.discipline > 78) {
+          heir.resentment = clamp(heir.resentment + 4, 0, 100);
+        } else {
+          heir.resentment = clamp(heir.resentment - 1, 0, 100);
+          heir.instability = clamp(heir.instability - 2, 0, 100);
+        }
+        if (unstableCount > 0 && !heir.rival) {
+          heir.instability = clamp(heir.instability + unstableCount, 0, 100);
+          heir.resentment = clamp(heir.resentment + Math.max(0, unstableCount - 1), 0, 100);
+        }
+        const brothers = roster.filter((other) => other.id !== heir.id);
+        const averageBrotherLoyalty = brothers.length
+          ? brothers.reduce((sum, other) => sum + other.loyalty, 0) / brothers.length
+          : heir.loyalty;
+        heir.brotherInfluence = clamp(Math.round(averageBrotherLoyalty - heir.loyalty + dynastyState.rivalHouseholdPressure * 0.2), 0, 100);
+        heir.brotherRespect = clamp(heir.brotherRespect + (heir.maturity >= 50 ? 2 : -1) + (heir.loyalistReadiness >= 70 ? 1 : 0), 0, 100);
+        heir.brotherRivalry = clamp(heir.brotherRivalry + (heir.ambition >= 60 ? 3 : 0) + (heir.resentment >= 45 ? 2 : 0) - (heir.maturity >= 55 ? 2 : 0), 0, 100);
+        if (heir.maternalAgenda === "shield") {
+          heir.security = clamp(heir.security + Math.max(1, Math.floor(heir.maternalInfluence / 28)), 0, 100);
+          heir.exposure = clamp(heir.exposure - Math.max(0, Math.floor(heir.maternalInfluence / 34)), 0, 100);
+        } else if (heir.maternalAgenda === "elevate") {
+          heir.successionClaim = clamp(heir.successionClaim + Math.max(1, Math.floor(heir.maternalInfluence / 30)), 0, 100);
+          heir.ambition = clamp(heir.ambition + 1, 0, 100);
+          heir.brotherRivalry = clamp(heir.brotherRivalry + 2, 0, 100);
+        } else if (heir.maternalAgenda === "stabilize") {
+          heir.maturity = clamp(heir.maturity + 2, 0, 100);
+          heir.resentment = clamp(heir.resentment - 1, 0, 100);
+        } else if (heir.maternalAgenda === "humble") {
+          heir.discipline = clamp(heir.discipline + 2, 0, 100);
+          heir.haremPressure = clamp(heir.haremPressure - 2, 0, 100);
+        }
+        if (namedHeir?.id === heir.id) {
+          heir.respect = clamp(heir.respect + 2, 0, 100);
+          heir.successionClaim = clamp(Math.max(heir.successionClaim, 78), 0, 100);
+          heir.ambition = clamp(heir.ambition + 2, 0, 100);
+        } else if (namedHeir && heir.stage === "young_adult" && !heir.disinherited) {
+          heir.brotherRivalry = clamp(heir.brotherRivalry + 2, 0, 100);
+          heir.resentment = clamp(heir.resentment + (heir.successionClaim >= 55 ? 2 : 0), 0, 100);
+        }
+        if (heir.stage === "young_adult") {
+          heir.ambition = clamp(heir.ambition + 2, 0, 100);
+          heir.haremPressure = clamp(heir.haremPressure + Math.max(0, 4 - Math.floor(heir.maturity / 28)), 0, 100);
+          heir.householdDecadence = clamp(heir.householdDecadence + Math.max(0, heir.haremSize - 1), 0, 100);
+          heir.householdOrder = clamp(heir.householdOrder + (heir.discipline >= 50 ? 2 : -3), 0, 100);
+          heir.householdInfiltration = clamp(
+            heir.householdInfiltration + Math.max(0, Math.floor((heir.householdDecadence - heir.householdOrder) / 12)) + Math.max(0, Math.floor((heir.corruption - 20) / 18)),
+            0,
+            100
+          );
+          if (heir.householdOrder <= 30) {
+            heir.instability = clamp(heir.instability + 5, 0, 100);
+            heir.resentment = clamp(heir.resentment + 2, 0, 100);
+            heir.notes = `${heir.name}'s household has become noisy, indulgent, and difficult to govern.`;
+          }
+          if (heir.householdDecadence >= 65) {
+            heir.haremPressure = clamp(heir.haremPressure + 6, 0, 100);
+            heir.ambition = clamp(heir.ambition + 3, 0, 100);
+            heir.notes = `${heir.name}'s harem is teaching him indulgence faster than maturity.`;
+          }
+          if (heir.householdInfiltration >= 55) {
+            heir.corruption = clamp(heir.corruption + 5, 0, 100);
+            heir.notes = `${heir.name}'s household is full of the wrong whispers, and ${SEVERANT_ORDER_NAME} is finding easy passage through his bedchambers.`;
+          }
+          if (heir.haremPressure >= 65 && heir.householdOrder <= 45) {
+            heir.instability = clamp(heir.instability + 6, 0, 100);
+            heir.notes = `${heir.name} starts reaching for women and status beyond what his station can bear cleanly.`;
+          }
+          if (heir.discipline < 40) {
+            heir.notes = `${heir.name} keeps testing the edges of your household, eyeing women and status that do not belong to him.`;
+          }
+        }
+        const severantPressure = severantPressureOnHeir(heir);
+        if (severantPressure >= 58) {
+          heir.corruption = clamp(heir.corruption + 4, 0, 100);
+          heir.notes = `${heir.name} is beginning to draw the wrong kind of attention from hidden women who promise freedom from your rule.`;
+          if (dynastyState.lastSeverantStrikeRound !== round && (!heir.hidden || heir.corruption >= 22 || heir.exposure >= 30)) {
+            queueSeverantHeirEvent(heir);
+          }
+        } else if (severantPressure >= 40) {
+          heir.corruption = clamp(heir.corruption + 2, 0, 100);
+        } else {
+          heir.corruption = clamp(heir.corruption - 1, 0, 100);
+        }
+        recalculateHeirAlignment(heir);
+        if (heir.rival && dynastyState.lastCrisisRound !== round) {
+          dynastyState.lastCrisisRound = round;
+          dynastyState.knownThreat = true;
+          dynastyState.activeRivalHeirId = heir.id;
+          queueEventModal({
+            label: "Rival Son",
+            title: `${heir.name} Begins To Defy You`,
+            body: `${heir.name} has grown old enough, bitter enough, and ambitious enough to test your authority openly.\n\nLoyal sons will remember how you raised them. Wild sons will study what they can take from the chaos. ${HIGH_SEVERANT_TITLE} is listening for exactly this kind of fracture.`,
+            portrait: matriarchMatron()?.portrait || queenPortraits[0] || QUEEN_PORTRAITS[0],
+            actions: [
+              {
+                label: "Call Loyal Sons",
+                onClick: () => {
+                  dismissEventModal();
+                  resolveRivalHeirConflict(heir, "loyalist");
+                },
+              },
+              {
+                label: "Set The Matriarch On Him",
+                onClick: () => {
+                  dismissEventModal();
+                  resolveRivalHeirConflict(heir, "matriarch");
+                },
+              },
+              {
+                label: "Crush Him Yourself",
+                onClick: () => {
+                  dismissEventModal();
+                  resolveRivalHeirConflict(heir, "force");
+                },
+              },
+            ],
+          });
+        }
+        heir.successionScore = heirSuccessionScore(heir);
+      }
+      const successionClaimants = roster.filter((heir) => heir.stage === "young_adult" && !heir.disinherited && heir.successionClaim >= 50);
+      dynastyState.successionTension = clamp(
+        successionClaimants.reduce((sum, heir) => sum + Math.max(0, heir.successionClaim - 45) + Math.max(0, heir.brotherRivalry - 20), 0) * 0.08 +
+        (namedHeir ? successionClaimants.filter((heir) => heir.id !== namedHeir.id).length * 8 : successionClaimants.length * 5) +
+        dynastyState.rivalHouseholdPressure * 0.22,
+        0,
+        100
+      );
+      resolveDefectorOperations();
+      maybeAdvanceSeverantReveal();
+      if (maybeTriggerHighSeverantConfrontation()) return;
+      if (maybeTriggerSeverantCellRaid()) return;
+      if (maybeTriggerSuccessionCrisis()) return;
+      if (maybeTriggerMaternalCourtEvent()) return;
+      maybeTriggerHeirIncident();
     }
 
     function pregnancyStatusLabel(queenFaction) {
@@ -1102,15 +7521,25 @@ const BASE_FACTIONS = [
         const queen = QUEEN_POWERS[faction.id];
         if (capturedQueens.includes(faction.id)) {
           st.morale = Math.min(100, st.morale + 10);
+          const heir = createHeirFromBirth({
+            type: "queen",
+            id: faction.id,
+            name: queen.title,
+          });
           queueEventModal({
             label: "Birth",
             title: `${queen.title} Gives Birth`,
-            body: `${queen.title} gives birth to your child in your court.\n\nA new heir now binds her more tightly to you, and the birth sends ripples through the harem.`,
+            body: `${queen.title} gives birth to your son in your court.\n\n${heir.name} is quietly hidden inside the household, and a new heir now binds her more tightly to you while the whole court feels the danger of what has been born.`,
             portrait: queenPortraits[faction.id] || QUEEN_PORTRAITS[faction.id],
             cta: "Acknowledge The Heir",
           });
         } else {
           st.affair = true;
+          createHeirFromBirth({
+            type: "queen",
+            id: faction.id,
+            name: factionById(faction.id).leader,
+          });
           queueDiplomacyReaction(
             faction.id,
             `${factionById(faction.id).leader} Bears Your Child`,
@@ -1124,9 +7553,16 @@ const BASE_FACTIONS = [
     }
 
     function developerQueenOptions() {
-      return capturedQueens
-        .filter((id) => QUEEN_POWERS[id])
-        .map((id) => ({ id, title: QUEEN_POWERS[id].title }));
+      const ids = [];
+      if (QUEEN_POWERS[0]) ids.push(0);
+      for (const faction of FACTIONS) {
+        if (faction.isHuman || !QUEEN_POWERS[faction.id] || ids.includes(faction.id)) continue;
+        ids.push(faction.id);
+      }
+      return ids.map((id) => ({
+        id,
+        title: `${QUEEN_POWERS[id].title} (${developerQueenStatusLabel(id)})`,
+      }));
     }
 
     function defaultSceneDraft(queenFaction = developerState.selectedQueenFaction || capturedQueens[0] || 0) {
@@ -1163,7 +7599,8 @@ const BASE_FACTIONS = [
 
     function setMenuTab(tabName) {
       activeMenuTab = tabName;
-      if (tabName === "leaders" || tabName === "diplomacy" || tabName === "harem" || tabName === "government" || tabName === "underworld" || tabName === "dev" || tabName === "event" || tabName === "tile") {
+      if (tabName === "leaders" || tabName === "diplomacy" || tabName === "harem" || tabName === "military" || tabName === "spies" || tabName === "government" || tabName === "prison" || tabName === "underworld" || tabName === "dev" || tabName === "event" || tabName === "tile") {
+        const severantRoute = campaignRouteState?.side === "severant";
         modalOverlayEl.classList.add("open");
         modalOverlayEl.classList.toggle("event-mode", tabName === "event");
         modalWindowEl.classList.toggle("event-mode", tabName === "event");
@@ -1171,7 +7608,10 @@ const BASE_FACTIONS = [
         leadersTabEl.classList.toggle("active", tabName === "leaders");
         diplomacyTabEl.classList.toggle("active", tabName === "diplomacy");
         haremTabEl.classList.toggle("active", tabName === "harem");
+        militaryTabEl.classList.toggle("active", tabName === "military");
+        spiesTabEl.classList.toggle("active", tabName === "spies");
         governmentTabEl.classList.toggle("active", tabName === "government");
+        prisonTabEl.classList.toggle("active", tabName === "prison");
         underworldTabEl.classList.toggle("active", tabName === "underworld");
         devTabEl.classList.toggle("active", tabName === "dev");
         eventTabEl.classList.toggle("active", tabName === "event");
@@ -1179,9 +7619,12 @@ const BASE_FACTIONS = [
         modalTitleEl.textContent =
           tabName === "leaders" ? "Enemy Leaders" :
           tabName === "diplomacy" ? "Diplomacy" :
-          tabName === "harem" ? "Harem Management" :
+          tabName === "harem" ? (severantRoute ? "Severant Court" : "Harem Management") :
+          tabName === "military" ? (severantRoute ? "Severant Command" : "Army Command") :
+          tabName === "spies" ? (severantRoute ? "Order Intelligence" : "Spy Network") :
           tabName === "government" ? "Government Management" :
-          tabName === "underworld" ? "Criminal Underworld" :
+          tabName === "prison" ? "Prison Management" :
+          tabName === "underworld" ? "Criminal Underground" :
           tabName === "dev" ? "Developer Mode" :
           tabName === "tile" ? "Tile Interior" :
           "Major Event";
@@ -1189,7 +7632,10 @@ const BASE_FACTIONS = [
         if (tabName === "leaders") renderLeaderPanel();
         if (tabName === "diplomacy") renderDiplomacyPanel();
         if (tabName === "harem") renderHaremPanel();
+        if (tabName === "military") renderMilitaryPanel();
+        if (tabName === "spies") renderSpiesPanel();
         if (tabName === "government") renderGovernmentPanel();
+        if (tabName === "prison") renderPrisonPanel();
         if (tabName === "underworld") renderUnderworldPanel();
         if (tabName === "dev") renderDevPanel();
         if (tabName === "event") renderEventPanel();
@@ -1207,18 +7653,26 @@ const BASE_FACTIONS = [
         leadersTabEl.classList.remove("active");
         diplomacyTabEl.classList.remove("active");
         haremTabEl.classList.remove("active");
+        militaryTabEl.classList.remove("active");
+        spiesTabEl.classList.remove("active");
+        governmentTabEl.classList.remove("active");
+        prisonTabEl.classList.remove("active");
         underworldTabEl.classList.remove("active");
         devTabEl.classList.remove("active");
         eventTabEl.classList.remove("active");
         tileTabEl.classList.remove("active");
         modalCloseBtn.textContent = "Close";
+        modalCloseBtn.disabled = false;
       }
       overviewTabEl.classList.add("active");
       tabOverviewBtn.classList.toggle("active-tab", tabName === "overview");
       tabLeadersBtn.classList.toggle("active-tab", tabName === "leaders");
       tabDiplomacyBtn.classList.toggle("active-tab", tabName === "diplomacy");
       tabHaremBtn.classList.toggle("active-tab", tabName === "harem");
+      tabMilitaryBtn.classList.toggle("active-tab", tabName === "military");
+      tabSpiesBtn.classList.toggle("active-tab", tabName === "spies");
       tabGovernmentBtn.classList.toggle("active-tab", tabName === "government");
+      tabPrisonBtn.classList.toggle("active-tab", tabName === "prison");
       tabUnderworldBtn.classList.toggle("active-tab", tabName === "underworld");
       tabDevBtn.classList.toggle("active-tab", tabName === "dev");
     }
@@ -1301,6 +7755,16 @@ const BASE_FACTIONS = [
         menuBlockEl.classList.remove("boot-hidden");
         loadingBlockEl.classList.remove("active");
       }
+    }
+
+    function queueWarBeginsOpening() {
+      queueEventModal({
+        label: "Opening",
+        title: "The War Begins",
+        body: `The old Matriarch has vanished from open rule, and the queens who once advised her have broken ranks to seize power for themselves.\n\nEach now moves to become the new matriarch of the world in her own name, gathering armies, courts, and loyal women while the balance of the realm tears apart.\n\nInside Elara Castle, Queen Elara shelters both you and the runaway Matriarch behind sealed doors and loyal attendants. Before the world, Elara acts as the throne's visible sovereign and your willing puppet front woman, concealing your identity while the coming war unfolds around her banner.\n\nFrom this hidden court, you will decide which queens are taken, which are broken, and who will truly rule when the struggle is done.`,
+        portrait: queenPortraits[0] || QUEEN_PORTRAITS[0],
+        cta: "Begin The War",
+      });
     }
 
     function toggleMenuMusic() {
@@ -1685,12 +8149,26 @@ const BASE_FACTIONS = [
           round,
           gameOver,
           treasury,
+          restorationState,
+          fertilityState,
+          underworldState,
+          cabinetState,
+          highSeverantState,
+          highSeverantProfile,
+          campaignRouteState,
           leaderState,
           capturedQueens,
           queenUsedThisTurn,
           pendingQueenFaction,
           queenState,
           queenUnits,
+          heirs,
+          nextHeirId,
+          dynastyState,
+          officerCorps,
+          spyNetwork,
+          governanceState,
+          prisonState,
           pendingUnitQueenFaction,
           nextUnitId,
           humanMovesRemaining,
@@ -1751,6 +8229,15 @@ const BASE_FACTIONS = [
       round = snapshot.round;
       gameOver = snapshot.gameOver;
       treasury = snapshot.treasury ?? treasury;
+      restorationState = snapshot.restorationState || restorationState;
+      fertilityState = snapshot.fertilityState || fertilityState;
+      underworldState = snapshot.underworldState || underworldState;
+      ensureUnderworldState();
+      ensureCrimeQueenPresence(3);
+      cabinetState = snapshot.cabinetState || cabinetState;
+      highSeverantState = snapshot.highSeverantState || highSeverantState;
+      highSeverantProfile = snapshot.highSeverantProfile || highSeverantProfile;
+      campaignRouteState = snapshot.campaignRouteState || campaignRouteState;
       duchesses = snapshot.duchesses || [];
       matrons = (snapshot.matrons || []).map((matron) => normalizeMatron(matron));
       matronState = {
@@ -1759,6 +8246,7 @@ const BASE_FACTIONS = [
         recentIgnoredWarnings: 0,
         recentPunishments: 0,
         lastDangerEvent: null,
+        discoveriesCompleted: 0,
         screeningsCompleted: 0,
         interventionsCompleted: 0,
         rescuesCompleted: 0,
@@ -1772,6 +8260,13 @@ const BASE_FACTIONS = [
           rebelAgainst: null,
           regimeName: null,
           regimeShort: null,
+          regimeColor: null,
+          regimeLeader: null,
+          regimeTheme: null,
+          regimePortrait: null,
+          regimeHome: null,
+          regimeArchetype: null,
+          regimePersonality: null,
           underworldPatron: null,
           underworldFriendly: null,
           underAuthorityOf: null,
@@ -1783,6 +8278,47 @@ const BASE_FACTIONS = [
       pendingQueenFaction = snapshot.pendingQueenFaction;
       queenState = snapshot.queenState || {};
       queenUnits = snapshot.queenUnits || [];
+      heirs = (snapshot.heirs || []).map((heir) => normalizeHeir(heir));
+      nextHeirId = snapshot.nextHeirId || Math.max(1, heirs.length + 1);
+      dynastyState = {
+        severantAwareness: 18,
+        knownThreat: false,
+        rivalHouseholdPressure: 0,
+        loyalistMomentum: 0,
+        lastCrisisRound: -1,
+        activeRivalHeirId: null,
+        severantProgress: 0,
+        lastSeverantStrikeRound: -1,
+        namedHeirId: null,
+        successionTension: 0,
+        capturedOrderAgents: [],
+        lastMaternalConflictRound: -1,
+        lastSuccessionCrisisRound: -1,
+        counterIntelRating: 0,
+        lastOrderCellRaidRound: -1,
+        orderCellsBroken: 0,
+        highSeverantExposure: 0,
+        confrontationStage: 0,
+        ...(snapshot.dynastyState || {}),
+      };
+      officerCorps = (snapshot.officerCorps || []).map((officer) => normalizeOfficer(officer));
+      spyNetwork = (snapshot.spyNetwork || []).map((spy) => normalizeSpy(spy));
+      ensureCampaignRouteState();
+      if (campaignRouteState.side === "severant" && !campaignRouteState.severantCommandInstalled) {
+        installSeverantCommandRoster({ quiet: true });
+      }
+      governanceState = {
+        duchessProtocol: "general_judgment",
+        autoAssignDuchesses: true,
+        autoBuildProvinces: true,
+        ...(snapshot.governanceState || {}),
+      };
+      prisonState = {
+        cells: 8,
+        prisoners: (snapshot.prisonState?.prisoners || []).map((prisoner) => ({ ...prisoner })),
+        nextId: 1,
+        ...(snapshot.prisonState || {}),
+      };
       pendingUnitQueenFaction = snapshot.pendingUnitQueenFaction;
       nextUnitId = snapshot.nextUnitId || 1;
       humanMovesRemaining = snapshot.humanMovesRemaining || HUMAN_MOVES_PER_TURN;
@@ -1804,9 +8340,18 @@ const BASE_FACTIONS = [
       campaignStats = snapshot.campaignStats || campaignStats;
       developerState = snapshot.developerState || developerState;
       ensureMatronState();
+      ensureDynastyState();
+      ensureRestorationState();
+      ensureFertilityState();
+      ensureCabinetState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureCampaignRouteState();
       weatherState = snapshot.weatherState || weatherState;
       audioSettings = snapshot.audioSettings || audioSettings;
       reconcileDuchessState();
+      reconcileMilitaryState();
+      reconcileSpyState();
       applyAudioSettings();
       syncAmbienceTrack();
       buildTerrainBackdrops();
@@ -2125,6 +8670,14 @@ const BASE_FACTIONS = [
         corruption: 0,
         tribute: tile.capital ? 4 : 1,
         rebellionRisk: 10,
+        severantDependency: 62,
+        severantContamination: 58,
+        withdrawalStress: 12,
+        underworldControl: 18,
+        vicePressure: 16,
+        dissidentPresence: 10,
+        slaveRouteRisk: 14,
+        tunnelNode: false,
         buildings: {
           farm: 0,
           market: 0,
@@ -2150,6 +8703,16 @@ const BASE_FACTIONS = [
       tile.systems.corruption = Number(tile.systems.corruption ?? 0);
       tile.systems.tribute = Number(tile.systems.tribute ?? (tile.capital ? 4 : 1));
       tile.systems.rebellionRisk = Number(tile.systems.rebellionRisk ?? 10);
+      tile.systems.severantDependency = Number(tile.systems.severantDependency ?? 62);
+      tile.systems.severantContamination = Number(tile.systems.severantContamination ?? 58);
+      tile.systems.withdrawalStress = Number(tile.systems.withdrawalStress ?? 12);
+      tile.systems.underworldControl = Number(tile.systems.underworldControl ?? 18);
+      tile.systems.vicePressure = Number(tile.systems.vicePressure ?? 16);
+      tile.systems.dissidentPresence = Number(tile.systems.dissidentPresence ?? 10);
+      tile.systems.slaveRouteRisk = Number(tile.systems.slaveRouteRisk ?? 14);
+      tile.systems.tunnelNode = Boolean(tile.systems.tunnelNode);
+      tile.systems.familyDemand = Number(tile.systems.familyDemand ?? 8);
+      tile.systems.familyFulfillment = Number(tile.systems.familyFulfillment ?? 0);
       tile.systems.district = tile.systems.district || (tile.capital ? "capital" : (tile.estate || "frontier ward"));
       tile.systems.buildings = {
         farm: 0,
@@ -2219,14 +8782,17 @@ const BASE_FACTIONS = [
       const seed = Math.abs(tile.q * 31 + tile.r * 17 + duchesses.length * 13);
       const archetype = DUCHESS_APPOINTMENT_ARCHETYPES[seed % DUCHESS_APPOINTMENT_ARCHETYPES.length];
       const identity = generateDuchessIdentity(tile);
+      const takenPortraits = duchesses.map((entry) => entry?.portrait).filter(Boolean);
       const duchess = createDuchess({
         id: `duchess_${archetype}_${tile.q}_${tile.r}_${Date.now()}_${duchesses.length}`,
         name: identity.name,
         title: identity.title,
         archetype,
         ownerFaction,
+        portrait: duchessPortraitForTile(tile, takenPortraits),
       });
       duchesses.push(duchess);
+      duchess.autoManage = true;
       attachDuchessToTile(tile, duchess);
       return duchess;
     }
@@ -2252,6 +8818,8 @@ const BASE_FACTIONS = [
         duchess.pregnancyDueRound = Number.isFinite(duchess.pregnancyDueRound) ? duchess.pregnancyDueRound : -1;
         duchess.pregnancyOrigin = duchess.pregnancyOrigin || null;
         duchess.children = Number.isFinite(duchess.children) ? duchess.children : 0;
+        duchess.refusedSurrender = Boolean(duchess.refusedSurrender);
+        duchess.autoManage = duchess.autoManage !== false;
         duchess.talkUsedThisTurn = Boolean(duchess.talkUsedThisTurn);
         duchess.giftUsedThisTurn = Boolean(duchess.giftUsedThisTurn);
         duchess.confideUsedThisTurn = Boolean(duchess.confideUsedThisTurn);
@@ -2279,6 +8847,178 @@ const BASE_FACTIONS = [
         addLog(`${duchess.name} bends the knee to a new crown in ${tile.q},${tile.r}, though her loyalty wavers.`);
       }
       return duchess;
+    }
+
+    function duchessSurrenderChance(tile, duchess) {
+      if (!tile || !duchess) return 0;
+      const spyPressure = spyNetwork
+        .filter((spy) => spy.assignedTile === `${tile.q},${tile.r}`)
+        .reduce((sum, spy) => sum + Math.floor((spy.influence + spy.subtlety + spy.seduction) / 90), 0);
+      let chance = 0.12;
+      chance += Math.max(0, duchess.trust - 40) / 260;
+      chance += Math.max(0, duchess.romance - 30) / 240;
+      chance += Math.max(0, 60 - duchess.loyalty) / 180;
+      chance += Math.max(0, duchess.corruption - 40) / 250;
+      chance += Math.max(0, ensureTileSystems(tile).unrest - 25) / 160;
+      chance += spyPressure * 0.02;
+      if (tile.owner === NEUTRAL) chance += 0.1;
+      return clamp(chance, 0.08, 0.82);
+    }
+
+    function duchessNegotiationChance(tile, duchess, envoy = null) {
+      let chance = duchessSurrenderChance(tile, duchess) + 0.1;
+      if (envoy) {
+        chance += Math.max(0, envoy.trust - 45) / 260;
+        chance += Math.max(0, envoy.discipline - 45) / 320;
+      }
+      return clamp(chance, 0.14, 0.9);
+    }
+
+    function keepDuchessInPower(tile, duchess, style = "demand") {
+      if (!tile || !duchess) return;
+      duchess.ownerFaction = playerFactionId();
+      duchess.status = "active";
+      duchess.refusedSurrender = false;
+      duchess.loyalty = clamp(duchess.loyalty + (style === "negotiate" ? 12 : 8), 0, 100);
+      duchess.trust = clamp(duchess.trust + (style === "negotiate" ? 8 : 5), 0, 100);
+      duchess.localInfluence = clamp(duchess.localInfluence + 2, 0, 100);
+      duchess.autoManage = duchess.autoManage !== false;
+      const systems = ensureTileSystems(tile);
+      systems.unrest = clamp(systems.unrest - (style === "negotiate" ? 5 : 4), 0, 100);
+      systems.loyalty = clamp(systems.loyalty + (style === "negotiate" ? 4 : 2), 0, 100);
+    }
+
+    function imprisonCapturedDuchess(tile, duchess, label = "refusal") {
+      if (!tile || !duchess) return;
+      createDuchessPrisoner(duchess);
+      tile.duchessId = null;
+      duchess.assignedTile = null;
+      duchess.status = "imprisoned";
+      duchess.ownerFaction = playerFactionId();
+      duchess.refusedSurrender = false;
+      const systems = ensureTileSystems(tile);
+      systems.unrest = clamp(systems.unrest + 7, 0, 100);
+      systems.loyalty = clamp(systems.loyalty - 4, 0, 100);
+      addLog(`${duchess.name} is imprisoned after ${label}, and ${duchessRegionName(tile)} is put under direct supervision.`);
+      queueDuchessReaction(
+        duchess,
+        `${duchess.name} Is Removed From Power`,
+        "Duchess Imprisoned",
+        `${duchess.name} loses both her bargaining position and her freedom.\n\nThe province is yours, but everyone who mattered there will remember how the transition was handled.`
+      );
+    }
+
+    function demandDuchessSurrender(tile) {
+      if (!tile?.duchessId) return false;
+      const duchess = getDuchess(tile.duchessId);
+      if (!duchess) return false;
+      const systems = ensureTileSystems(tile);
+      if (Math.random() <= duchessSurrenderChance(tile, duchess)) {
+        tile.owner = playerFactionId();
+        tile.troops = Math.max(1, Math.floor(tile.troops * 0.6));
+        keepDuchessInPower(tile, duchess, "demand");
+        addLog(`${duchess.name} surrenders ${duchessRegionName(tile)} to your banner and remains in power under your rule.`);
+        queueDuchessReaction(
+          duchess,
+          `${duchess.name} Surrenders On Terms`,
+          "Provincial Submission",
+          `${duchess.name} lowers her head and offers you the keys to ${duchessRegionName(tile)}.\n\nShe keeps her title, keeps her household, and swears she will govern in your name now.`
+        );
+        render();
+        return true;
+      } else {
+        duchess.refusedSurrender = true;
+        duchess.status = "defiant";
+        duchess.loyalty = clamp(duchess.loyalty + 6, 0, 100);
+        duchess.ambition = clamp(duchess.ambition + 5, 0, 100);
+        systems.unrest = clamp(systems.unrest + 5, 0, 100);
+        addLog(`${duchess.name} refuses to surrender ${duchessRegionName(tile)} and hardens the province against you.`);
+        queueDuchessReaction(
+          duchess,
+          `${duchess.name} Refuses Your Terms`,
+          "Defiance",
+          `${duchess.name} hears out your offer, then answers with a cool refusal.\n\nIf you want her kneeling now, she means to make you take that outcome by force.`
+        );
+        render();
+        return false;
+      }
+    }
+
+    function negotiateCapturedDuchess(tile, duchess, envoy = null) {
+      if (!tile || !duchess) return false;
+      if (Math.random() <= duchessNegotiationChance(tile, duchess, envoy)) {
+        keepDuchessInPower(tile, duchess, "negotiate");
+        addLog(`${duchess.name} negotiates terms and remains in power under your banner in ${duchessRegionName(tile)}.`);
+        queueDuchessReaction(
+          duchess,
+          `${duchess.name} Accepts Negotiated Rule`,
+          "Negotiated Submission",
+          `${duchess.name} chooses pragmatism over ruin.\n\nShe keeps her title, bends the knee publicly, and begins serving your rule with guarded but workable loyalty.`
+        );
+        return true;
+      }
+      imprisonCapturedDuchess(tile, duchess, "failed negotiation");
+      return false;
+    }
+
+    function resolveCapturedDuchessProtocol(tile, duchess, envoy = null) {
+      if (!tile || !duchess || tile.owner !== playerFactionId()) return;
+      const protocol = governanceState.duchessProtocol || "general_judgment";
+      if (protocol === "manual") {
+        queueEventModal({
+          label: "Captured Duchess",
+          title: `${duchess.name} Awaits Your Decision`,
+          body: `${duchess.name} has been defeated in ${duchessRegionName(tile)}.\n\nChoose whether to demand surrender, negotiate terms so she stays in power, or imprison her outright.\n\n${duchessStatsSummary(duchess)}\n${duchessBondSummary(duchess)}`,
+          portrait: duchess.portrait || "Queens/queen_elara_verdantia.jpg",
+          actions: [
+            { label: "Demand Surrender", onClick: () => { dismissEventModal(); if (!demandDuchessSurrender(tile)) imprisonCapturedDuchess(tile, duchess, "refusing surrender"); render(); } },
+            { label: "Negotiate", onClick: () => { dismissEventModal(); negotiateCapturedDuchess(tile, duchess, envoy); render(); } },
+            { label: "Imprison Her", onClick: () => { dismissEventModal(); imprisonCapturedDuchess(tile, duchess, "direct order"); render(); } },
+            { label: "Close", onClick: () => dismissEventModal() },
+          ],
+        });
+        return;
+      }
+      if (protocol === "auto_negotiate") {
+        negotiateCapturedDuchess(tile, duchess, envoy);
+        return;
+      }
+      if (protocol === "auto_demand") {
+        if (!demandDuchessSurrender(tile)) imprisonCapturedDuchess(tile, duchess, "refusing surrender");
+        return;
+      }
+      const preferNegotiation = envoy ? ["grand_general", "general", "colonel"].includes(envoy.rank) || envoy.trust >= 60 : Math.random() < 0.5;
+      if (preferNegotiation) negotiateCapturedDuchess(tile, duchess, envoy);
+      else if (!demandDuchessSurrender(tile)) imprisonCapturedDuchess(tile, duchess, "refusing surrender");
+    }
+
+    function seizeRefusingDuchess(tile) {
+      if (!tile?.duchessId) return;
+      const duchess = getDuchess(tile.duchessId);
+      if (!duchess) return;
+      if (!duchess.refusedSurrender) {
+        addLog(`${duchess.name} has not refused surrender terms yet.`);
+        return;
+      }
+      createDuchessPrisoner(duchess);
+      tile.duchessId = null;
+      duchess.assignedTile = null;
+      duchess.status = "imprisoned";
+      duchess.ownerFaction = playerFactionId();
+      duchess.refusedSurrender = false;
+      tile.owner = playerFactionId();
+      tile.troops = Math.max(1, Math.floor(tile.troops * 0.45));
+      const systems = ensureTileSystems(tile);
+      systems.unrest = clamp(systems.unrest + 8, 0, 100);
+      systems.loyalty = clamp(systems.loyalty - 6, 0, 100);
+      addLog(`${duchess.name} is seized after refusing surrender, and ${duchessRegionName(tile)} falls under direct control.`);
+      queueDuchessReaction(
+        duchess,
+        `${duchess.name} Is Taken In Chains`,
+        "Refusal Punished",
+        `${duchess.name} tried defiance and lost.\n\nHer refusal ends in irons, and the province learns exactly what happens when surrender terms are rejected too boldly.`
+      );
+      render();
     }
 
     function appointDuchess(tile) {
@@ -2351,10 +9091,15 @@ const BASE_FACTIONS = [
         duchess.romance = clamp(duchess.romance + 6, 0, 100);
         duchess.trust = clamp(duchess.trust + 5, 0, 100);
         duchess.loyalty = clamp(duchess.loyalty + 4, 0, 100);
+        const heir = createHeirFromBirth({
+          type: "duchess",
+          id: duchess.id,
+          name: duchess.name,
+        });
         queueEventModal({
           label: "Duchess",
           title: `${duchess.name} Gives Birth`,
-          body: `${duchess.name} gives birth to your child.\n\nA new heir ties her more personally to your household, and the province will remember the child born under her banner.`,
+          body: `${duchess.name} gives birth to your son.\n\n${heir.name} is hidden under guard while the province whispers about the child born under her banner.`,
           portrait: duchess.portrait || "Queens/queen_elara_verdantia.jpg",
           cta: "Acknowledge The Heir",
         });
@@ -2554,6 +9299,19 @@ const BASE_FACTIONS = [
           confirm: "Exile Her",
           run: () => exileDuchess(liveTile),
         },
+        surrender: {
+          title: `Offer Surrender Terms To ${duchess.name}`,
+          body: `${duchess.name} still rules ${region} for another banner.\n\nYou can offer to let her stay in power under your crown if she yields the province peacefully.`,
+          confirm: "Demand Surrender",
+          run: () => demandDuchessSurrender(liveTile),
+        },
+        seize: {
+          title: `Seize ${duchess.name} For Refusing`,
+          body: `${duchess.name} has rejected peaceful surrender.\n\nYou can order her seized, imprisoned, and stripped from direct control of ${region}.`,
+          confirm: duchess.refusedSurrender ? "Seize And Imprison Her" : "She Has Not Refused Yet",
+          disabled: !duchess.refusedSurrender,
+          run: () => seizeRefusingDuchess(liveTile),
+        },
       };
       const action = actionMap[actionKey];
       if (!action) return;
@@ -2623,7 +9381,7 @@ const BASE_FACTIONS = [
 
     function initializeDuchesses() {
       duchesses = [];
-      const capitalTiles = tiles.filter((tile) => tile.capital);
+      const duchessTiles = tiles.filter((tile) => tile.terrain === "land");
       const archetypes = [
         "noble_duchess",
         "war_duchess",
@@ -2636,10 +9394,11 @@ const BASE_FACTIONS = [
         { name: "Duchess Mira Cinder", title: "Duchess of Hearthwell" },
         { name: "Duchess Elara Thorn", title: "Duchess of Stormmarsh" },
       ];
-      for (let index = 0; index < capitalTiles.length; index++) {
-        const tile = capitalTiles[index];
+      for (let index = 0; index < duchessTiles.length; index++) {
+        const tile = duchessTiles[index];
         const archetype = archetypes[index % archetypes.length];
-        const persona = names[index % names.length];
+        const persona = tile.capital ? names[index % names.length] : generateDuchessIdentity(tile);
+        const takenPortraits = duchesses.map((entry) => entry?.portrait).filter(Boolean);
         const duchess = createDuchess({
           id: `duchess_${archetype}_${tile.q}_${tile.r}`,
           name: persona.name,
@@ -2647,7 +9406,9 @@ const BASE_FACTIONS = [
           archetype,
           ownerFaction: tile.owner,
           assignedTile: `${tile.q},${tile.r}`,
+          portrait: duchessPortraitForTile(tile, takenPortraits),
         });
+        duchess.autoManage = tile.owner === playerFactionId();
         duchesses.push(duchess);
         attachDuchessToTile(tile, duchess);
       }
@@ -2658,8 +9419,36 @@ const BASE_FACTIONS = [
       return matrons.find((matron) => matron.id === id) || null;
     }
 
+    function isMatriarchConsort(matron) {
+      return Boolean(matron && (matron.specialRole || "") === "matriarch");
+    }
+
+    function courtMatrons() {
+      return matrons.filter((matron) => !isMatriarchConsort(matron));
+    }
+
     function activeMatrons() {
       return matrons.filter((matron) => matron.status === "active");
+    }
+
+    function activeCourtMatrons() {
+      return activeMatrons().filter((matron) => !isMatriarchConsort(matron));
+    }
+
+    function discoveredMatrons() {
+      return matrons.filter((matron) => matron.status !== "undiscovered");
+    }
+
+    function discoveredCourtMatrons() {
+      return courtMatrons().filter((matron) => matron.status !== "undiscovered");
+    }
+
+    function undiscoveredMatrons() {
+      return matrons.filter((matron) => matron.status === "undiscovered");
+    }
+
+    function undiscoveredCourtMatrons() {
+      return courtMatrons().filter((matron) => matron.status === "undiscovered");
     }
 
     function recalculateMatronProtectionLevel() {
@@ -2673,18 +9462,27 @@ const BASE_FACTIONS = [
     }
 
     function initializeMatrons() {
-      matrons = createSampleMatrons().map((matron, index) => {
+      matrons = createSampleMatrons().map((matron) => {
         const normalized = normalizeMatron(matron);
-        normalized.assignedProtection = index === 0;
-        if (index === 0) normalized.accessAuthority = Math.max(2, normalized.accessAuthority || 1);
+        if (isMatriarchConsort(normalized)) {
+          normalized.status = "active";
+          normalized.assignedProtection = true;
+          normalized.accessAuthority = Math.max(2, normalized.accessAuthority || 1);
+        } else {
+          normalized.status = "undiscovered";
+          normalized.assignedProtection = false;
+          normalized.accessAuthority = 0;
+        }
         return normalized;
       });
+      const startingMatriarch = matrons.find((matron) => isMatriarchConsort(matron)) || null;
       matronState = {
         protectionLevel: 1,
-        assignedMatronId: matrons[0]?.id || null,
+        assignedMatronId: startingMatriarch?.id || null,
         recentIgnoredWarnings: 0,
         recentPunishments: 0,
         lastDangerEvent: null,
+        discoveriesCompleted: 0,
         screeningsCompleted: 0,
         interventionsCompleted: 0,
         rescuesCompleted: 0,
@@ -2702,6 +9500,7 @@ const BASE_FACTIONS = [
           recentIgnoredWarnings: 0,
           recentPunishments: 0,
           lastDangerEvent: null,
+          discoveriesCompleted: 0,
           screeningsCompleted: 0,
           interventionsCompleted: 0,
           rescuesCompleted: 0,
@@ -3109,6 +9908,1340 @@ const BASE_FACTIONS = [
       render();
     }
 
+    function maybeDiscoverMatron(force = false, reason = "chance") {
+      ensureMatronState();
+      const hidden = undiscoveredMatrons();
+      if (!hidden.length) return null;
+      let chance = 0.08 + Math.min(0.16, round * 0.012);
+      if (reason === "court") chance += 0.06;
+      if (reason === "underworld") chance += 0.08;
+      if (reason === "danger") chance += 0.05;
+      if (!force && Math.random() > chance) return null;
+      const matron = randomItem(hidden);
+      matron.status = "active";
+      matron.accessAuthority = Math.max(1, matron.accessAuthority || 1);
+      if (!matronState.assignedMatronId) {
+        matron.assignedProtection = true;
+        matronState.assignedMatronId = matron.id;
+      }
+      matronState.discoveriesCompleted = (matronState.discoveriesCompleted || 0) + 1;
+      recalculateMatronProtectionLevel();
+      queueMatronReaction(
+        `${matron.name} Enters Your Household`,
+        `${matron.name}, ${matron.title}, is brought into your orbit after word of your court reaches the right older women.\n\nShe does not kneel like a frightened servant. She studies you, decides you are worth protecting, and says, "Easy now, honey. If I stay, I stay to keep trouble from reaching you first."`,
+        matron
+      );
+      addLog(`${matron.name} joins your matron court.`);
+      return matron;
+    }
+
+    function officerPortrait(officer) {
+      return officer?.portrait || defaultOfficerPortrait(officer);
+    }
+
+    function createOfficer(seed, ownerFaction) {
+      const rank = OFFICER_RANKS[seed.rank] || OFFICER_RANKS.captain;
+      return {
+        id: `officer_${seed.rank}_${seed.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+        name: seed.name,
+        title: seed.title,
+        rank: seed.rank,
+        ownerFaction,
+        assignedTile: null,
+        loyalty: clamp(56 + randomBetween(-8, 18), 0, 100),
+        tactics: clamp(54 + randomBetween(-10, 18), 0, 100),
+        discipline: clamp(rank.authority + randomBetween(-12, 10), 0, 100),
+        charisma: clamp(46 + randomBetween(-10, 14), 0, 100),
+        trust: clamp(38 + randomBetween(-6, 14), 0, 100),
+        romance: clamp(24 + randomBetween(-8, 12), 0, 100),
+        attraction: clamp(28 + randomBetween(-8, 14), 0, 100),
+        influence: clamp(42 + randomBetween(-8, 12), 0, 100),
+        pregnant: false,
+        pregnancyStartRound: -1,
+        pregnancyDueRound: -1,
+        pregnancyOrigin: null,
+        children: 0,
+        converseUsedThisTurn: false,
+        flirtUsedThisTurn: false,
+        confideUsedThisTurn: false,
+        giftUsedThisTurn: false,
+        intimacyUsedThisTurn: false,
+        portrait: seed.portrait || null,
+        rosterIndex: seed.rosterIndex || 0,
+      };
+    }
+
+    function normalizeOfficer(officer) {
+      const clone = { ...officer };
+      clone.rank = clone.rank || "captain";
+      clone.ownerFaction = clone.ownerFaction ?? 0;
+      clone.assignedTile = clone.assignedTile || null;
+      for (const key of ["loyalty", "tactics", "discipline", "charisma", "trust", "romance", "attraction", "influence"]) {
+        clone[key] = clamp(Number.isFinite(clone[key]) ? clone[key] : 50, 0, 100);
+      }
+      clone.pregnant = Boolean(clone.pregnant);
+      clone.pregnancyStartRound = Number.isFinite(clone.pregnancyStartRound) ? clone.pregnancyStartRound : -1;
+      clone.pregnancyDueRound = Number.isFinite(clone.pregnancyDueRound) ? clone.pregnancyDueRound : -1;
+      clone.pregnancyOrigin = clone.pregnancyOrigin || null;
+      clone.children = Math.max(0, Math.floor(clone.children || 0));
+      clone.converseUsedThisTurn = Boolean(clone.converseUsedThisTurn);
+      clone.flirtUsedThisTurn = Boolean(clone.flirtUsedThisTurn);
+      clone.confideUsedThisTurn = Boolean(clone.confideUsedThisTurn);
+      clone.giftUsedThisTurn = Boolean(clone.giftUsedThisTurn);
+      clone.intimacyUsedThisTurn = Boolean(clone.intimacyUsedThisTurn);
+      clone.rosterIndex = Number.isFinite(clone.rosterIndex) ? clone.rosterIndex : 0;
+      clone.portrait = clone.portrait || defaultOfficerPortrait(clone);
+      return clone;
+    }
+
+    function seedOfficerCorps(roster = OFFICER_PERSONNEL, ownerFaction = playerFactionId()) {
+      officerCorps = roster.map((seed, index) => createOfficer({ ...seed, rosterIndex: index }, ownerFaction));
+      const owned = ownedTiles(ownerFaction).filter((tile) => tile.terrain === "land" && tile.troops > 0).sort((a, b) => b.troops - a.troops);
+      for (let index = 0; index < officerCorps.length; index++) {
+        const officer = officerCorps[index];
+        const tile = owned[index] || owned[owned.length - 1] || null;
+        if (tile) officer.assignedTile = `${tile.q},${tile.r}`;
+      }
+    }
+
+    function initializeMilitary() {
+      seedOfficerCorps(OFFICER_PERSONNEL, playerFactionId());
+    }
+
+    function governmentProtocolLabel() {
+      return ({
+        manual: "Manual Decision",
+        auto_demand: "Automatic Demand",
+        auto_negotiate: "Automatic Negotiation",
+        general_judgment: "General Judgment",
+      })[governanceState.duchessProtocol] || "General Judgment";
+    }
+
+    function cycleDuchessProtocol() {
+      const order = ["general_judgment", "auto_demand", "auto_negotiate", "manual"];
+      const index = order.indexOf(governanceState.duchessProtocol);
+      governanceState.duchessProtocol = order[(index + 1) % order.length];
+      addLog(`Duchess takeover protocol is now set to ${governmentProtocolLabel()}.`);
+      render();
+    }
+
+    function toggleAutoAssignDuchesses() {
+      governanceState.autoAssignDuchesses = !governanceState.autoAssignDuchesses;
+      addLog(`Automatic duchess appointments are now ${governanceState.autoAssignDuchesses ? "enabled" : "disabled"}.`);
+      render();
+    }
+
+    function toggleAutoBuildProvinces() {
+      governanceState.autoBuildProvinces = !governanceState.autoBuildProvinces;
+      addLog(`Automatic province construction is now ${governanceState.autoBuildProvinces ? "enabled" : "disabled"}.`);
+      render();
+    }
+
+    function toggleDuchessAutoManage(duchess) {
+      if (!duchess) return;
+      duchess.autoManage = !duchess.autoManage;
+      addLog(`${duchess.name} will ${duchess.autoManage ? "now" : "no longer"} auto-manage her province.`);
+      render();
+    }
+
+    function spyPortrait(spy) {
+      return spy?.portrait || defaultSpyPortrait(spy);
+    }
+
+    function createSpy(seed, ownerFaction) {
+      return {
+        id: `spy_${seed.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+        name: seed.name,
+        title: seed.title,
+        specialty: seed.specialty,
+        ownerFaction,
+        assignedTile: null,
+        loyalty: clamp(58 + randomBetween(-8, 15), 0, 100),
+        subtlety: clamp(62 + randomBetween(-10, 18), 0, 100),
+        influence: clamp(52 + randomBetween(-8, 18), 0, 100),
+        seduction: clamp(48 + randomBetween(-8, 18), 0, 100),
+        captureSkill: clamp(50 + randomBetween(-8, 18), 0, 100),
+        trust: clamp(36 + randomBetween(-6, 14), 0, 100),
+        romance: clamp(20 + randomBetween(-8, 14), 0, 100),
+        attraction: clamp(26 + randomBetween(-8, 14), 0, 100),
+        pregnant: false,
+        pregnancyStartRound: -1,
+        pregnancyDueRound: -1,
+        children: 0,
+        lastReport: "Awaiting assignment.",
+        converseUsedThisTurn: false,
+        flirtUsedThisTurn: false,
+        giftUsedThisTurn: false,
+        intimacyUsedThisTurn: false,
+        gatherUsedThisTurn: false,
+        influenceUsedThisTurn: false,
+        captureUsedThisTurn: false,
+        portrait: seed.portrait || null,
+        rosterIndex: seed.rosterIndex || 0,
+      };
+    }
+
+    function normalizeSpy(spy) {
+      const clone = { ...spy };
+      clone.ownerFaction = clone.ownerFaction ?? playerFactionId();
+      clone.assignedTile = clone.assignedTile || null;
+      clone.specialty = clone.specialty || "intelligence";
+      for (const key of ["loyalty", "subtlety", "influence", "seduction", "captureSkill", "trust", "romance", "attraction"]) {
+        clone[key] = clamp(Number.isFinite(clone[key]) ? clone[key] : 50, 0, 100);
+      }
+      clone.pregnant = Boolean(clone.pregnant);
+      clone.pregnancyStartRound = Number.isFinite(clone.pregnancyStartRound) ? clone.pregnancyStartRound : -1;
+      clone.pregnancyDueRound = Number.isFinite(clone.pregnancyDueRound) ? clone.pregnancyDueRound : -1;
+      clone.children = Math.max(0, Math.floor(clone.children || 0));
+      clone.lastReport = clone.lastReport || "Awaiting assignment.";
+      for (const key of ["converseUsedThisTurn", "flirtUsedThisTurn", "giftUsedThisTurn", "intimacyUsedThisTurn", "gatherUsedThisTurn", "influenceUsedThisTurn", "captureUsedThisTurn"]) {
+        clone[key] = Boolean(clone[key]);
+      }
+      clone.rosterIndex = Number.isFinite(clone.rosterIndex) ? clone.rosterIndex : 0;
+      clone.portrait = clone.portrait || defaultSpyPortrait(clone);
+      return clone;
+    }
+
+    function seedSpyNetwork(roster = SPY_PERSONNEL, ownerFaction = playerFactionId()) {
+      spyNetwork = roster.map((seed, index) => createSpy({ ...seed, rosterIndex: index }, ownerFaction));
+    }
+
+    function initializeSpies() {
+      seedSpyNetwork(SPY_PERSONNEL, playerFactionId());
+    }
+
+    function refreshCabinetAfterCommandShift(assignSeverantHeads = false) {
+      ensureCabinetState();
+      const officerIds = new Set(officersForFaction(playerFactionId()).map((entry) => entry.id));
+      const spyIds = new Set(spiesForFaction(playerFactionId()).map((entry) => entry.id));
+      const matronIds = new Set((matrons || []).map((entry) => entry.id));
+      const duchessIds = new Set(duchesses.filter((entry) => entry.ownerFaction === playerFactionId() && entry.assignedTile).map((entry) => entry.id));
+
+      if (assignSeverantHeads || !officerIds.has(cabinetState.warHead?.id)) {
+        const firstOfficer = officersForFaction(playerFactionId())[0] || null;
+        cabinetState.warHead = firstOfficer ? { id: firstOfficer.id, type: "officer" } : null;
+      }
+      if (assignSeverantHeads || !spyIds.has(cabinetState.intelligenceHead?.id)) {
+        const firstSpy = spiesForFaction(playerFactionId())[0] || null;
+        cabinetState.intelligenceHead = firstSpy ? { id: firstSpy.id, type: "spy" } : null;
+      }
+      if (cabinetState.householdHead?.type === "matron" && !matronIds.has(cabinetState.householdHead.id)) {
+        cabinetState.householdHead = null;
+      }
+      if (cabinetState.householdHead?.type === "duchess" && !duchessIds.has(cabinetState.householdHead.id)) {
+        cabinetState.householdHead = null;
+      }
+      if (cabinetState.fertilityHead?.type === "matron" && !matronIds.has(cabinetState.fertilityHead.id)) {
+        cabinetState.fertilityHead = null;
+      }
+      if (cabinetState.fertilityHead?.type === "duchess" && !duchessIds.has(cabinetState.fertilityHead.id)) {
+        cabinetState.fertilityHead = null;
+      }
+    }
+
+    function installSeverantCommandRoster(options = {}) {
+      ensureCampaignRouteState();
+      ensureCabinetState();
+      seedOfficerCorps(SEVERANT_OFFICER_PERSONNEL, playerFactionId());
+      seedSpyNetwork(SEVERANT_SPY_PERSONNEL, playerFactionId());
+      refreshCabinetAfterCommandShift(true);
+      campaignRouteState.severantCommandInstalled = true;
+      if (!options.quiet) {
+        addLog("Severant women replace your old generals and spy handlers the moment the pact takes hold.");
+      }
+      return true;
+    }
+
+    function ensureSeverantCommandRoster() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant" || campaignRouteState.severantCommandInstalled) return false;
+      installSeverantCommandRoster({ quiet: true });
+      return true;
+    }
+
+    function undergroundTileCandidates() {
+      return tiles.filter((tile) => tile.terrain === "land");
+    }
+
+    function assignUndergroundLocation(queenFaction) {
+      const st = queenEntry(queenFaction);
+      const candidates = undergroundTileCandidates();
+      if (!candidates.length) return null;
+      const tile = randomItem(candidates);
+      st.undergroundLocation = tile ? `${tile.q},${tile.r}` : null;
+      return tile || null;
+    }
+
+    function undergroundTileForQueen(queenFaction) {
+      const st = queenEntry(queenFaction);
+      if (!st.undergroundLocation) return assignUndergroundLocation(queenFaction);
+      const [q, r] = String(st.undergroundLocation).split(",").map(Number);
+      const tile = Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+      return tile || assignUndergroundLocation(queenFaction);
+    }
+
+    function moveUndergroundQueens() {
+      const ids = [
+        ...eligibleUnderworldQueens(),
+        ...underworldRebelQueens().map((faction) => faction.id),
+        ...kingdomlessUnderworldQueens().map((faction) => faction.id),
+      ].filter((id, index, list) => list.indexOf(id) === index);
+      for (const queenFaction of ids) {
+        assignUndergroundLocation(queenFaction);
+      }
+    }
+
+    function converseUndergroundQueen(queenFaction) {
+      const st = queenEntry(queenFaction);
+      st.trust = Math.min(100, st.trust + 3);
+      st.romance = Math.min(100, st.romance + 2);
+      openQueenChat(queenFaction);
+    }
+
+    function influenceUndergroundQueenWithSpies(queenFaction) {
+      const availableSpy = spiesForFaction(playerFactionId()).find((spy) => !spy.influenceUsedThisTurn);
+      if (!availableSpy) {
+        addLog("You need an available spy to influence an underground queen.");
+        return;
+      }
+      const st = queenEntry(queenFaction);
+      availableSpy.influenceUsedThisTurn = true;
+      st.trust = Math.min(100, st.trust + 5);
+      st.attraction = Math.min(100, st.attraction + 3);
+      st.hate = Math.max(0, st.hate - 2);
+      availableSpy.lastReport = `${availableSpy.name} quietly improves your standing with ${factionById(queenFaction).leader}.`;
+      addLog(`${availableSpy.name} works quietly around ${factionById(queenFaction).leader}, making the underground queen more receptive to you.`);
+      render();
+    }
+
+    function proposeSupportForIntimacy(queenFaction, mode = "auto") {
+      const faction = factionById(queenFaction);
+      if (!faction) return false;
+      const st = queenEntry(queenFaction);
+      const activeRebel = leaderState[queenFaction]?.rebelAgainst !== null && leaderState[queenFaction]?.rebelAgainst !== undefined;
+      const route = mode === "auto" ? (activeRebel ? "rebel" : "claimant") : mode;
+      const supportCost = route === "rebel" ? 4 : 3;
+      const supportLabel = route === "rebel" ? `${supportCost} troops` : `${supportCost} treasury`;
+      const portrait = queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction];
+      const authorityId = reserveAuthorityForQueen(queenFaction);
+      const authority = authorityId === null || authorityId === undefined ? null : factionById(authorityId);
+      if (st.lastSupportBargainTurn === diplomacyTurnNumber) {
+        addLog(`${faction.leader} has already pressed that bargain this round.`);
+        return false;
+      }
+      if (route === "rebel") {
+        const cap = playerCapitalTile();
+        const rebelCap = factionCapitalTile(queenFaction);
+        if (!cap || cap.troops <= supportCost) {
+          addLog("You lack the spare troops to answer her proposition.");
+          return false;
+        }
+        if (!rebelCap) {
+          addLog("That rebel queen has no stronghold left to reinforce.");
+          return false;
+        }
+      } else if (treasury < supportCost) {
+        addLog("You lack the treasury to answer her proposition.");
+        return false;
+      }
+
+      const body = route === "rebel"
+        ? `${faction.leader} reaches out through smugglers and whispered couriers.\n\nHer rebellion is starving for men, steel, and secrecy. In return for immediate support, she offers you a private night away from banners and witnesses.\n\nShe is not pretending this is romance without politics. She wants protection, and she is willing to make intimacy part of the bargain.`
+        : `${faction.leader} sends word from hidden rooms under ${authority?.leader || "a rival court"}'s shadow.\n\nShe needs money, routes, and safehouses badly enough to make the offer explicit: bankroll her next move, and she will meet you in secret with all the intimacy that implies.\n\nDesire and ambition are tangled together here on purpose.`;
+      queueMatronAwareDangerEvent({
+        label: "Support Bargain",
+        title: `${faction.leader} Seeks Support`,
+        body: `${body}\n\nCost: ${supportLabel}.`,
+        portrait,
+        dangerEvent: buildMatronDangerEvent(queenFaction, route === "rebel" ? "a support-for-intimacy bargain with a rebel queen" : "a support-for-intimacy bargain with a hunted queen", route === "rebel" ? 0.08 : 0.06, {
+          tags: ["adult", "underworld", "queen", "private_meeting", "transactional_intimacy", "political_bargain"],
+          territory: "neutral",
+        }),
+        proceedLabel: route === "rebel" ? `Send ${supportCost} Troops And Go` : `Fund Her And Go`,
+        declineLabel: "Refuse The Bargain",
+        onProceed: (matronContext) => {
+          if (maybeTriggerCovertCapture(queenFaction, "a support bargain underground", route === "rebel" ? 0.08 : 0.06, matronContext)) return;
+          st.lastSupportBargainTurn = diplomacyTurnNumber;
+          st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
+          st.affair = true;
+          st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
+          if (route === "rebel") {
+            const cap = playerCapitalTile();
+            const rebelCap = factionCapitalTile(queenFaction);
+            if (!cap || !rebelCap || cap.troops <= supportCost) {
+              addLog("The underground route collapses before you can complete the bargain.");
+              render();
+              return;
+            }
+            cap.troops -= supportCost;
+            rebelCap.troops += supportCost;
+            st.lastUnderworldAidTurn = diplomacyTurnNumber;
+            st.trust = Math.min(100, st.trust + 8);
+            st.romance = Math.min(100, st.romance + 10);
+            st.attraction = Math.min(100, st.attraction + 7);
+            st.hate = Math.max(0, st.hate - 3);
+            tryPlayerPregnancy(queenFaction, "Support Bargain", 1.08);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Takes Your Support Personally`,
+              "Support Bargain",
+              `${faction.leader} accepts your hidden levy and then takes you into her arms before dawn. The rebellion leaves the meeting stronger, and so does her attachment to you.`
+            );
+            addLog(`You answer ${faction.leader}'s proposition with ${supportCost} covert troops and a night in secret.`);
+          } else {
+            if (treasury < supportCost) {
+              addLog("The safehouse deal falls apart before you can pay for it.");
+              render();
+              return;
+            }
+            treasury -= supportCost;
+            st.lastUnderworldRiseTurn = diplomacyTurnNumber;
+            st.underworldRiseSupport += 2;
+            st.trust = Math.min(100, st.trust + 7);
+            st.romance = Math.min(100, st.romance + 9);
+            st.attraction = Math.min(100, st.attraction + 7);
+            st.hate = Math.max(0, st.hate - 2);
+            tryPlayerPregnancy(queenFaction, "Secret Patronage", 1.06);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Rewards Your Patronage`,
+              "Secret Patronage",
+              `${faction.leader} takes your money, your routes, and your body in the same hidden night. She leaves with warmer feelings toward you and more momentum to break free of ${authority?.leader || "the court above her"}.`
+            );
+            addLog(`You bankroll ${faction.leader}'s escape network and accept the intimacy she offered in return.`);
+          }
+          render();
+        },
+        onDecline: () => {
+          st.lastSupportBargainTurn = diplomacyTurnNumber;
+          st.trust = Math.max(-100, st.trust - 2);
+          st.romance = Math.max(0, st.romance - 3);
+          st.hate = Math.min(100, st.hate + 2);
+          addLog(`${faction.leader} withdraws her proposition after you refuse to mix support with intimacy.`);
+          render();
+        },
+      });
+      return true;
+    }
+
+    function proposeSupportForHaremJoin(queenFaction, mode = "auto") {
+      const faction = factionById(queenFaction);
+      if (!faction || capturedQueens.includes(queenFaction)) return false;
+      const st = queenEntry(queenFaction);
+      const activeRebel = leaderState[queenFaction]?.rebelAgainst !== null && leaderState[queenFaction]?.rebelAgainst !== undefined;
+      const route = mode === "auto" ? (activeRebel ? "rebel" : "claimant") : mode;
+      const supportCost = route === "rebel" ? 5 : 4;
+      const supportLabel = route === "rebel" ? `${supportCost} troops` : `${supportCost} treasury`;
+      const portrait = queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction];
+      const authorityId = reserveAuthorityForQueen(queenFaction);
+      const authority = authorityId === null || authorityId === undefined ? null : factionById(authorityId);
+      if (st.lastJoinBargainTurn === diplomacyTurnNumber) {
+        addLog(`${faction.leader} has already raised that offer this round.`);
+        return false;
+      }
+      if (route === "rebel") {
+        const cap = playerCapitalTile();
+        if (!cap || cap.troops <= supportCost) {
+          addLog("You lack the spare troops to sponsor her defection.");
+          return false;
+        }
+      } else if (treasury < supportCost) {
+        addLog("You lack the treasury to sponsor her escape into your court.");
+        return false;
+      }
+
+      const body = route === "rebel"
+        ? `${faction.leader} sends a harder, more vulnerable offer than flirtation.\n\nShe says the rebellion can still be broken open if you move men and safe routes for her now. If you do, she will not just share your bed for a night. She will abandon the losing life she knows and enter your harem under your protection, claiming a better future with you than war has given her.`
+        : `${faction.leader} no longer speaks only of surviving ${authority?.leader || "her ruler"}.\n\nShe wants out entirely. Fund her escape, clear the route, and promise her a place in your harem, and she will come willingly to your court instead of clawing for a throne of her own. She is openly asking for a better lot in life, not just another secret meeting.`;
+      queueMatronAwareDangerEvent({
+        label: "Defection Offer",
+        title: `${faction.leader} Offers To Join You`,
+        body: `${body}\n\nCost: ${supportLabel}.`,
+        portrait,
+        dangerEvent: buildMatronDangerEvent(queenFaction, route === "rebel" ? "a queen's defection bargain" : "a hunted queen asking sanctuary in your harem", route === "rebel" ? 0.07 : 0.05, {
+          tags: ["adult", "underworld", "queen", "private_meeting", "defection_offer", "harem_bargain"],
+          territory: "neutral",
+        }),
+        proceedLabel: route === "rebel" ? `Back Her Defection (${supportCost} Troops)` : `Sponsor Her Escape (${supportCost} Treasury)`,
+        declineLabel: "Refuse Her Offer",
+        onProceed: (matronContext) => {
+          if (maybeTriggerCovertCapture(queenFaction, "a queen's defection bargain", route === "rebel" ? 0.07 : 0.05, matronContext)) return;
+          st.lastJoinBargainTurn = diplomacyTurnNumber;
+          const joinScore =
+            st.trust * 0.48 +
+            st.romance * 0.34 +
+            st.attraction * 0.2 -
+            st.hate * 0.55 +
+            (route === "claimant" ? 8 : 0) +
+            randomBetween(-16, 22);
+          const willingJoin = joinScore >= 26;
+          if (route === "rebel") {
+            const cap = playerCapitalTile();
+            if (!cap || cap.troops <= supportCost) {
+              addLog("The troops cannot be spared before the deal closes.");
+              render();
+              return;
+            }
+            cap.troops -= supportCost;
+            st.lastUnderworldAidTurn = diplomacyTurnNumber;
+            st.trust = Math.min(100, st.trust + 9);
+            st.romance = Math.min(100, st.romance + 7);
+            st.attraction = Math.min(100, st.attraction + 4);
+          } else {
+            if (treasury < supportCost) {
+              addLog("The escape purse falls short before the route is secured.");
+              render();
+              return;
+            }
+            treasury -= supportCost;
+            st.lastUnderworldRiseTurn = diplomacyTurnNumber;
+            st.underworldRiseSupport += 1;
+            st.trust = Math.min(100, st.trust + 8);
+            st.romance = Math.min(100, st.romance + 6);
+            st.attraction = Math.min(100, st.attraction + 4);
+          }
+          if (willingJoin) {
+            submitQueenToPlayer(
+              queenFaction,
+              route === "rebel"
+                ? `${faction.leader} takes your covert backing, breaks from the rebellion's misery, and comes willingly into your harem. She chooses your protection and household over the blood-soaked uncertainty she was living through.`
+                : `${faction.leader} uses the network you paid for to flee ${authority?.leader || "the court above her"} and enters your harem by choice. For her, your court is not a cage but a better life than the one she was trapped inside.`,
+              "Queen Defects To You"
+            );
+          } else if (route === "rebel") {
+            const rebelCap = factionCapitalTile(queenFaction);
+            if (rebelCap) rebelCap.troops += 3;
+            st.hate = Math.max(0, st.hate - 1);
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Takes Your Help But Keeps Her Crown`,
+              "Defection Refused",
+              `${faction.leader} accepts your backing and admits life with you is tempting, but she cannot yet surrender her rebellion and herself together. She stays in the field, only warmer toward you than before.`
+            );
+            addLog(`${faction.leader} accepts your backing but chooses to keep fighting rather than enter your harem yet.`);
+          } else {
+            st.underworldRiseSupport += 2;
+            queueDiplomacyReaction(
+              queenFaction,
+              `${faction.leader} Delays Her Flight`,
+              "Escape Delayed",
+              `${faction.leader} takes your routes and your money, but balks at surrendering her independence completely. She remains hidden for now, though the offer of sanctuary clearly moves her.`
+            );
+            addLog(`${faction.leader} is tempted by sanctuary with you, but she is not ready to commit herself to your harem yet.`);
+          }
+          render();
+        },
+        onDecline: () => {
+          st.lastJoinBargainTurn = diplomacyTurnNumber;
+          st.trust = Math.max(-100, st.trust - 3);
+          st.romance = Math.max(0, st.romance - 2);
+          st.hate = Math.min(100, st.hate + 2);
+          addLog(`${faction.leader} hides the hurt behind pride after you refuse her offer of sanctuary.`);
+          render();
+        },
+      });
+      return true;
+    }
+
+    function maybeUndergroundQueenVisit() {
+      const candidates = [
+        ...eligibleUnderworldQueens(),
+        ...kingdomlessUnderworldQueens().map((faction) => faction.id),
+      ].filter((id, index, list) => list.indexOf(id) === index);
+      if (!candidates.length || Math.random() > 0.12) return;
+      const queenFaction = randomItem(candidates);
+      const st = queenEntry(queenFaction);
+      const queen = factionById(queenFaction);
+      const location = undergroundTileForQueen(queenFaction);
+      queueEventModal({
+        label: "Underground Visit",
+        title: `${queen.leader} Appears At Your Court`,
+        body: `${queen.leader} slips through the unofficial routes and arrives near your court from ${location ? `(${location.q}, ${location.r})` : "the shadows"}.\n\nShe is here without banners, without formal authority, and very much open to a private exchange before she disappears again.`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        actions: [
+          {
+            label: "Converse",
+            onClick: () => {
+              dismissEventModal();
+              st.trust = Math.min(100, st.trust + 3);
+              openQueenChat(queenFaction);
+            },
+          },
+          {
+            label: "Invite Private Time",
+            onClick: () => {
+              dismissEventModal();
+              st.romance = Math.min(100, st.romance + 6);
+              st.attraction = Math.min(100, st.attraction + 5);
+              st.trust = Math.min(100, st.trust + 3);
+              tryPlayerPregnancy(queenFaction, "Underground Visit", 1.02);
+              addLog(`${queen.leader} lingers in private with you before slipping back underground.`);
+              render();
+            },
+          },
+          {
+            label: "Send Her Away",
+            onClick: () => {
+              dismissEventModal();
+              st.hate = Math.min(100, st.hate + 2);
+              st.trust = Math.max(-100, st.trust - 2);
+              addLog(`${queen.leader} leaves your court with a colder look than when she arrived.`);
+              render();
+            },
+          },
+        ],
+      });
+    }
+
+    function maybeTriggerRebelSupportBargain() {
+      const candidates = [
+        ...underworldRebelQueens()
+          .filter((faction) => {
+            const st = queenEntry(faction.id);
+            return st.lastSupportBargainTurn !== diplomacyTurnNumber &&
+              st.lastUnderworldAidTurn !== diplomacyTurnNumber &&
+              st.lastUnderworldRomanceTurn !== diplomacyTurnNumber;
+          })
+          .map((faction) => ({ id: faction.id, mode: "rebel" })),
+        ...kingdomlessUnderworldQueens()
+          .filter((faction) => {
+            const st = queenEntry(faction.id);
+            return st.lastSupportBargainTurn !== diplomacyTurnNumber &&
+              st.lastUnderworldRiseTurn !== diplomacyTurnNumber &&
+              st.lastUnderworldRomanceTurn !== diplomacyTurnNumber &&
+              (st.underworldRiseSupport > 0 || st.trust >= 10 || st.attraction >= 18);
+          })
+          .map((faction) => ({ id: faction.id, mode: "claimant" })),
+      ];
+      if (!candidates.length || Math.random() > 0.12) return false;
+      const pick = randomItem(candidates);
+      if (!pick) return false;
+      return proposeSupportForIntimacy(pick.id, pick.mode);
+    }
+
+    function maybeTriggerRebelJoinOffer() {
+      const candidates = [
+        ...underworldRebelQueens()
+          .filter((faction) => {
+            const st = queenEntry(faction.id);
+            return st.lastJoinBargainTurn !== diplomacyTurnNumber &&
+              st.lastUnderworldAidTurn !== diplomacyTurnNumber &&
+              (st.trust >= 12 || st.romance >= 15 || st.attraction >= 20);
+          })
+          .map((faction) => ({ id: faction.id, mode: "rebel" })),
+        ...kingdomlessUnderworldQueens()
+          .filter((faction) => {
+            const st = queenEntry(faction.id);
+            return st.lastJoinBargainTurn !== diplomacyTurnNumber &&
+              st.lastUnderworldRiseTurn !== diplomacyTurnNumber &&
+              (st.underworldRiseSupport > 0 || st.trust >= 10 || st.romance >= 12);
+          })
+          .map((faction) => ({ id: faction.id, mode: "claimant" })),
+      ];
+      if (!candidates.length || Math.random() > 0.08) return false;
+      const pick = randomItem(candidates);
+      if (!pick) return false;
+      return proposeSupportForHaremJoin(pick.id, pick.mode);
+    }
+
+    function undergroundQueenMarkerEntries() {
+      const ids = [
+        ...eligibleUnderworldQueens().filter((id) => queenEntry(id).underworldAssigned),
+        ...underworldRebelQueens().map((faction) => faction.id),
+        ...kingdomlessUnderworldQueens().map((faction) => faction.id),
+      ].filter((id, index, list) => list.indexOf(id) === index);
+      return ids
+        .map((queenFaction) => ({ queenFaction, tile: undergroundTileForQueen(queenFaction) }))
+        .filter((entry) => entry.tile);
+    }
+
+    function drawUndergroundQueenMarkers() {
+      const entries = undergroundQueenMarkerEntries();
+      if (!entries.length) return;
+      const grouped = new Map();
+      for (const entry of entries) {
+        const key = tileKey(entry.tile.q, entry.tile.r);
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(entry.queenFaction);
+      }
+      for (const [key, queenIds] of grouped) {
+        const [q, r] = key.split(",").map(Number);
+        const tile = getTile(q, r);
+        if (!tile) continue;
+        ctx.save();
+        ctx.shadowColor = "rgba(255, 215, 120, 0.85)";
+        ctx.shadowBlur = 9;
+        ctx.fillStyle = "rgba(21, 13, 26, 0.88)";
+        ctx.strokeStyle = "rgba(255, 218, 133, 0.96)";
+        ctx.lineWidth = 1.6;
+        if (typeof ctx.roundRect === "function") {
+          ctx.beginPath();
+          ctx.roundRect(tile.cx + 5, tile.cy - 32, 25, 16, 4);
+        } else {
+          ctx.beginPath();
+          ctx.rect(tile.cx + 5, tile.cy - 32, 25, 16);
+        }
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffe7a3";
+        ctx.font = "bold 8px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(queenIds.length > 1 ? `UQ${queenIds.length}` : "UQ", tile.cx + 17.5, tile.cy - 24);
+        ctx.restore();
+      }
+    }
+
+    function reconcileSpyState() {
+      spyNetwork = (spyNetwork || []).map((spy) => normalizeSpy(spy));
+      if (!spyNetwork.length) initializeSpies();
+      for (const spy of spyNetwork) {
+        if (!spy.assignedTile) continue;
+        const [q, r] = String(spy.assignedTile).split(",").map(Number);
+        const tile = Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+        if (!tile || tile.terrain !== "land" || tile.owner === playerFactionId()) spy.assignedTile = null;
+      }
+    }
+
+    function spiesForFaction(factionId = playerFactionId()) {
+      return spyNetwork.filter((spy) => spy.ownerFaction === factionId);
+    }
+
+    function spyTargetTile(spy) {
+      if (!spy?.assignedTile) return null;
+      const [q, r] = String(spy.assignedTile).split(",").map(Number);
+      return Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+    }
+
+    function hostileSpyTargets() {
+      return tiles.filter((tile) => tile.terrain === "land" && tile.owner !== playerFactionId());
+    }
+
+    function autoSpyTile() {
+      return hostileSpyTargets().sort((a, b) => (b.troops + (b.capital ? 6 : 0)) - (a.troops + (a.capital ? 6 : 0)))[0] || null;
+    }
+
+    function assignSpy(spy, tile = null) {
+      if (!spy) return;
+      const target = tile && tile.terrain === "land" && tile.owner !== playerFactionId() ? tile : autoSpyTile();
+      if (!target) {
+        addLog(`No hostile or neutral province is available for ${spy.name} to infiltrate.`);
+        return;
+      }
+      spy.assignedTile = `${target.q},${target.r}`;
+      spy.lastReport = `${spy.name} slips into ${duchessRegionName(target)} under cover and begins working the district.`;
+      addLog(`${spy.name} is sent to infiltrate (${target.q},${target.r}).`);
+      render();
+    }
+
+    function relieveSpy(spy) {
+      if (!spy) return;
+      spy.assignedTile = null;
+      spy.lastReport = `${spy.name} has been recalled to your private service.`;
+      addLog(`${spy.name} is recalled from the field.`);
+      render();
+    }
+
+    function queueSpyReaction(spy, title, label, body) {
+      queueEventModal({
+        label,
+        title,
+        body,
+        portrait: spyPortrait(spy),
+        cta: "Continue",
+      });
+      addLog(`${spy.name}: ${label}.`);
+    }
+
+    function trySpyPregnancy(spy, sourceLabel, intensity = 1) {
+      if (!spy || spy.pregnant) return false;
+      const chance = Math.min(0.48, 0.06 + intensity * 0.08 + Math.max(0, spy.romance - 20) / 250 + Math.max(0, spy.attraction - 20) / 260 + Math.max(0, spy.trust - 25) / 420);
+      if (Math.random() > chance) return false;
+      spy.pregnant = true;
+      spy.pregnancyStartRound = round;
+      spy.pregnancyDueRound = round + 3 + Math.floor(Math.random() * 2);
+      queueSpyReaction(
+        spy,
+        `${spy.name} Carries Your Child`,
+        "Spy Pregnancy",
+        `${spy.name} waits until you are alone, then gives you the news in a low voice better suited to secrets than softness.\n\nShe is carrying your child, and somehow looks even more fiercely devoted for it.`
+      );
+      return true;
+    }
+
+    function resolveSpyPregnancies() {
+      for (const spy of spyNetwork) {
+        if (!spy.pregnant || spy.pregnancyDueRound > round) continue;
+        spy.pregnant = false;
+        spy.pregnancyStartRound = -1;
+        spy.pregnancyDueRound = -1;
+        spy.children = (spy.children || 0) + 1;
+        spy.trust = Math.min(100, spy.trust + 5);
+        spy.romance = Math.min(100, spy.romance + 6);
+        const heir = createHeirFromBirth({
+          type: "spy",
+          id: spy.id,
+          name: spy.name,
+        });
+        queueSpyReaction(
+          spy,
+          `${spy.name} Gives Birth`,
+          "Spy Birth",
+          `${spy.name} returns from her confinement with the composed look of a woman who has survived both court danger and childbirth.\n\n${heir.name} enters the world under a veil of secrecy, and her loyalty to you now feels almost impossible to unwind.`
+        );
+      }
+    }
+
+    function spyConverse(spy) {
+      if (!spy || spy.converseUsedThisTurn) return;
+      spy.converseUsedThisTurn = true;
+      spy.trust = Math.min(100, spy.trust + 4);
+      spy.loyalty = Math.min(100, spy.loyalty + 2);
+      queueSpyReaction(spy, `${spy.name} Gives Her Report`, "Spy Counsel", `${spy.name} speaks plainly about the masks women wear in court and back alleys alike.\n\nShe seems to enjoy that you trust her with uglier truths than most people can stomach.`);
+      render();
+    }
+
+    function spyFlirt(spy) {
+      if (!spy || spy.flirtUsedThisTurn) return;
+      spy.flirtUsedThisTurn = true;
+      spy.attraction = Math.min(100, spy.attraction + 6);
+      spy.romance = Math.min(100, spy.romance + 5);
+      queueSpyReaction(spy, `${spy.name} Plays Along`, "Spy Flirtation", `${spy.name} meets your flirtation like a woman used to dangerous games.\n\nThere is heat in it, but also the confidence of someone who knows exactly how much effect she has.`);
+      render();
+    }
+
+    function spyGift(spy) {
+      if (!spy || spy.giftUsedThisTurn) return;
+      if (treasury < 2) {
+        addLog("You need 2 treasury to reward a spy properly.");
+        return;
+      }
+      treasury -= 2;
+      spy.giftUsedThisTurn = true;
+      spy.loyalty = Math.min(100, spy.loyalty + 4);
+      spy.trust = Math.min(100, spy.trust + 4);
+      queueSpyReaction(spy, `${spy.name} Accepts Quiet Payment`, "Spy Reward", `${spy.name} accepts your gift with a knowing smile.\n\nFor a woman who lives by secrets, being chosen and rewarded by you lands more deeply than coin alone ever could.`);
+      render();
+    }
+
+    function spyIntimacy(spy) {
+      if (!spy || spy.intimacyUsedThisTurn) return;
+      spy.intimacyUsedThisTurn = true;
+      spy.romance = Math.min(100, spy.romance + 7);
+      spy.attraction = Math.min(100, spy.attraction + 6);
+      spy.trust = Math.min(100, spy.trust + 3);
+      queueSpyReaction(spy, `${spy.name} Stays After The Mission`, "Spy Intimacy", `${spy.name} lets the hard edge leave her for a while when the two of you are alone.\n\nThe woman who returns to espionage afterward is the same spy, but far more personally yours than before.`);
+      trySpyPregnancy(spy, "Spy Intimacy", 1.02);
+      render();
+    }
+
+    function gatherSpyIntel(spy) {
+      if (!spy || spy.gatherUsedThisTurn) return;
+      const tile = spyTargetTile(spy);
+      if (!tile) {
+        addLog(`${spy.name} needs a hostile or neutral assignment before she can gather intelligence.`);
+        return;
+      }
+      spy.gatherUsedThisTurn = true;
+      const duchess = tile.duchessId ? getDuchess(tile.duchessId) : null;
+      const systems = ensureTileSystems(tile);
+      const tunnelSupport = hasTunnelSpyAccess(tile);
+      spy.lastReport = `${duchessRegionName(tile)}: troops ${tile.troops}, loyalty ${systems.loyalty}, unrest ${systems.unrest}, dependency ${systems.severantDependency}, contamination ${systems.severantContamination}, underworld control ${systems.underworldControl}, captive route risk ${systems.slaveRouteRisk}${duchess ? `, duchess ${duchess.name} (${duchess.status})` : ", no ruling duchess present"}${tunnelSupport ? ", tunnel support active" : ""}.`;
+      queueSpyReaction(
+        spy,
+        `${spy.name} Delivers Intelligence`,
+        "Field Report",
+        `${spy.name} returns with a careful summary of ${duchessRegionName(tile)}.\n\nTroops: ${tile.troops}\nLoyalty: ${systems.loyalty}\nUnrest: ${systems.unrest}\nDependency: ${systems.severantDependency}\nContamination: ${systems.severantContamination}\nUnderworld Control: ${systems.underworldControl}\nCaptive Route Risk: ${systems.slaveRouteRisk}\nWithdrawal Stress: ${systems.withdrawalStress}\n${tunnelSupport ? "Tunnel Support: An exit node can move people and reports in or out quickly.\n" : ""}${duchess ? `Duchess: ${duchess.name} - Loyalty ${duchess.loyalty} - Ambition ${duchess.ambition}` : "No duchess currently holds the tile."}`
+      );
+      render();
+    }
+
+    function influenceSpyTarget(spy) {
+      if (!spy || spy.influenceUsedThisTurn) return;
+      const tile = spyTargetTile(spy);
+      if (!tile) {
+        addLog(`${spy.name} needs a live target before she can influence anyone there.`);
+        return;
+      }
+      spy.influenceUsedThisTurn = true;
+      const systems = ensureTileSystems(tile);
+      const duchess = tile.duchessId ? getDuchess(tile.duchessId) : null;
+      const tunnelBonus = spyTunnelBonus(tile);
+      systems.loyalty = clamp(systems.loyalty - (2 + Math.floor((spy.influence - 45) / 18) + tunnelBonus), 0, 100);
+      systems.unrest = clamp(systems.unrest + (3 + Math.floor((spy.subtlety - 45) / 22) + tunnelBonus), 0, 100);
+      systems.underworldControl = clamp(systems.underworldControl + (2 + tunnelBonus), 0, 100);
+      if (duchess) {
+        duchess.loyalty = clamp(duchess.loyalty - (5 + tunnelBonus), 0, 100);
+        duchess.trust = clamp(duchess.trust + 2, 0, 100);
+        duchess.betrayalRisk = clamp(duchess.betrayalRisk + 6, 0, 100);
+      } else if (tile.troops > 1) {
+        tile.troops = Math.max(1, tile.troops - 1);
+      }
+      spy.lastReport = `${spy.name} has started bending loyalties in ${duchessRegionName(tile)} against the current regime${tunnelBonus ? " with tunnel-backed supply and extraction support" : ""}.`;
+      addLog(`${spy.name} spreads influence through ${duchessRegionName(tile)}, weakening local faith in its current ruler.`);
+      render();
+    }
+
+    function captureWithSpy(spy) {
+      if (!spy || spy.captureUsedThisTurn) return;
+      const tile = spyTargetTile(spy);
+      if (!tile) {
+        addLog(`${spy.name} needs an infiltrated target before she can snatch anyone from it.`);
+        return;
+      }
+      spy.captureUsedThisTurn = true;
+      const duchess = tile.duchessId ? getDuchess(tile.duchessId) : null;
+      const tunnelBonus = spyTunnelBonus(tile);
+      const captureChance = clamp(0.18 + Math.max(0, spy.captureSkill - 45) / 150 + Math.max(0, spy.subtlety - 45) / 200 + tunnelBonus * 0.08 - tile.troops * 0.02, 0.1, 0.84);
+      if (duchess && Math.random() <= captureChance) {
+        createDuchessPrisoner(duchess);
+        tile.duchessId = null;
+        duchess.assignedTile = null;
+        duchess.status = "imprisoned";
+        duchess.ownerFaction = playerFactionId();
+        spy.lastReport = `${spy.name} successfully abducted ${duchess.name} from ${duchessRegionName(tile)}.`;
+        queueSpyReaction(
+          spy,
+          `${spy.name} Takes A Duchess`,
+          "Target Captured",
+          `${spy.name} arranges the kind of disappearance that turns into rumor before it turns into truth.\n\n${duchess.name} is gone from ${duchessRegionName(tile)}, and she wakes under your guard instead.`
+        );
+      } else if (Math.random() <= captureChance + 0.12) {
+        const prisoner = createGenericPrisoner(tile.owner, `a covert snatch in ${duchessRegionName(tile)}`);
+        if (prisoner) {
+          prisoner.title = "Captured Agent";
+          prisoner.name = `${factionById(tile.owner)?.leader || "Enemy"} Liaison`;
+          spy.lastReport = `${spy.name} captured a lesser contact inside ${duchessRegionName(tile)}.`;
+        }
+        addLog(`${spy.name} drags a lesser operative out of ${duchessRegionName(tile)} for your prisons.`);
+      } else {
+        spy.lastReport = `${spy.name} could not complete the capture cleanly inside ${duchessRegionName(tile)}.`;
+        addLog(`${spy.name}'s capture attempt in ${duchessRegionName(tile)} fails to secure the target.`);
+      }
+      render();
+    }
+
+    function reconcileMilitaryState() {
+      officerCorps = (officerCorps || []).map((officer) => normalizeOfficer(officer));
+      if (!officerCorps.length) initializeMilitary();
+      const seenCommands = new Set();
+      for (const officer of officerCorps) {
+        if (!officer.assignedTile) continue;
+        const [q, r] = String(officer.assignedTile).split(",").map(Number);
+        const tile = Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+        if (!tile || tile.owner !== officer.ownerFaction || tile.terrain !== "land" || seenCommands.has(officer.assignedTile)) {
+          officer.assignedTile = null;
+          continue;
+        }
+        seenCommands.add(officer.assignedTile);
+      }
+    }
+
+    function officerRankLabel(rankId) {
+      return OFFICER_RANKS[rankId]?.label || "Officer";
+    }
+
+    function officersForFaction(factionId = playerFactionId()) {
+      return officerCorps.filter((officer) => officer.ownerFaction === factionId);
+    }
+
+    function officerOnTile(tile, factionId = tile?.owner) {
+      if (!tile) return null;
+      return officersForFaction(factionId).find((officer) => officer.assignedTile === `${tile.q},${tile.r}`) || null;
+    }
+
+    function officerCommandSummary(officer) {
+      const rank = OFFICER_RANKS[officer.rank] || OFFICER_RANKS.captain;
+      return `${officerRankLabel(officer.rank)} • Commands best with ${rank.minTroops}-${rank.maxTroops >= 999 ? "many" : rank.maxTroops} troops`;
+    }
+
+    function officerPregnancyStatusLabel(officer) {
+      if (!officer?.pregnant) return officer?.children > 0 ? `Children ${officer.children}` : "No Child";
+      const turnsLeft = Math.max(0, (officer.pregnancyDueRound || round) - round);
+      if (turnsLeft <= 1) return `Late Pregnancy • Children ${officer.children || 0}`;
+      if (turnsLeft === 2) return `Pregnant • Mid Term • Children ${officer.children || 0}`;
+      return `Pregnant • Early Term • Children ${officer.children || 0}`;
+    }
+
+    function queueOfficerReaction(officer, title, label, body) {
+      queueEventModal({
+        label,
+        title,
+        body,
+        portrait: officerPortrait(officer),
+        cta: "Continue",
+      });
+      addLog(`${officer.name}: ${label}.`);
+    }
+
+    function tryOfficerPregnancy(officer, sourceLabel, intensity = 1) {
+      if (!officer || officer.pregnant) return false;
+      const chance = Math.min(
+        0.52,
+        0.07 +
+        intensity * 0.08 +
+        Math.max(0, officer.romance || 0) / 260 +
+        Math.max(0, officer.attraction || 0) / 250 +
+        Math.max(0, officer.trust || 0) / 430
+      );
+      if (Math.random() > chance) return false;
+      officer.pregnant = true;
+      officer.pregnancyStartRound = round;
+      officer.pregnancyDueRound = round + 3 + Math.floor(Math.random() * 2);
+      officer.pregnancyOrigin = sourceLabel;
+      officer.romance = Math.min(100, officer.romance + 4);
+      officer.trust = Math.min(100, officer.trust + 3);
+      queueOfficerReaction(
+        officer,
+        `${officer.name} Carries Your Child`,
+        "Officer Pregnancy",
+        `${officer.name} steadies herself after your private time together, then gives you the kind of smile she would never show on a battlefield.\n\n"My lord... it seems I am carrying your child. I will protect her as fiercely as I protect your banner."`
+      );
+      return true;
+    }
+
+    function resolveOfficerPregnancies() {
+      for (const officer of officerCorps) {
+        if (!officer || !officer.pregnant || officer.pregnancyDueRound > round) continue;
+        officer.pregnant = false;
+        officer.pregnancyStartRound = -1;
+        officer.pregnancyDueRound = -1;
+        officer.pregnancyOrigin = null;
+        officer.children = (officer.children || 0) + 1;
+        officer.romance = Math.min(100, officer.romance + 6);
+        officer.trust = Math.min(100, officer.trust + 5);
+        const heir = createHeirFromBirth({
+          type: "officer",
+          id: officer.id,
+          name: officer.name,
+        });
+        queueOfficerReaction(
+          officer,
+          `${officer.name} Gives Birth`,
+          "Officer Birth",
+          `${officer.name} gives birth safely in your court.\n\n${heir.name} must be hidden carefully, and the news ripples through the ranks: one of your commanders now binds her future to yours more deeply than ever.`
+        );
+      }
+    }
+
+    function autoOfficerTile(officer) {
+      const rank = OFFICER_RANKS[officer.rank] || OFFICER_RANKS.captain;
+      const candidates = ownedTiles(playerFactionId())
+        .filter((tile) => tile.terrain === "land" && tile.troops > 0)
+        .sort((a, b) => {
+          const afit = Math.abs(a.troops - rank.minTroops);
+          const bfit = Math.abs(b.troops - rank.minTroops);
+          return afit - bfit || b.troops - a.troops;
+        });
+      const openTile = candidates.find((tile) => {
+        const existing = officerOnTile(tile, playerFactionId());
+        return !existing || existing.id === officer.id;
+      });
+      return openTile || candidates[0] || null;
+    }
+
+    function assignOfficer(officer, tile = null) {
+      if (!officer) return;
+      const target = tile && tile.owner === playerFactionId() && tile.terrain === "land" && tile.troops > 0 ? tile : autoOfficerTile(officer);
+      if (!target) {
+        addLog(`No valid troop tile is available for ${officer.name}.`);
+        return;
+      }
+      const displaced = officerOnTile(target, officer.ownerFaction);
+      if (displaced && displaced.id !== officer.id) {
+        displaced.assignedTile = null;
+        addLog(`${displaced.name} is rotated off the command at (${target.q},${target.r}).`);
+      }
+      officer.assignedTile = `${target.q},${target.r}`;
+      addLog(`${officer.name} now commands the force at (${target.q},${target.r}).`);
+      render();
+    }
+
+    function relieveOfficer(officer) {
+      if (!officer) return;
+      officer.assignedTile = null;
+      addLog(`${officer.name} is relieved of field command.`);
+      render();
+    }
+
+    function officerCombatBonus(officer, troops, mode = "attack") {
+      if (!officer) return 0;
+      const rank = OFFICER_RANKS[officer.rank] || OFFICER_RANKS.captain;
+      let bonus = mode === "attack" ? rank.attackBonus : rank.defenseBonus;
+      if (troops < rank.minTroops) bonus -= 1;
+      if (rank.maxTroops < 999 && troops > rank.maxTroops + 2) bonus -= 1;
+      bonus += Math.floor((officer.tactics - 50) / 18);
+      bonus += Math.floor((officer.discipline - 50) / 24);
+      return Math.max(0, bonus);
+    }
+
+    function officerConverse(officer) {
+      if (!officer || officer.converseUsedThisTurn) return;
+      officer.converseUsedThisTurn = true;
+      officer.trust = Math.min(100, officer.trust + 4);
+      officer.romance = Math.min(100, officer.romance + 2);
+      queueOfficerReaction(
+        officer,
+        `${officer.name} Speaks Frankly`,
+        "Officer Counsel",
+        `${officer.name} sets aside rank for a moment and speaks to you woman to ruler.\n\nShe is disciplined, affectionate, and plainly proud to be under your eye.`
+      );
+      render();
+    }
+
+    function officerFlirt(officer) {
+      if (!officer || officer.flirtUsedThisTurn) return;
+      officer.flirtUsedThisTurn = true;
+      officer.attraction = Math.min(100, officer.attraction + 6);
+      officer.romance = Math.min(100, officer.romance + 5);
+      queueOfficerReaction(
+        officer,
+        `${officer.name} Meets Your Gaze`,
+        "Flirtation",
+        `${officer.name} answers your flirtation with a soldier's confidence and a slow, dangerous smile.\n\nShe looks like a woman who would gladly win battles for you and then stay after to be praised in private.`
+      );
+      render();
+    }
+
+    function officerConfide(officer) {
+      if (!officer || officer.confideUsedThisTurn) return;
+      officer.confideUsedThisTurn = true;
+      officer.trust = Math.min(100, officer.trust + 5);
+      officer.loyalty = Math.min(100, officer.loyalty + 2);
+      queueOfficerReaction(
+        officer,
+        `${officer.name} Keeps Your Confidence`,
+        "Private Trust",
+        `${officer.name} receives your private burdens with a commander's calm.\n\nShe will hold what you tell her as carefully as she holds a defensive line.`
+      );
+      render();
+    }
+
+    function officerGift(officer) {
+      if (!officer || officer.giftUsedThisTurn) return;
+      if (treasury < 2) {
+        addLog("You need 2 treasury to gift an officer properly.");
+        return;
+      }
+      treasury -= 2;
+      officer.giftUsedThisTurn = true;
+      officer.loyalty = Math.min(100, officer.loyalty + 4);
+      officer.trust = Math.min(100, officer.trust + 4);
+      officer.romance = Math.min(100, officer.romance + 3);
+      queueOfficerReaction(
+        officer,
+        `${officer.name} Accepts Your Favor`,
+        "Gift",
+        `${officer.name} accepts the gift with military poise, but the warmth in her eyes gives her away.\n\nRecognition from you means more to her than the material itself.`
+      );
+      render();
+    }
+
+    function officerIntimacy(officer) {
+      if (!officer || officer.intimacyUsedThisTurn) return;
+      officer.intimacyUsedThisTurn = true;
+      officer.romance = Math.min(100, officer.romance + 7);
+      officer.attraction = Math.min(100, officer.attraction + 5);
+      officer.trust = Math.min(100, officer.trust + 3);
+      queueOfficerReaction(
+        officer,
+        `${officer.name} Lowers Her Guard`,
+        "Intimacy",
+        `${officer.name} gives you the rare gift of seeing her off duty, without command voice or armor between you.\n\nWhen the moment is over, her devotion feels steadier, warmer, and more personal than before.`
+      );
+      tryOfficerPregnancy(officer, "Officer Intimacy", 1.06);
+      render();
+    }
+
+    function addPrisoner(prisoner) {
+      if (!prisoner) return null;
+      if (prisonState.prisoners.length >= prisonState.cells) prisonState.cells += 2;
+      prisoner.id = prisoner.id || `prisoner_${prisonState.nextId++}`;
+      prisonState.prisoners.push(prisoner);
+      return prisoner;
+    }
+
+    function createGenericPrisoner(defenderId, sourceLabel = "campaign") {
+      const faction = factionById(defenderId);
+      return addPrisoner({
+        category: "war_captive",
+        name: `${faction?.leader || "Enemy"} Retainer`,
+        title: "Captured Officer",
+        originFaction: defenderId,
+        spirit: clamp(48 + randomBetween(-12, 16), 0, 100),
+        fear: clamp(38 + randomBetween(-8, 18), 0, 100),
+        compliance: clamp(22 + randomBetween(-8, 14), 0, 100),
+        health: clamp(62 + randomBetween(-10, 12), 0, 100),
+        notes: `Taken after ${sourceLabel}.`,
+      });
+    }
+
+    function createDuchessPrisoner(duchess) {
+      if (!duchess) return null;
+      return addPrisoner({
+        category: "duchess",
+        duchessId: duchess.id,
+        name: duchess.name,
+        title: duchess.title,
+        originFaction: duchess.ownerFaction,
+        spirit: clamp(duchess.ambition || 50, 0, 100),
+        fear: 34,
+        compliance: clamp(100 - (duchess.loyalty || 50), 0, 100),
+        health: 72,
+        notes: "Former provincial ruler held under guard.",
+      });
+    }
+
+    function prisonCategoryLabel(prisoner) {
+      if (prisoner.category === "duchess") return "Political Prisoner";
+      if (prisoner.category === "severant_operative") return `${SEVERANT_ORDER_NAME} Operative`;
+      if (prisoner.category === "severant_defector") return `${SEVERANT_ORDER_NAME} Defector`;
+      return "War Captive";
+    }
+
+    function prisonLabel(prisoner) {
+      return `${prisoner.title} • Spirit ${prisoner.spirit} • Fear ${prisoner.fear} • Compliance ${prisoner.compliance}`;
+    }
+
+    function prisonExtendedLabel(prisoner) {
+      if (prisoner.category === "severant_operative" || prisoner.category === "severant_defector") {
+        return `${prisonLabel(prisoner)} • Fanaticism ${prisoner.fanaticism || 0} • Cover ${prisoner.cover || 0} • Broken ${prisoner.brokenness || 0} • Trust ${prisoner.trust || 0}`;
+      }
+      return prisonLabel(prisoner);
+    }
+
+    function questionPrisoner(prisoner) {
+      if (!prisoner) return;
+      if (prisoner.category === "severant_operative" || prisoner.category === "severant_defector") {
+        prisoner.spirit = clamp(prisoner.spirit - 10, 0, 100);
+        prisoner.fear = clamp(prisoner.fear + 8, 0, 100);
+        prisoner.compliance = clamp(prisoner.compliance + 8, 0, 100);
+        prisoner.cover = clamp((prisoner.cover || 0) - 12, 0, 100);
+        prisoner.fanaticism = clamp((prisoner.fanaticism || 0) - 6, 0, 100);
+        prisoner.usefulness = clamp((prisoner.usefulness || 0) + 4, 0, 100);
+        prisoner.falseLoyaltyRisk = clamp((prisoner.falseLoyaltyRisk || 0) - 4, 0, 100);
+        dynastyState.severantProgress = clamp(dynastyState.severantProgress - 6, 0, 100);
+        for (const heir of allHeirs()) {
+          heir.householdInfiltration = clamp(heir.householdInfiltration - 2, 0, 100);
+        }
+        treasury += 1;
+        addLog(`You tear information out of ${prisoner.name}. ${SEVERANT_ORDER_NAME} loses ground and treasury +1.`);
+        render();
+        return;
+      }
+      prisoner.spirit = clamp(prisoner.spirit - 8, 0, 100);
+      prisoner.fear = clamp(prisoner.fear + 6, 0, 100);
+      prisoner.compliance = clamp(prisoner.compliance + 5, 0, 100);
+      treasury += 1;
+      addLog(`Your gaolers extract useful information from ${prisoner.name}. Treasury +1.`);
+      render();
+    }
+
+    function comfortPrisoner(prisoner) {
+      if (!prisoner) return;
+      if (prisoner.category === "severant_defector") {
+        prisoner.trust = clamp((prisoner.trust || 0) + 8, 0, 100);
+        prisoner.falseLoyaltyRisk = clamp((prisoner.falseLoyaltyRisk || 0) - 6, 0, 100);
+        prisoner.notes = `${prisoner.name} is given a little more dignity and space, making her more useful as a true defector than as a chained tool alone.`;
+        addLog(`You deepen your trust path with ${prisoner.name} as a controlled defector.`);
+        render();
+        return;
+      }
+      prisoner.health = clamp(prisoner.health + 8, 0, 100);
+      prisoner.compliance = clamp(prisoner.compliance + 7, 0, 100);
+      prisoner.fear = clamp(prisoner.fear - 4, 0, 100);
+      addLog(`${prisoner.name} is treated with controlled mercy.`);
+      render();
+    }
+
+    function sentencePrisoner(prisoner) {
+      if (!prisoner) return;
+      if (prisoner.category === "severant_operative") {
+        prisoner.brokenness = clamp((prisoner.brokenness || 0) + 14, 0, 100);
+        prisoner.fanaticism = clamp((prisoner.fanaticism || 0) - 12, 0, 100);
+        prisoner.compliance = clamp(prisoner.compliance + 10, 0, 100);
+        prisoner.falseLoyaltyRisk = clamp((prisoner.falseLoyaltyRisk || 0) - 8, 0, 100);
+        prisoner.notes = `${prisoner.name} is losing the clean hardness that made her useful to ${SEVERANT_ORDER_NAME}.`;
+        addLog(`${prisoner.name} is pressed until her ${SEVERANT_ORDER_NAME} discipline begins to crack.`);
+        render();
+        return;
+      }
+      prisoner.spirit = clamp(prisoner.spirit - 14, 0, 100);
+      prisoner.fear = clamp(prisoner.fear + 12, 0, 100);
+      prisoner.compliance = clamp(prisoner.compliance + 10, 0, 100);
+      addLog(`${prisoner.name} is harshly disciplined in the prison block.`);
+      render();
+    }
+
+    function releasePrisoner(prisoner) {
+      if (!prisoner) return;
+      prisonState.prisoners = prisonState.prisoners.filter((entry) => entry.id !== prisoner.id);
+      if (prisoner.duchessId) {
+        const duchess = getDuchess(prisoner.duchessId);
+        if (duchess) duchess.status = "exiled";
+      }
+      addLog(`${prisoner.name} is removed from your prisons.`);
+      render();
+    }
+
+    function convertSeverantOperative(prisoner) {
+      if (!prisoner) return;
+      if (prisoner.compliance < 55 || (prisoner.brokenness || 0) < 35 || (prisoner.fanaticism || 0) > 40) {
+        addLog(`${prisoner.name} is not ready to be turned. Break her cover and certainty further first.`);
+        return;
+      }
+      prisoner.category = "severant_defector";
+      prisoner.title = `Turned Defector of ${SEVERANT_ORDER_NAME}`;
+      prisoner.assignment = "household";
+      prisoner.trust = clamp((prisoner.trust || 0) + 22, 0, 100);
+      prisoner.falseLoyaltyRisk = clamp((prisoner.falseLoyaltyRisk || 0) - 18, 0, 100);
+      prisoner.notes = `${prisoner.name} has stopped acting like a hidden blade and started acting like a woman who wants to survive under your roof.`;
+      normalizeSeverantCourtWoman(prisoner);
+      prisoner.devotion = clamp((prisoner.devotion || 0) + 10, 0, 100);
+      prisoner.attraction = clamp((prisoner.attraction || 0) + 4, 0, 100);
+      prisoner.romance = clamp((prisoner.romance || 0) + 3, 0, 100);
+      dynastyState.severantProgress = clamp(dynastyState.severantProgress - 10, 0, 100);
+      refreshCounterIntelRating();
+      addLog(`${prisoner.name} is converted into a controlled defector and folded into your counter-network.`);
+      render();
+    }
+
+    function reassignDefector(prisoner) {
+      if (!prisoner || prisoner.category !== "severant_defector") return;
+      const cycle = ["household", "nursery", "prison", "intel"];
+      const index = cycle.indexOf(prisoner.assignment || "household");
+      prisoner.assignment = cycle[(index + 1) % cycle.length];
+      prisoner.trust = clamp((prisoner.trust || 0) + 3, 0, 100);
+      if (prisoner.assignment === "nursery") {
+        for (const heir of allHeirs()) {
+          heir.householdInfiltration = clamp(heir.householdInfiltration - 3, 0, 100);
+        }
+      } else if (prisoner.assignment === "intel") {
+        dynastyState.severantProgress = clamp(dynastyState.severantProgress - 4, 0, 100);
+      }
+      refreshCounterIntelRating();
+      addLog(`${prisoner.name} is reassigned to ${prisoner.assignment} duty.`);
+      render();
+    }
+
+    function reassignSeverantCourtWoman(profile) {
+      const woman = normalizeSeverantCourtWoman(profile);
+      if (!woman) return false;
+      if (woman.category === "severant_defector") {
+        reassignDefector(woman);
+        return true;
+      }
+      const cycle = ["household", "nursery", "intel"];
+      const index = cycle.indexOf(woman.assignment || "household");
+      woman.assignment = cycle[(index + 1) % cycle.length];
+      woman.trust = clamp((woman.trust || 0) + 2, 0, 100);
+      woman.devotion = clamp((woman.devotion || 0) + 2, 0, 100);
+      addLog(`${woman.name} is reassigned to ${woman.assignment} duty within the Severant household.`);
+      render();
+      return true;
+    }
+
     function dismissMatron(matron) {
       if (!matron || matron.status !== "active") return;
       matron.status = "dismissed";
@@ -3190,11 +11323,16 @@ const BASE_FACTIONS = [
         matron.loyalty = Math.min(100, (matron.loyalty || 0) + 4);
         adjustMatronTrust(matron, 5);
         const pet = matronEndearment(matron);
+        const heir = createHeirFromBirth({
+          type: "matron",
+          id: matron.id,
+          name: matron.name,
+        });
         queueMatronPersonalReaction(
           matron,
           `${matron.name} Gives Birth`,
           "Matron Birth",
-          `${matron.name} gives birth safely within your household.\n\nShe draws you close afterward and murmurs, "${pet[0].toUpperCase() + pet.slice(1)}, our child is here. Let me keep this house warm around you both."`
+          `${matron.name} gives birth safely within your household.\n\nShe draws you close afterward and murmurs, "${pet[0].toUpperCase() + pet.slice(1)}, our son is here. ${heir.name} will need warmth, secrecy, and hard-eyed women around him."`
         );
       }
     }
@@ -3211,6 +11349,28 @@ const BASE_FACTIONS = [
         `${matron.name} Sits With You`,
         "Motherly Counsel",
         `${matron.name} settles beside you and listens longer than she speaks.\n\n"${pet[0].toUpperCase() + pet.slice(1)}, you do not have to bare your throat to every burden alone. Let me steady the room around you for a little while."`
+      );
+      render();
+    }
+
+    function giftMatron(matron) {
+      if (!matron || matron.status !== "active" || matron.giftUsedThisTurn) return;
+      if (treasury < 2) {
+        addLog("You need 2 treasury to gift a matron properly.");
+        return;
+      }
+      treasury -= 2;
+      matron.giftUsedThisTurn = true;
+      matron.loyalty = Math.min(100, (matron.loyalty || 0) + 4);
+      matron.romance = Math.min(100, (matron.romance || 0) + 4);
+      matron.attraction = Math.min(100, (matron.attraction || 0) + 2);
+      adjustMatronTrust(matron, 4);
+      const pet = matronEndearment(matron);
+      queueMatronPersonalReaction(
+        matron,
+        `${matron.name} Accepts Your Gift`,
+        "Tender Gratitude",
+        `${matron.name} accepts your gift with a softened expression and touches your cheek in a way that is both affectionate and quietly possessive.\n\n"You remembered me, ${pet}. That matters more than you think."`
       );
       render();
     }
@@ -3266,20 +11426,63 @@ const BASE_FACTIONS = [
       render();
     }
 
+    function matronRelationshipTier(matron) {
+      const trust = matron?.trust || 0;
+      const romance = matron?.romance || 0;
+      const attraction = matron?.attraction || 0;
+      const total = trust * 0.45 + romance * 0.35 + attraction * 0.2;
+      if (total >= 78) return "devoted";
+      if (total >= 58) return "deep";
+      if (total >= 38) return "warm";
+      return "tentative";
+    }
+
+    function matronIntimacyScene(matron, pet) {
+      const tier = matronRelationshipTier(matron);
+      const archetype = matron?.archetype || "hearth_matron";
+      const tierLine = tier === "devoted"
+        ? `The closeness between you already carries the certainty of an established bond.`
+        : tier === "deep"
+        ? `This is no longer casual affection. She is letting you feel how seriously she has come to care for you.`
+        : tier === "warm"
+        ? `The warmth between you has matured into something openly personal.`
+        : `Even now, the moment feels intimate because she chooses to lower her guard around you.`;
+      const sceneByArchetype = {
+        hearth_matron: `${matron.name} draws you into her lap and holds you there like you belong nowhere safer.\n\n"${pet[0].toUpperCase() + pet.slice(1)}, breathe. Let the world wait outside for a little while."`,
+        wolf_matron: `${matron.name} closes the distance with protective hunger, one hand firm at your back as though daring the whole world to interrupt.\n\n"You are with me now, ${pet}. Nothing touches you here unless I allow it."`,
+        velvet_matron: `${matron.name} makes intimacy feel like a slow, luxurious conspiracy shared between two people who understand desire and power perfectly well.\n\n"Come here, ${pet}. Let me ruin your composure before court ever gets the chance."`,
+        iron_matron: `${matron.name} is restrained at first, then unexpectedly tender once the privacy is real and the room belongs only to the two of you.\n\n"You do not need ceremony with me, ${pet}. Only honesty."`,
+        street_matron: `${matron.name} kisses you like a woman who has survived uglier worlds than this one and intends to give you one clean, real thing in spite of them.\n\n"Stay close, ${pet}. I know how rare it is to find softness that isn't a trap."`,
+        healing_matron: `${matron.name} guides the intimacy with patient hands and a calming presence that makes the whole moment feel restorative as much as passionate.\n\n"Easy, ${pet}. Let this be gentle. Let it actually be good for you."`,
+        court_matron: `${matron.name} keeps one measured breath of distance until the last second, then lets polished poise melt into very deliberate affection.\n\n"You make me forget politics for a moment, ${pet}. Do not waste the privilege."`,
+        war_matron: `${matron.name} gives herself to the moment with a veteran's clarity, intense and fully present, as though peace is something she has chosen to carve out with her bare hands.\n\n"Right here, ${pet}. No battlefield, no noise, no one else. Just this."`,
+      };
+      return `${sceneByArchetype[archetype] || sceneByArchetype.hearth_matron}\n\n${tierLine}`;
+    }
+
     function matronIntimacy(matron) {
       if (!matron || matron.status !== "active" || matron.intimacyUsedThisTurn) return;
       matron.intimacyUsedThisTurn = true;
-      matron.romance = Math.min(100, (matron.romance || 0) + 7);
-      matron.attraction = Math.min(100, (matron.attraction || 0) + 5);
-      adjustMatronTrust(matron, 3);
+      const relationshipTier = matronRelationshipTier(matron);
+      matron.romance = Math.min(100, (matron.romance || 0) + (relationshipTier === "devoted" ? 9 : relationshipTier === "deep" ? 8 : 7));
+      matron.attraction = Math.min(100, (matron.attraction || 0) + (relationshipTier === "tentative" ? 5 : 6));
+      matron.loyalty = Math.min(100, (matron.loyalty || 0) + 2);
+      adjustMatronTrust(matron, relationshipTier === "tentative" ? 3 : 4);
       const pet = matronEndearment(matron);
       queueMatronPersonalReaction(
         matron,
         `${matron.name} Draws You Close`,
-        "Private Affection",
-        `${matron.name} draws you into private closeness that feels sheltering as much as it does passionate.\n\n"Hush now, ${pet}. Let me take care of you for a little while."`
+        "Private Intimacy",
+        matronIntimacyScene(matron, pet)
       );
-      tryMatronPregnancy(matron, "Matron Intimacy", 1.04);
+      const pregnancyIntensity = relationshipTier === "devoted"
+        ? 1.2
+        : relationshipTier === "deep"
+        ? 1.14
+        : relationshipTier === "warm"
+        ? 1.08
+        : 1.04;
+      tryMatronPregnancy(matron, "Matron Intimacy", pregnancyIntensity);
       render();
     }
 
@@ -3366,6 +11569,7 @@ const BASE_FACTIONS = [
       if (!tile || !tile.duchessId) return;
       const duchess = getDuchess(tile.duchessId);
       if (!duchess) return;
+      createDuchessPrisoner(duchess);
       tile.duchessId = null;
       duchess.assignedTile = null;
       duchess.status = "imprisoned";
@@ -3639,12 +11843,145 @@ const BASE_FACTIONS = [
       overlordQueenId = null;
       initializeDuchesses();
       initializeMatrons();
+      initializeMilitary();
+      initializeSpies();
+      governanceState = {
+        duchessProtocol: "general_judgment",
+        autoAssignDuchesses: true,
+        autoBuildProvinces: true,
+      };
+      cabinetState = {
+        warHead: null,
+        intelligenceHead: null,
+        householdHead: null,
+        fertilityHead: null,
+      };
+      prisonState = {
+        cells: 8,
+        prisoners: [],
+        nextId: 1,
+      };
       campaignStats = {
         factionsCollapsed: 0,
         autosaves: 0,
         lastSaveAt: null,
       };
       treasury = 24;
+      restorationState = {
+        populationStability: 58,
+        birthRecovery: 18,
+        reserveStock: 64,
+        publicDependence: 82,
+        infrastructureDependency: 86,
+        withdrawalRisk: 18,
+        reformProgress: 4,
+        orderContamination: 78,
+        clinicPolicy: "seize_rebrand",
+        bankPolicy: "supervised_release",
+        publicStory: "stability_first",
+        lastCrisisRound: -1,
+      };
+      fertilityState = {
+        preservedSeed: 22,
+        logistics: 18,
+        publicTrust: 34,
+        conceptionPolicy: "balanced",
+        provinceDemand: 12,
+        petitionsHandled: 0,
+        lastPetitionRound: -1,
+      };
+      underworldState = {
+        vice: 18,
+        blackMarket: 22,
+        resistance: 16,
+        tunnels: 0,
+        tunnelLinks: 0,
+        mediaReach: 12,
+        liberatedCaptives: 0,
+        seedRoutes: 10,
+        seedLedger: 0,
+        crimePressure: 20,
+        crimeQueensBroken: 0,
+        crimeQueens: [],
+        nextCrimeQueenId: 1,
+        lastSlaveRouteRound: -1,
+        lastCrimeRound: -1,
+        lastBroadcastRound: -1,
+        lastSeedRound: -1,
+        lastTunnelRound: -1,
+        lastBlackSiteRound: -1,
+        lastOrderRouteRound: -1,
+      };
+      ensureCrimeQueenPresence(3);
+      highSeverantState = {
+        interest: 16,
+        respect: 8,
+        obsession: 4,
+        influence: 28,
+        exposure: 6,
+        contactStage: 0,
+        lastContactRound: -1,
+      };
+        highSeverantProfile = {
+          id: "high_severant",
+          hiddenName: "Seralya Severin",
+          publicName: HIGH_SEVERANT_TITLE,
+          coverTitle: "Unknown Architect",
+        trueTitle: "Mistress of the Severant Order",
+        notes: "The unseen hand behind the Order's old world. She prefers channels, pressure, seduction, and dependency over open war.",
+        portrait: null,
+        dossierStage: 0,
+        intrigue: 76,
+        cruelty: 72,
+        composure: 88,
+        fascination: 18,
+        hostility: 74,
+          seduction: 16,
+          fear: 34,
+          lastInteractionRound: -1,
+          directAudienceUnlocked: false,
+          safehouseKnown: false,
+          confrontationOutcome: null,
+          captive: false,
+          escaped: false,
+          judgedRound: -1,
+          converseUsedThisTurn: false,
+          flirtUsedThisTurn: false,
+          giftUsedThisTurn: false,
+          spoilUsedThisTurn: false,
+          intimacyUsedThisTurn: false,
+          pregnant: false,
+          pregnancyStartRound: -1,
+          pregnancyDueRound: -1,
+          pregnancyOrigin: null,
+          children: 0,
+        };
+      campaignRouteState = {
+        side: null,
+        choiceRound: -1,
+        lastOfferRound: -1,
+        deferUntilRound: 0,
+        severantDoctrine: "dark_alliance",
+        claimantQueenId: null,
+        hiddenCourtFactionId: null,
+        setupDone: false,
+        claimantSeatLabel: null,
+        matriarchStanding: "sovereign",
+        lastPressureRound: -1,
+        lastRealignmentRound: -1,
+        orderReserve: 0,
+        lastDetachmentRound: -1,
+        lastDisciplineRound: -1,
+        lastCoronationRound: -1,
+        severantObjectivePhase: 0,
+        severantBriefedPhase: 0,
+        severantRewardedPhase: 0,
+        claimantCrownedQueenId: null,
+        severantCrowned: false,
+        successionSecured: false,
+        lastObjectiveAdvanceRound: -1,
+        severantCommandInstalled: false,
+      };
       developerState = {
         enabled: developerState.enabled,
         selectedQueenFaction: 0,
@@ -3683,6 +12020,28 @@ const BASE_FACTIONS = [
       pendingQueenFaction = null;
       queenState = {};
       queenUnits = [];
+      heirs = [];
+      nextHeirId = 1;
+      dynastyState = {
+        severantAwareness: 18,
+        knownThreat: false,
+        rivalHouseholdPressure: 0,
+        loyalistMomentum: 0,
+        lastCrisisRound: -1,
+        activeRivalHeirId: null,
+        severantProgress: 0,
+        lastSeverantStrikeRound: -1,
+        namedHeirId: null,
+        successionTension: 0,
+        capturedOrderAgents: [],
+        lastMaternalConflictRound: -1,
+        lastSuccessionCrisisRound: -1,
+        counterIntelRating: 0,
+        lastOrderCellRaidRound: -1,
+        orderCellsBroken: 0,
+        highSeverantExposure: 0,
+        confrontationStage: 0,
+      };
       pendingUnitQueenFaction = null;
       nextUnitId = 1;
       humanMovesRemaining = HUMAN_MOVES_PER_TURN;
@@ -3697,14 +12056,22 @@ const BASE_FACTIONS = [
           rebelAgainst: null,
           regimeName: null,
           regimeShort: null,
+          regimeColor: null,
+          regimeLeader: null,
+          regimeTheme: null,
+          regimePortrait: null,
+          regimeHome: null,
+          regimeArchetype: null,
+          regimePersonality: null,
           underworldPatron: null,
           underworldFriendly: null,
           underAuthorityOf: null,
         };
       }
       refreshDormantAuthorities();
-      addLog("New game started.");
-      addLog("Queen Elara, your native queen, starts in your harem.");
+      addLog("The War Begins.");
+      addLog("The great queens move to claim the vanished Matriarch's place.");
+      addLog("Queen Elara shelters you and the runaway Matriarch inside Elara Castle while acting as your public front.");
       addLog("Tip: select one of your green tiles with 2+ troops, then click an adjacent tile.");
       randomizeWeather(true);
       syncAmbienceTrack();
@@ -3714,6 +12081,7 @@ const BASE_FACTIONS = [
       syncCanvasDisplaySize();
       boardWrapEl.scrollLeft = Math.max(0, (canvas.width * boardScale - boardWrapEl.clientWidth) / 2);
       boardWrapEl.scrollTop = Math.max(0, (canvas.height * boardScale - boardWrapEl.clientHeight) / 2);
+      queueWarBeginsOpening();
     }
 
     function seedSettlements() {
@@ -4298,7 +12666,7 @@ const BASE_FACTIONS = [
     }
 
     function drawBoardDynamic() {
-      const rangeTiles = selectedTile ? new Set(tilesInTroopRange(selectedTile).map((tile) => tileKey(tile.q, tile.r))) : null;
+      const rangeTiles = selectedTile ? new Set(tilesInOperationalMoveRange(selectedTile).map((tile) => tileKey(tile.q, tile.r))) : null;
       const selectedKey = selectedTile ? tileKey(selectedTile.q, selectedTile.r) : null;
       const animatedFromKey = moveAnimation ? tileKey(moveAnimation.from.q, moveAnimation.from.r) : null;
       const animatedToKey = moveAnimation ? tileKey(moveAnimation.to.q, moveAnimation.to.r) : null;
@@ -4413,6 +12781,8 @@ const BASE_FACTIONS = [
         }
         ctx.globalAlpha = 1;
       }
+
+      drawUndergroundQueenMarkers();
 
       if (moveAnimation) {
         const progress = Math.min(1, (performance.now() - moveAnimation.startedAt) / moveAnimation.duration);
@@ -5447,6 +13817,28 @@ const BASE_FACTIONS = [
             buttonRow.appendChild(btn);
           }
           duchessSection.appendChild(buttonRow);
+        } else if (tile.owner !== playerFactionId() && !gameOver && isPlayerControlledFaction(FACTIONS[currentFactionIndex].id)) {
+          const controlRow = document.createElement("div");
+          controlRow.className = "tile-duchess-actions row";
+          for (const [label, action] of [
+            ["Demand Surrender", () => openDuchessActionModal(tile, "surrender")],
+            ["Seize If She Refused", () => openDuchessActionModal(tile, "seize")],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.type = "button";
+            btn.addEventListener("pointerdown", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            });
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              action();
+            });
+            controlRow.appendChild(btn);
+          }
+          duchessSection.appendChild(controlRow);
         }
       } else {
         const none = document.createElement("div");
@@ -5532,7 +13924,7 @@ const BASE_FACTIONS = [
 
       const meta = document.createElement("div");
       meta.className = "tile-command-meta";
-      meta.textContent = `Owner ${tile.owner === NEUTRAL ? "Neutral" : factionById(tile.owner)?.leader || "Unknown"} • Troops ${tile.troops} • Prosperity ${systems.prosperity} • Loyalty ${systems.loyalty} • Unrest ${systems.unrest}`;
+      meta.textContent = `Owner ${tile.owner === NEUTRAL ? "Neutral" : factionById(tile.owner)?.leader || "Unknown"} • Troops ${tile.troops} • Prosperity ${systems.prosperity} • Loyalty ${systems.loyalty} • Unrest ${systems.unrest} • Dependency ${systems.severantDependency} • Contamination ${systems.severantContamination} • Withdrawal ${systems.withdrawalStress}`;
       card.appendChild(meta);
 
       const layout = document.createElement("div");
@@ -5618,13 +14010,25 @@ const BASE_FACTIONS = [
       if (activeMenuTab === "leaders") renderLeaderPanel();
       if (activeMenuTab === "diplomacy") renderDiplomacyPanel();
       if (activeMenuTab === "harem") renderHaremPanel();
+      if (activeMenuTab === "military") renderMilitaryPanel();
+      if (activeMenuTab === "spies") renderSpiesPanel();
+      if (activeMenuTab === "government") renderGovernmentPanel();
+      if (activeMenuTab === "prison") renderPrisonPanel();
       if (activeMenuTab === "underworld") renderUnderworldPanel();
       if (activeMenuTab === "dev") renderDevPanel();
       if (activeMenuTab === "event") renderEventPanel();
       if (activeMenuTab === "tile") renderTilePanel();
     }
 
+    function applyCampaignTheme() {
+      ensureCampaignRouteState();
+      if (!document?.body) return;
+      document.body.classList.toggle("severant-shell", campaignRouteState.side === "severant");
+    }
+
     function render() {
+      ensureSeverantCommandRoster();
+      applyCampaignTheme();
       drawBoard();
       updateHUD();
       renderPanels();
@@ -5646,6 +14050,29 @@ const BASE_FACTIONS = [
       logEl.prepend(p);
     }
 
+    function bindReliablePress(button, handler) {
+      if (!button || typeof handler !== "function") return;
+      let lastFire = -Infinity;
+      const fire = (ev) => {
+        if (button.disabled) return;
+        if (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+        const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        if (now - lastFire < 220) return;
+        lastFire = now;
+        handler(ev);
+      };
+      button.type = "button";
+      button.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+      });
+      button.addEventListener("pointerup", fire);
+      button.addEventListener("click", fire);
+    }
+
     function queueEventModal(event) {
       eventQueue.push(event);
       if (activeMenuTab !== "event") {
@@ -5655,10 +14082,18 @@ const BASE_FACTIONS = [
       }
     }
 
+    function currentEventModal() {
+      return eventQueue[0] || null;
+    }
+
+    function eventRequiresChoice(event = currentEventModal()) {
+      return Boolean(event && Array.isArray(event.actions) && event.actions.length && !event.allowDismiss);
+    }
+
     function dismissEventModal(advance = true) {
       if (!eventQueue.length) {
         setMenuTab("overview");
-        return;
+        return false;
       }
       if (advance) eventQueue.shift();
       if (eventQueue.length) {
@@ -5666,12 +14101,15 @@ const BASE_FACTIONS = [
       } else {
         setMenuTab("overview");
       }
+      return true;
     }
 
     function renderEventPanel() {
       eventPanelEl.innerHTML = "";
       const event = eventQueue[0];
       if (!event) {
+        modalCloseBtn.disabled = false;
+        modalCloseBtn.textContent = "Continue";
         modalOverlayEl.classList.remove("blackout-event");
         modalWindowEl.classList.remove("blackout-event");
         modalBodyEl.classList.remove("blackout-event");
@@ -5685,6 +14123,10 @@ const BASE_FACTIONS = [
       modalBodyEl.classList.toggle("blackout-event", Boolean(event.blackout));
       modalWindowEl.classList.toggle("wide-event", Boolean(event.wide));
       modalBodyEl.classList.toggle("wide-event", Boolean(event.wide));
+      modalCloseBtn.disabled = eventRequiresChoice(event);
+      modalCloseBtn.textContent = eventRequiresChoice(event)
+        ? "Choose An Action"
+        : (event.cta || (eventQueue.length > 1 ? "Continue" : "Acknowledge"));
       if (typeof event.render === "function") {
         event.render({ container: eventPanelEl, event });
         return;
@@ -5712,6 +14154,9 @@ const BASE_FACTIONS = [
         const img = document.createElement("img");
         img.className = "event-portrait";
         if (event.blackout) img.classList.add("blackout");
+        if (typeof event.portrait === "string" && event.portrait.includes("HighSeverant.png")) {
+          img.classList.add("high-severant-portrait");
+        }
         img.src = event.portrait;
         img.alt = `${event.title} portrait`;
         body.appendChild(img);
@@ -5733,7 +14178,7 @@ const BASE_FACTIONS = [
 
       const meta = document.createElement("div");
       meta.className = "event-meta";
-      meta.textContent = event.meta || `Queue: 1 of ${eventQueue.length}`;
+      meta.textContent = event.meta || `${eventRequiresChoice(event) ? "Choose an action below to resolve this event." : `Queue: 1 of ${eventQueue.length}`}`;
       textWrap.appendChild(meta);
 
       body.appendChild(textWrap);
@@ -5755,7 +14200,7 @@ const BASE_FACTIONS = [
         if (event.blackout) btn.classList.add("blackout");
         btn.textContent = action.label;
         btn.disabled = Boolean(action.disabled);
-        btn.addEventListener("click", () => {
+        bindReliablePress(btn, () => {
           if (action.onClick) action.onClick();
           else dismissEventModal();
         });
@@ -5787,7 +14232,9 @@ const BASE_FACTIONS = [
     }
 
     function activeFactions() {
-      return FACTIONS.filter(f => leaderState[f.id]?.active && !leaderState[f.id]?.defeated);
+      return FACTIONS
+        .filter((faction) => leaderState[faction.id]?.active && !leaderState[faction.id]?.defeated)
+        .map((faction) => factionById(faction.id) || faction);
     }
 
     function availableTileUpgrades(tile) {
@@ -5795,6 +14242,22 @@ const BASE_FACTIONS = [
       return Object.entries(TILE_UPGRADES)
         .filter(([key, meta]) => meta.requires(tile) && tileUpgradeLevel(tile, key) < meta.max)
         .map(([key, meta]) => ({ key, meta }));
+    }
+
+    function chooseAutoUpgradeForTile(tile, duchess = null) {
+      const options = availableTileUpgrades(tile);
+      if (!options.length) return null;
+      return options
+        .map((option) => {
+          let score = 0;
+          if (["market", "roads", "harbor"].includes(option.key)) score += 5;
+          if (["walls", "watchtower", "barracks"].includes(option.key)) score += 4;
+          if (duchess?.archetype === "war_duchess" && ["walls", "barracks", "watchtower"].includes(option.key)) score += 4;
+          if (duchess?.archetype === "matron_duchess" && ["manor", "market"].includes(option.key)) score += 3;
+          score += tileGrowthBonus(tile) + tileIncomeValue(tile);
+          return { ...option, score };
+        })
+        .sort((a, b) => b.score - a.score || a.meta.cost - b.meta.cost)[0] || null;
     }
 
     function applyTileUpgrade(tile, key, actorLabel = "You", chargeTreasury = false) {
@@ -5810,6 +14273,21 @@ const BASE_FACTIONS = [
       systems.unrest = clamp(systems.unrest - 1, 0, 100);
       addLog(`${actorLabel} builds ${upgrade.label} on (${tile.q},${tile.r}).`);
       return true;
+    }
+
+    function autoManageProvince(tile, duchess) {
+      if (!tile || !duchess || !governanceState.autoBuildProvinces || duchess.autoManage === false) return false;
+      const choice = chooseAutoUpgradeForTile(tile, duchess);
+      if (!choice || treasury < choice.meta.cost) return false;
+      return applyTileUpgrade(tile, choice.key, duchess.name, true);
+    }
+
+    function autoAssignVacantDuchesses() {
+      if (!governanceState.autoAssignDuchesses) return;
+      const vacant = ownedTiles(playerFactionId()).filter((tile) => tile.terrain === "land" && !tile.duchessId);
+      for (const tile of vacant) {
+        appointDuchess(tile);
+      }
     }
 
     function aiDevelopTile(factionId) {
@@ -5914,8 +14392,160 @@ const BASE_FACTIONS = [
       if (!leaderState[factionId]) return;
       leaderState[factionId].regimeName = null;
       leaderState[factionId].regimeShort = null;
+      leaderState[factionId].regimeColor = null;
+      leaderState[factionId].regimeLeader = null;
+      leaderState[factionId].regimeTheme = null;
+      leaderState[factionId].regimePortrait = null;
+      leaderState[factionId].regimeHome = null;
+      leaderState[factionId].regimeArchetype = null;
+      leaderState[factionId].regimePersonality = null;
       leaderState[factionId].underworldPatron = null;
       leaderState[factionId].underworldFriendly = null;
+      queenPortraits[factionId] = QUEEN_PORTRAITS[factionId] || queenPortraits[factionId];
+    }
+
+    function cloneFactionHome(home) {
+      if (!home || !Number.isFinite(home.q) || !Number.isFinite(home.r)) return null;
+      return { q: home.q, r: home.r };
+    }
+
+    function setFactionRegimeIdentity(factionId, identity = {}) {
+      if (!leaderState[factionId]) return false;
+      leaderState[factionId].regimeName = identity.name || null;
+      leaderState[factionId].regimeShort = identity.short || null;
+      leaderState[factionId].regimeColor = identity.color || null;
+      leaderState[factionId].regimeLeader = identity.leader || null;
+      leaderState[factionId].regimeTheme = identity.theme || null;
+      leaderState[factionId].regimePortrait = identity.portrait || null;
+      leaderState[factionId].regimeHome = cloneFactionHome(identity.home);
+      leaderState[factionId].regimeArchetype = identity.archetype || null;
+      leaderState[factionId].regimePersonality = identity.personality || null;
+      return true;
+    }
+
+    function setFactionRegimeIdentityFromFaction(targetFactionId, sourceFactionId, overrides = {}) {
+      const source = factionById(sourceFactionId);
+      if (!source) return false;
+      const applied = setFactionRegimeIdentity(targetFactionId, {
+        name: source.name,
+        short: source.short,
+        color: source.color,
+        leader: source.leader,
+        theme: source.theme,
+        portrait: source.portrait,
+        home: source.home,
+        archetype: source.archetype,
+        personality: source.personality,
+        ...overrides,
+      });
+      if (applied) {
+        queenPortraits[targetFactionId] = queenPortraits[sourceFactionId] || QUEEN_PORTRAITS[sourceFactionId] || queenPortraits[targetFactionId];
+      }
+      return applied;
+    }
+
+    function severantHiddenCourtFactionId() {
+      ensureCampaignRouteState();
+      const existing = campaignRouteState.hiddenCourtFactionId;
+      if (existing !== null && existing !== undefined && FACTIONS.some((faction) => faction.id === existing)) {
+        return existing;
+      }
+      const candidate = FACTIONS.find((faction) =>
+        faction.id >= BASE_FACTIONS.length &&
+        !faction.isHuman &&
+        !capturedQueens.includes(faction.id) &&
+        !leaderState[faction.id]?.active &&
+        !leaderState[faction.id]?.defeated
+      )?.id ?? null;
+      campaignRouteState.hiddenCourtFactionId = candidate;
+      return candidate;
+    }
+
+    function isSeverantHiddenCourtFaction(factionId) {
+      ensureCampaignRouteState();
+      return campaignRouteState.side === "severant" && campaignRouteState.hiddenCourtFactionId === factionId;
+    }
+
+    function severantElaraNoReturnFaction(queenFaction) {
+      ensureCampaignRouteState();
+      return campaignRouteState.side === "severant" &&
+        (queenFaction === 0 || isSeverantHiddenCourtFaction(queenFaction));
+    }
+
+    function applySeverantElaraNoReturnState(queenFaction) {
+      const st = queenEntry(queenFaction);
+      st.hate = 999;
+      st.trust = -100;
+      st.romance = 0;
+      st.attraction = 0;
+      st.treaty = "none";
+      st.trade = false;
+      st.affair = false;
+      st.affairLevel = 0;
+      st.joinOfferPending = false;
+      st.affairOfferPending = false;
+      st.elopeOfferPending = false;
+      return st;
+    }
+
+    function assignSeverantClaimantIdentityToPlayer(claimantId) {
+      return setFactionRegimeIdentityFromFaction(0, claimantId);
+    }
+
+    function installSeverantHiddenCourtFaction(factionId, seatTile = null) {
+      if (!Number.isFinite(factionId) || factionId <= 0 || !leaderState[factionId]) return false;
+      awakenFaction(factionId);
+      const elaraFaction = BASE_FACTIONS[0];
+      setFactionRegimeIdentity(factionId, {
+        name: "Elara's Hidden Court",
+        short: "HC",
+        color: elaraFaction.color,
+        leader: "Queen Elara",
+        theme: elaraFaction.theme,
+        portrait: elaraFaction.portrait,
+        home: seatTile ? { q: seatTile.q, r: seatTile.r } : elaraFaction.home,
+        archetype: elaraFaction.archetype,
+        personality: elaraFaction.personality,
+      });
+      leaderState[factionId].rebelAgainst = playerFactionId();
+      leaderState[factionId].underAuthorityOf = null;
+      queenPortraits[factionId] = queenPortraits[0] || QUEEN_PORTRAITS[0] || queenPortraits[factionId];
+      applySeverantElaraNoReturnState(factionId);
+      return true;
+    }
+
+    function transferRecordedTilesToFaction(tileRefs, targetFactionId) {
+      const uniqueTiles = [];
+      const seen = new Set();
+      for (const ref of tileRefs || []) {
+        if (!ref) continue;
+        const tile = getTile(ref.q, ref.r);
+        if (!tile) continue;
+        const key = `${tile.q},${tile.r}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        uniqueTiles.push(tile);
+      }
+      if (!uniqueTiles.length) return { count: 0, capitalTile: null };
+      let capitalTile = null;
+      for (const tile of uniqueTiles) {
+        if (tile.capital && tile.terrain === "land") capitalTile = tile;
+        tile.owner = targetFactionId;
+        tile.capital = false;
+        tile.troops = Math.max(1, tile.troops);
+        if (tile.duchessId) {
+          const duchess = getDuchess(tile.duchessId);
+          if (duchess) duchess.ownerFaction = targetFactionId;
+        }
+      }
+      const chosenCapital = capitalTile || uniqueTiles.find((tile) => tile.terrain === "land") || null;
+      if (chosenCapital) {
+        chosenCapital.capital = true;
+        chosenCapital.estate = chosenCapital.estate === "port" ? "port" : (chosenCapital.estate || "town");
+        chosenCapital.troops = Math.max(12, chosenCapital.troops);
+      }
+      cleanupUnits();
+      return { count: uniqueTiles.length, capitalTile: chosenCapital };
     }
 
     function applyRiseDisposition(queenFaction, supportive) {
@@ -6130,7 +14760,7 @@ const BASE_FACTIONS = [
         queueEventModal({
           label: "Escape",
           title: `${faction.leader} Escapes Her Court`,
-          body: `${faction.leader} slips away from ${authority?.leader || "her current ruler"}, vanishes through your underworld routes, and founds ${faction.name} on free soil.\n\nShe rises owing you her freedom and begins as your ally.`,
+          body: `${faction.leader} slips away from ${authority?.leader || "her current ruler"}, vanishes through your underground routes, and founds ${faction.name} on free soil.\n\nShe rises owing you her freedom and begins as your ally.`,
           portrait: queenPortraits[factionId] || QUEEN_PORTRAITS[factionId],
           banner: `linear-gradient(135deg, ${faction.color}, ${authority?.color || "#23180e"})`,
         });
@@ -6438,7 +15068,7 @@ const BASE_FACTIONS = [
           },
         ],
       });
-      addLog(`${faction.leader}'s people sabotage your underworld network.`);
+      addLog(`${faction.leader}'s people sabotage your underground network.`);
       return true;
     }
 
@@ -6568,6 +15198,14 @@ const BASE_FACTIONS = [
         const income = Math.max(2, eco.towns * 2 + eco.ports * 2 + eco.roads + eco.palaces * 3 + eco.relics + eco.buildingIncome);
         treasury += income;
         addLog(`${factionById(factionId).name} collects ${income} crowns for the treasury.`);
+        reconcileMilitaryState();
+        reconcileSpyState();
+        ensureCabinetState();
+        ensureFertilityState();
+        ensureUnderworldState();
+        applyCampaignRouteTurnEffects();
+        applyCabinetTurnEffects();
+        maybeTriggerProvinceFertilityPetition();
       }
       for (const tile of factionTiles) {
         const systems = ensureTileSystems(tile);
@@ -6580,6 +15218,7 @@ const BASE_FACTIONS = [
           if (duchess) {
             applyDuchessEffects(tile, duchess);
             maybeTriggerDuchessEvent(tile, duchess);
+            if (isPlayerControlledFaction(factionId)) autoManageProvince(tile, duchess);
           }
         }
         if (tile.capital) {
@@ -6604,6 +15243,16 @@ const BASE_FACTIONS = [
         } else {
           tile.troops += buildGrowth;
         }
+        const commandingOfficer = officerOnTile(tile, factionId);
+        if (commandingOfficer) {
+          const rank = OFFICER_RANKS[commandingOfficer.rank] || OFFICER_RANKS.captain;
+          tile.troops += Math.max(0, rank.growthBonus || 0);
+          systems.loyalty = clamp(systems.loyalty + Math.max(0, Math.floor((commandingOfficer.trust - 45) / 18)), 0, 100);
+        }
+        if (isPlayerControlledFaction(factionId)) {
+          systems.familyDemand = clamp(systems.familyDemand + Math.max(0, Math.floor((systems.prosperity - 8) / 8)) - Math.max(0, Math.floor(fertilityState.publicTrust / 28)), 0, 100);
+          systems.familyFulfillment = clamp(systems.familyFulfillment + Math.max(0, Math.floor(fertilityState.logistics / 30)), 0, 100);
+        }
       }
       const fac = factionById(factionId);
       addLog(`${fac.name} gains reinforcements (land ${eco.lands}, towns ${eco.towns}, ports ${eco.ports}, forts ${eco.forts}, relics ${eco.relics}, palaces ${eco.palaces}, roads ${eco.roads}, infrastructure ${eco.growthBonus}).`);
@@ -6617,9 +15266,49 @@ const BASE_FACTIONS = [
           runAiTurn(factionId);
         }, 380);
       } else {
+        autoAssignVacantDuchesses();
         queenUsedThisTurn = false;
         pendingQueenFaction = null;
         pendingUnitQueenFaction = null;
+        for (const officer of officersForFaction(factionId)) {
+          officer.converseUsedThisTurn = false;
+          officer.flirtUsedThisTurn = false;
+          officer.confideUsedThisTurn = false;
+          officer.giftUsedThisTurn = false;
+          officer.intimacyUsedThisTurn = false;
+        }
+        for (const spy of spiesForFaction(factionId)) {
+          spy.converseUsedThisTurn = false;
+          spy.flirtUsedThisTurn = false;
+          spy.giftUsedThisTurn = false;
+          spy.intimacyUsedThisTurn = false;
+          spy.gatherUsedThisTurn = false;
+          spy.influenceUsedThisTurn = false;
+          spy.captureUsedThisTurn = false;
+        }
+        for (const queenFaction of Object.keys(queenState)) {
+          queenEntry(Number(queenFaction)).demandedThisTurn = false;
+        }
+        highSeverantProfile.converseUsedThisTurn = false;
+        highSeverantProfile.flirtUsedThisTurn = false;
+        highSeverantProfile.giftUsedThisTurn = false;
+        highSeverantProfile.spoilUsedThisTurn = false;
+        highSeverantProfile.intimacyUsedThisTurn = false;
+        for (const profile of activeSeverantCourtWomen()) {
+          profile.converseUsedThisTurn = false;
+          profile.flirtUsedThisTurn = false;
+          profile.giftUsedThisTurn = false;
+          profile.spoilUsedThisTurn = false;
+          profile.intimacyUsedThisTurn = false;
+        }
+        maybeResolveSeverantRouteClaimantSetup();
+        maybeTriggerQueenDemand();
+        maybeUndergroundQueenVisit();
+        maybeTriggerRebelSupportBargain();
+        maybeTriggerRebelJoinOffer();
+        maybeTriggerCampaignRouteChoice();
+        maybeTriggerSeverantRoutePressureEvent();
+        maybeAdvanceSeverantObjectiveChain();
         diplomacyTurnNumber += 1;
         matronState.recentIgnoredWarnings = Math.max(0, (matronState.recentIgnoredWarnings || 0) - 1);
         matronState.recentPunishments = Math.max(0, (matronState.recentPunishments || 0) - 1);
@@ -6681,11 +15370,21 @@ const BASE_FACTIONS = [
           duchess.confideUsedThisTurn = false;
           duchess.intimacyUsedThisTurn = false;
         }
+        for (const profile of underworldState.crimeQueens || []) {
+          profile.converseUsedThisTurn = false;
+          profile.flirtUsedThisTurn = false;
+          profile.confideUsedThisTurn = false;
+          profile.audienceUsedThisTurn = false;
+          profile.giftUsedThisTurn = false;
+          profile.spoilUsedThisTurn = false;
+          profile.intimacyUsedThisTurn = false;
+        }
         for (const matron of matrons) {
           if (!matron || matron.status !== "active") continue;
           matron.converseUsedThisTurn = false;
           matron.flirtUsedThisTurn = false;
           matron.confideUsedThisTurn = false;
+          matron.giftUsedThisTurn = false;
           matron.spoilUsedThisTurn = false;
           matron.intimacyUsedThisTurn = false;
         }
@@ -6711,7 +15410,9 @@ const BASE_FACTIONS = [
           }
         }
         maybeQueueMatronAffectionEvent();
+        maybeDiscoverMatron(false, "court");
         humanMovesRemaining = HUMAN_MOVES_PER_TURN;
+        applyLoyalSonTurnSupport(factionId);
         endTurnBtn.disabled = false;
         autoTurnBtn.disabled = false;
         resistanceBtn.disabled = gameMode !== "servitude";
@@ -6734,7 +15435,8 @@ const BASE_FACTIONS = [
         turnInfo.textContent += ` • Recruiting ${queen.unitName}`;
       }
       if (!gameOver && isPlayerControlledFaction(FACTIONS[currentFactionIndex].id)) {
-        turnInfo.textContent += ` • Moves: ${humanMovesRemaining}/${HUMAN_MOVES_PER_TURN}`;
+        const moveCap = HUMAN_MOVES_PER_TURN + Math.floor(loyalHeirs().length / 3);
+        turnInfo.textContent += ` • Moves: ${humanMovesRemaining}/${moveCap}`;
         turnInfo.textContent += ` • Send: ${Math.round(SEND_OPTIONS[sendModeIndex] * 100)}%`;
         turnInfo.textContent += ` • Treasury: ${treasury}`;
       }
@@ -7515,6 +16217,9 @@ const BASE_FACTIONS = [
 
     function updateDiplomacyPressure(queenFaction) {
       const st = queenEntry(queenFaction);
+      if (severantElaraNoReturnFaction(queenFaction)) {
+        applySeverantElaraNoReturnState(queenFaction);
+      }
       const foreign = Math.max(1, ownedTiles(queenFaction).filter(t => t.terrain === "land").length);
       const ours = Math.max(1, ownedTiles(playerFactionId()).filter(t => t.terrain === "land").length);
       const fearBase = 35 + (ours - foreign) * 4;
@@ -7769,6 +16474,7 @@ const BASE_FACTIONS = [
 
     function maybeQueueAffairOffer(queenFaction) {
       const st = updateDiplomacyPressure(queenFaction);
+      if (severantElaraNoReturnFaction(queenFaction)) return;
       if (capturedQueens.includes(queenFaction) || leaderState[queenFaction]?.defeated || !leaderState[queenFaction]?.active) return;
       if (st.joinOfferPending || st.affairOfferPending || st.elopeOfferPending) return;
       if (st.lastAffairTurn === diplomacyTurnNumber) return;
@@ -7966,7 +16672,10 @@ const BASE_FACTIONS = [
       let label = "Intentions";
       let body = "";
 
-      if (st.hate >= 78) {
+      if (severantElaraNoReturnFaction(queenFaction)) {
+        label = "No Going Back";
+        body = `${faction.leader} wants you ruined for the betrayal and remembers exactly what you chose.\n\nYou abandoned Elara for the Severant, lost the realm you built together, and turned her into a hunted rival. She will not forgive it, she will not soften, and there is no path back into trust, romance, or peace with her now.`;
+      } else if (st.hate >= 78) {
         label = "Ruthless Hostility";
         body = `${faction.leader} wants you broken publicly and decisively.\n\nShe would rather see you dragged in chains through her court, silenced, and reduced to a warning for every rival who imagines defying her.`;
       } else if (st.affairLevel >= 2 && st.romance >= 60) {
@@ -8019,15 +16728,17 @@ const BASE_FACTIONS = [
     }
 
     function diplomacyTargetQueens() {
-      return FACTIONS.filter(f =>
-        !f.isHuman &&
-        leaderState[f.id]?.active &&
-        !leaderState[f.id]?.defeated &&
-        !capturedQueens.includes(f.id)
-      );
+      return FACTIONS
+        .filter((faction) =>
+          !faction.isHuman &&
+          leaderState[faction.id]?.active &&
+          !leaderState[faction.id]?.defeated &&
+          !capturedQueens.includes(faction.id)
+        )
+        .map((faction) => factionById(faction.id) || faction);
     }
 
-    function submitQueenToPlayer(queenFaction, reasonText, label = "Queen Joins You") {
+    function submitQueenToPlayer(queenFaction, reasonText, label = "Queen Joins You", options = {}) {
       if (capturedQueens.includes(queenFaction)) return;
       const faction = factionById(queenFaction);
       const playerId = playerFactionId();
@@ -8051,23 +16762,34 @@ const BASE_FACTIONS = [
           tile.troops = Math.max(1, tile.troops);
         }
       }
+      if (options.routeStatus) {
+        st.routeStatus = options.routeStatus;
+        st.lastRouteChangeRound = round;
+        if (options.routeStatus === "subdued") {
+          st.assignment = "court";
+          st.forbiddenThisTurn = true;
+        }
+      }
       cleanupUnits();
-      addLog(gameMode === "servitude"
+      addLog(options.logText || (gameMode === "servitude"
         ? `${faction.leader} yields ${faction.name} and binds herself to your service within ${factionById(playerId).name}.`
-        : `${faction.leader} yields ${faction.name} and joins your harem by choice.`);
+        : `${faction.leader} yields ${faction.name} and joins your harem by choice.`));
       queueEventModal({
         label,
-        title: `${faction.leader} Offers Herself`,
+        title: options.title || `${faction.leader} Offers Herself`,
         body: reasonText,
         portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
-        cta: "Claim Her Oath",
+        cta: options.cta || "Claim Her Oath",
       });
+      onSeverantRouteQueenSecured(queenFaction, "won over");
       maybeFinishGame();
       render();
+      return true;
     }
 
     function maybeQueueJoinOffer(queenFaction) {
       const st = updateDiplomacyPressure(queenFaction);
+      if (severantElaraNoReturnFaction(queenFaction)) return;
       if (st.joinOfferPending || st.affairOfferPending || st.elopeOfferPending || capturedQueens.includes(queenFaction) || leaderState[queenFaction]?.defeated) return;
       if (st.romance < 68 || st.trust < 40 || st.attraction < 82) return;
       if (!leaderState[queenFaction]?.active) return;
@@ -8108,6 +16830,37 @@ const BASE_FACTIONS = [
       const st = updateDiplomacyPressure(queenFaction);
       const rebelBonus = leaderState[queenFaction]?.rebelAgainst !== null && leaderState[queenFaction]?.rebelAgainst !== undefined ? 10 : 0;
       const activeBonus = leaderState[queenFaction]?.active ? 0 : -6;
+      if (severantElaraNoReturnFaction(queenFaction)) {
+        const turnKey = ({
+          talk: "lastTalkTurn",
+          request: "lastRequestTurn",
+          trade: "lastTradeTurn",
+          treaty: "lastTreatyTurn",
+          flirt: "lastFlirtTurn",
+          affair: "lastAffairTurn",
+          marriage: "lastMarriageTurn",
+        })[kind];
+        if (turnKey) st[turnKey] = diplomacyTurnNumber;
+        applySeverantElaraNoReturnState(queenFaction);
+        if (kind === "talk") {
+          nudgeAffinity(st, "talkAffinity", -2);
+          queueDiplomacyReaction(
+            queenFaction,
+            `${faction.leader} Refuses To Soften`,
+            "No Going Back",
+            `${faction.leader} hears you out only long enough to make one thing clear: betrayal is the only thing she hears when you speak now.\n\nWhatever you built with Elara died the moment you chose the Severant over her.`
+          );
+        } else {
+          if (kind === "flirt") nudgeAffinity(st, "flirtAffinity", -2);
+          queueDiplomacyReaction(
+            queenFaction,
+            `${faction.leader} Rejects You Outright`,
+            "No Going Back",
+            `${faction.leader} treats the attempt as an insult.\n\nHer hate is past repair, and nothing in this court is going to turn betrayal into intimacy, alliance, trade, or mercy.`
+          );
+        }
+        return;
+      }
       if (kind === "talk") {
         const score =
           st.trust -
@@ -8377,6 +17130,7 @@ const BASE_FACTIONS = [
     function covertCaptureToServitude(queenFaction, sourceLabel) {
       const faction = factionById(queenFaction);
       if (!faction || gameMode === "servitude") return false;
+      if (campaignRouteState?.side === "severant") return severantInterdictCovertCapture(queenFaction, sourceLabel);
 
       awakenFaction(queenFaction);
       clearFactionRegimeIdentity(queenFaction);
@@ -8463,6 +17217,7 @@ const BASE_FACTIONS = [
         return false;
       }
       if (resolveMatronRescueAfterCapture(dangerEvent, matronContext || {})) return false;
+      if (campaignRouteState?.side === "severant") return severantInterdictCovertCapture(queenFaction, sourceLabel);
       if (protection.result?.type === "failure_delayed" && protection.matron) {
         queueMatronReaction(
           `${protection.matron.name} Was A Moment Too Late`,
@@ -8513,7 +17268,9 @@ const BASE_FACTIONS = [
     function toggleUnderworldQueen(queenFaction) {
       const st = queenEntry(queenFaction);
       st.underworldAssigned = !st.underworldAssigned;
-      addLog(`${QUEEN_POWERS[queenFaction].title} ${st.underworldAssigned ? "slips into" : "withdraws from"} the underworld network.`);
+      if (st.underworldAssigned) assignUndergroundLocation(queenFaction);
+      else st.undergroundLocation = null;
+      addLog(`${QUEEN_POWERS[queenFaction].title} ${st.underworldAssigned ? "slips into" : "withdraws from"} the underground network.`);
       render();
     }
 
@@ -8531,7 +17288,7 @@ const BASE_FACTIONS = [
       st.trust = Math.min(100, st.trust + 3);
       st.romance = Math.min(100, st.romance + 2);
       st.underworldUsedThisTurn = true;
-      addLog(`${QUEEN_POWERS[queenFaction].title} helps your underworld plot in secret.`);
+      addLog(`${QUEEN_POWERS[queenFaction].title} helps your underground plot in secret.`);
       render();
     }
 
@@ -8545,8 +17302,8 @@ const BASE_FACTIONS = [
       st.affair = true;
       st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
       st.underworldRomanceUsedThisTurn = true;
-      tryPlayerPregnancy(queenFaction, "Underworld Date", 1);
-      addLog(`${QUEEN_POWERS[queenFaction].title} meets you in the underworld for a secret night together.`);
+      tryPlayerPregnancy(queenFaction, "Underground Date", 1);
+      addLog(`${QUEEN_POWERS[queenFaction].title} meets you underground for a secret night together.`);
       render();
     }
 
@@ -8555,7 +17312,7 @@ const BASE_FACTIONS = [
       const rebelCap = factionCapitalTile(queenFaction);
       const st = queenEntry(queenFaction);
       if (!cap || cap.troops <= amount) {
-        addLog("You lack the spare troops to smuggle a levy through the underworld.");
+        addLog("You lack the spare troops to smuggle a levy through the underground.");
         return;
       }
       if (!rebelCap) {
@@ -8578,18 +17335,18 @@ const BASE_FACTIONS = [
       st.lastUnderworldRomanceTurn = diplomacyTurnNumber;
       const faction = factionById(queenFaction);
       queueMatronAwareDangerEvent({
-        label: "Underworld Rendezvous",
+        label: "Underground Rendezvous",
         title: `${faction.leader} Wants A Hidden Meeting`,
-        body: `${faction.leader} offers a moonlit rendezvous below the city where rebels, smugglers, and spies all pass unseen.\n\nThe invitation is intimate, risky, and exactly the kind of underworld privacy a matron would distrust on principle.`,
+        body: `${faction.leader} offers a moonlit rendezvous below the city where rebels, smugglers, and spies all pass unseen.\n\nThe invitation is intimate, risky, and exactly the kind of underground privacy a matron would distrust on principle.`,
         portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
-        dangerEvent: buildMatronDangerEvent(queenFaction, "an underworld rendezvous", 0.07, {
+        dangerEvent: buildMatronDangerEvent(queenFaction, "an underground rendezvous", 0.07, {
           tags: ["adult", "underworld", "seduction_trap", "capture_risk", "queen", "private_meeting"],
           territory: "neutral",
         }),
         proceedLabel: "Go To Her Anyway",
         declineLabel: "Refuse The Rendezvous",
         onProceed: (matronContext) => {
-          if (maybeTriggerCovertCapture(queenFaction, "an underworld rendezvous", 0.07, matronContext)) return;
+          if (maybeTriggerCovertCapture(queenFaction, "an underground rendezvous", 0.07, matronContext)) return;
           st.affair = true;
           st.affairLevel = Math.min(3, Math.max(1, st.affairLevel + 1));
           st.trust = Math.min(100, st.trust + 7);
@@ -8600,8 +17357,8 @@ const BASE_FACTIONS = [
           queueDiplomacyReaction(
             queenFaction,
             `${faction.leader} Meets You Beneath The City`,
-            "Underworld Rendezvous",
-            `${faction.leader} steals into the criminal underworld to meet you where spies and nobles alike cannot see.\n\nThe meeting leaves her more bound to you than before, and more willing to gamble her rebellion on your protection.`
+            "Underground Rendezvous",
+            `${faction.leader} steals into the criminal underground to meet you where spies and nobles alike cannot see.\n\nThe meeting leaves her more bound to you than before, and more willing to gamble her rebellion on your protection.`
           );
           render();
         },
@@ -8714,14 +17471,14 @@ const BASE_FACTIONS = [
         title: `${faction.leader} Accepts A Hidden Courtship`,
         body: `${faction.leader} has no kingdom left to protect her and agrees to meet through criminal safehouses and shuttered rooms.\n\nThe intimacy is real, but so is the danger of exile, desperation, and anyone else who notices where you go.`,
         portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
-        dangerEvent: buildMatronDangerEvent(queenFaction, "a secret courtship in the underworld", 0.05, {
+        dangerEvent: buildMatronDangerEvent(queenFaction, "a secret courtship underground", 0.05, {
           tags: ["adult", "underworld", "seduction_trap", "capture_risk", "private_meeting"],
           territory: "neutral",
         }),
         proceedLabel: "Pursue The Courtship",
         declineLabel: "Keep Your Distance",
         onProceed: (matronContext) => {
-          if (maybeTriggerCovertCapture(queenFaction, "a secret courtship in the underworld", 0.05, matronContext)) return;
+          if (maybeTriggerCovertCapture(queenFaction, "a secret courtship underground", 0.05, matronContext)) return;
           const score =
             st.romance * 0.62 +
             st.attraction * 0.34 +
@@ -8816,6 +17573,7 @@ const BASE_FACTIONS = [
 
     function haremQueenUsable(queenFaction) {
       const st = queenEntry(queenFaction);
+      if (campaignRouteState?.side === "severant" && ["resisting", "displaced", "contained", "gone"].includes(st.routeStatus)) return false;
       return !st.overlordClaimed && !st.forbiddenThisTurn && !st.summonedThisTurn;
     }
 
@@ -9386,6 +18144,7 @@ const BASE_FACTIONS = [
       const isHumanTurn = !gameOver && isPlayerControlledFaction(FACTIONS[currentFactionIndex].id);
       for (const f of diplomacyTargetQueens()) {
         const st = updateDiplomacyPressure(f.id);
+        const hiddenCourt = isSeverantHiddenCourtFaction(f.id);
         const wrap = document.createElement("div");
         wrap.className = "gallery-card";
 
@@ -9396,7 +18155,9 @@ const BASE_FACTIONS = [
 
         const sub = document.createElement("div");
         sub.className = "gallery-sub";
-        sub.textContent = `${f.name} • ${relationLabel(st.trust, st.romance)} • ${f.personality || fallbackPersonality(f.id)} • Treaty: ${st.treaty}`;
+        sub.textContent = hiddenCourt
+          ? `${f.name} • Hidden Court • ${relationLabel(st.trust, st.romance)} • Treaty: ${st.treaty}`
+          : `${f.name} • ${relationLabel(st.trust, st.romance)} • ${f.personality || fallbackPersonality(f.id)} • Treaty: ${st.treaty}`;
         wrap.appendChild(sub);
 
         if (queenPortraits[f.id]) {
@@ -9418,15 +18179,16 @@ const BASE_FACTIONS = [
           ` • Style ${describePersonality(f.personality || fallbackPersonality(f.id))}` +
           ` • ${summarizeExternalRelations(f.id)}` +
           `${st.trade ? " • Trade Active" : ""}` +
-          `${rebelAgainst !== null && rebelAgainst !== undefined ? ` • Rebelling against ${factionById(rebelAgainst)?.leader || "a rival"}` : ""}`;
+          `${rebelAgainst !== null && rebelAgainst !== undefined ? ` • Rebelling against ${factionById(rebelAgainst)?.leader || "a rival"}` : ""}` +
+          `${hiddenCourt ? " • The Matriarch is believed to be hidden inside this court." : ""}`;
         wrap.appendChild(info);
 
         const rowA = document.createElement("div");
         rowA.className = "row";
         const actionsA = [
           ["Talk", st.lastTalkTurn !== diplomacyTurnNumber, () => { diplomacyRoll(f.id, "talk"); render(); }],
-          ["Request Aid", st.lastRequestTurn !== diplomacyTurnNumber, () => { diplomacyRoll(f.id, "request"); render(); }],
-          [st.trade ? "Trade Open" : "Open Trade", st.lastTradeTurn !== diplomacyTurnNumber && !st.trade, () => { diplomacyRoll(f.id, "trade"); render(); }],
+          ["Request Aid", !hiddenCourt && st.lastRequestTurn !== diplomacyTurnNumber, () => { diplomacyRoll(f.id, "request"); render(); }],
+          [st.trade ? "Trade Open" : "Open Trade", !hiddenCourt && st.lastTradeTurn !== diplomacyTurnNumber && !st.trade, () => { diplomacyRoll(f.id, "trade"); render(); }],
         ];
         for (const [label, enabled, fn] of actionsA) {
           const btn = document.createElement("button");
@@ -9440,10 +18202,10 @@ const BASE_FACTIONS = [
         const rowB = document.createElement("div");
         rowB.className = "row";
         const actionsB = [
-          ["Offer Truce", st.lastTreatyTurn !== diplomacyTurnNumber && st.treaty === "none", () => { diplomacyRoll(f.id, "treaty"); render(); }],
-          ["Flirt", st.lastFlirtTurn !== diplomacyTurnNumber, () => { diplomacyRoll(f.id, "flirt"); render(); }],
-          ["Secret Letter", st.lastAffairTurn !== diplomacyTurnNumber && st.romance >= 25 && st.attraction >= 35, () => { diplomacyRoll(f.id, "affair"); render(); }],
-          ["Propose Marriage", st.lastMarriageTurn !== diplomacyTurnNumber && st.romance >= 55 && st.trust >= 25, () => { diplomacyRoll(f.id, "marriage"); render(); }],
+          ["Offer Truce", !hiddenCourt && st.lastTreatyTurn !== diplomacyTurnNumber && st.treaty === "none", () => { diplomacyRoll(f.id, "treaty"); render(); }],
+          ["Flirt", !hiddenCourt && st.lastFlirtTurn !== diplomacyTurnNumber, () => { diplomacyRoll(f.id, "flirt"); render(); }],
+          ["Secret Letter", !hiddenCourt && st.lastAffairTurn !== diplomacyTurnNumber && st.romance >= 25 && st.attraction >= 35, () => { diplomacyRoll(f.id, "affair"); render(); }],
+          ["Propose Marriage", !hiddenCourt && st.lastMarriageTurn !== diplomacyTurnNumber && st.romance >= 55 && st.trust >= 25, () => { diplomacyRoll(f.id, "marriage"); render(); }],
         ];
         for (const [label, enabled, fn] of actionsB) {
           const btn = document.createElement("button");
@@ -9465,6 +18227,18 @@ const BASE_FACTIONS = [
         chatBtn.addEventListener("click", () => openQueenChat(f.id));
         wrap.appendChild(chatBtn);
 
+        const worshipBtn = document.createElement("button");
+        worshipBtn.textContent = "Worship Test";
+        worshipBtn.disabled = !isHumanTurn;
+        worshipBtn.addEventListener("click", () => openQueenDemandChamber(f.id, {
+          type: "worship",
+          title: "Demand Worship",
+          obey: "Worship Her",
+          refuse: "Refuse Worship",
+          source: "diplomacy_test",
+        }));
+        wrap.appendChild(worshipBtn);
+
         const surrenderBtn = document.createElement("button");
         surrenderBtn.textContent = "Surrender To Her";
         surrenderBtn.disabled = !isHumanTurn || !leaderState[f.id]?.active;
@@ -9485,12 +18259,15 @@ const BASE_FACTIONS = [
 
       const grid = document.createElement("div");
       grid.className = "gallery-grid";
-      const leaders = FACTIONS.filter(f => !f.isHuman && leaderState[f.id]?.active && !leaderState[f.id]?.defeated);
+      const leaders = FACTIONS
+        .filter((faction) => !faction.isHuman && leaderState[faction.id]?.active && !leaderState[faction.id]?.defeated)
+        .map((faction) => factionById(faction.id) || faction);
       if (!leaders.length) {
         leaderStatusEl.appendChild(document.createTextNode("No active rival queens remain."));
         return;
       }
       for (const f of leaders) {
+        const hiddenCourt = isSeverantHiddenCourtFaction(f.id);
         const status = leaderState[f.id].defeated
           ? "Defeated"
           : (leaderState[f.id].active ? "Active" : "Reserve");
@@ -9504,7 +18281,9 @@ const BASE_FACTIONS = [
 
         const sub = document.createElement("div");
         sub.className = "gallery-sub";
-        sub.textContent = `${f.name} • ${status} • ${f.personality || fallbackPersonality(f.id)}`;
+        sub.textContent = hiddenCourt
+          ? `${f.name} • ${status} • Hidden Court`
+          : `${f.name} • ${status} • ${f.personality || fallbackPersonality(f.id)}`;
         wrap.appendChild(sub);
 
         if (queenPortraits[f.id]) {
@@ -9521,7 +18300,7 @@ const BASE_FACTIONS = [
 
         const row = document.createElement("div");
         row.className = "tiny";
-        row.innerHTML = `Status: <strong>${status}</strong> • ${describePersonality(f.personality || fallbackPersonality(f.id))} • ${summarizeExternalRelations(f.id)}`;
+        row.innerHTML = `Status: <strong>${status}</strong> • ${describePersonality(f.personality || fallbackPersonality(f.id))} • ${summarizeExternalRelations(f.id)}${hiddenCourt ? " • The Matriarch is believed to be sheltered here." : ""}`;
         wrap.appendChild(row);
         grid.appendChild(wrap);
       }
@@ -9530,6 +18309,9 @@ const BASE_FACTIONS = [
 
     function renderUnderworldPanel() {
       underworldPanelEl.innerHTML = "";
+      ensureUnderworldState();
+      ensureCrimeQueenPresence(3);
+      ensureFertilityState();
       const shell = document.createElement("div");
       shell.className = "underworld-shell";
 
@@ -9538,19 +18320,336 @@ const BASE_FACTIONS = [
       const rebelCount = underworldRebelQueens().length;
       const kingdomlessCount = kingdomlessUnderworldQueens().length;
       const operatives = eligibleUnderworldQueens().filter(id => queenEntry(id).underworldAssigned).length;
+      const tunnelNodes = tunnelNodeCount();
       summary.textContent = gameMode === "servitude"
-        ? `Hidden network: ${resistanceState.built ? `Strength ${resistanceState.strength} • Exposure ${resistanceState.exposure}` : "Not yet established"} • Underworld operatives ${operatives} • Rebel contacts ${rebelCount} • Reserve contacts ${kingdomlessCount}.`
-        : `Your criminal web now handles smuggling, private romance, and rebel contacts abroad. Treasury ${treasury} • Operatives ${operatives} • Rebel contacts ${rebelCount} • Reserve contacts ${kingdomlessCount}.`;
+        ? `Hidden network: ${resistanceState.built ? `Strength ${resistanceState.strength} • Exposure ${resistanceState.exposure}` : "Not yet established"} • Underground operatives ${operatives} • Rebel contacts ${rebelCount} • Reserve contacts ${kingdomlessCount}.`
+        : `Your underground web now handles smuggling, private romance, and rebel contacts abroad. Treasury ${treasury} • Operatives ${operatives} • Rebel contacts ${rebelCount} • Reserve contacts ${kingdomlessCount}.`;
       shell.appendChild(summary);
+
+      const doctrineCard = document.createElement("div");
+      doctrineCard.className = "gallery-card";
+      doctrineCard.innerHTML = `<strong>Shadow Doctrine</strong><br>The underworld now reaches beyond romance and smuggling. Use it to free captives, route hidden fertility aid, spread forbidden media, and dominate the black market before the ${SEVERANT_ORDER_NAME} does.<br><br>Vice ${underworldState.vice} - Black Market ${underworldState.blackMarket} - Resistance ${underworldState.resistance} - Media Reach ${underworldState.mediaReach} - Seed Routes ${underworldState.seedRoutes} - Crime Pressure ${underworldState.crimePressure} - Crime Queens Broken ${underworldState.crimeQueensBroken} - Tunnels ${tunnelNodes}`;
+      shell.appendChild(doctrineCard);
+
+      const controlRow = document.createElement("div");
+      controlRow.className = "row";
+      for (const [label, handler] of [
+        ["Broadcast Dissent (3)", () => runShadowBroadcast()],
+        ["Expand Tunnel (4)", () => expandTunnelNetwork()],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        bindReliablePress(btn, handler);
+        controlRow.appendChild(btn);
+      }
+      shell.appendChild(controlRow);
 
       if (gameMode === "servitude" && !resistanceState.built) {
         const buildCard = document.createElement("div");
         buildCard.className = "gallery-card";
         const btn = document.createElement("button");
-        btn.textContent = "Found Hidden Underworld";
-        btn.addEventListener("click", () => buildHiddenResistance());
+        btn.textContent = "Found Hidden Underground";
+        bindReliablePress(btn, () => buildHiddenResistance());
         buildCard.appendChild(btn);
         shell.appendChild(buildCard);
+      }
+
+      const provinceCard = document.createElement("div");
+      provinceCard.className = "gallery-card";
+      const provinceHead = document.createElement("div");
+      provinceHead.className = "gallery-head";
+      provinceHead.textContent = "Provincial Shadow Map";
+      provinceCard.appendChild(provinceHead);
+      const provinceSub = document.createElement("div");
+      provinceSub.className = "gallery-sub";
+      provinceSub.textContent = "Free captive caravans, route restoration supplies, and break local crime queens where the shadows are thickest.";
+      provinceCard.appendChild(provinceSub);
+      const provinceGrid = document.createElement("div");
+      provinceGrid.className = "gallery-grid";
+      const shadowTiles = playerUnderworldTiles()
+        .map((tile) => ({ tile, systems: ensureTileSystems(tile) }))
+        .sort((a, b) => (
+          (b.systems.slaveRouteRisk + b.systems.vicePressure + b.systems.underworldControl) -
+          (a.systems.slaveRouteRisk + a.systems.vicePressure + a.systems.underworldControl)
+        ))
+        .slice(0, 8);
+      if (!shadowTiles.length) {
+        const none = document.createElement("div");
+        none.className = "tiny";
+        none.textContent = "No player-held provinces are available for underworld operations.";
+        provinceCard.appendChild(none);
+      } else {
+        for (const entry of shadowTiles) {
+          const { tile, systems } = entry;
+          const localCrimeQueen = crimeQueenForTile(tile, false);
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${duchessRegionName(tile)}</div>
+            <div class="gallery-sub">${systems.tunnelNode ? "Tunnel Node" : "Surface Cell"} â€¢ Loyalty ${systems.loyalty} â€¢ Security ${systems.security}</div>
+            <div class="tiny">Underworld Control ${systems.underworldControl} â€¢ Vice ${systems.vicePressure} â€¢ Dissidents ${systems.dissidentPresence} â€¢ Captive Route Risk ${systems.slaveRouteRisk}</div>
+            <div class="tiny">Family Demand ${systems.familyDemand} â€¢ Fulfillment ${systems.familyFulfillment} â€¢ Severant Dependency ${systems.severantDependency}</div>
+          `;
+          const row = document.createElement("div");
+          row.className = "row";
+          const freeBtn = document.createElement("button");
+          freeBtn.textContent = "Free Captives";
+          freeBtn.disabled = systems.slaveRouteRisk < 16;
+          bindReliablePress(freeBtn, () => freeSlaveRoute(tile));
+          row.appendChild(freeBtn);
+          const seedBtn = document.createElement("button");
+          seedBtn.textContent = "Route Seed";
+          seedBtn.disabled = fertilityState.preservedSeed < 6;
+          bindReliablePress(seedBtn, () => seedUndergroundRestoration(tile));
+          row.appendChild(seedBtn);
+          const crimeBtn = document.createElement("button");
+          crimeBtn.textContent = "Break Crime Queen";
+          crimeBtn.disabled = systems.vicePressure < 18;
+          bindReliablePress(crimeBtn, () => breakCrimeQueen(tile));
+          row.appendChild(crimeBtn);
+          card.appendChild(row);
+          provinceGrid.appendChild(card);
+        }
+        provinceCard.appendChild(provinceGrid);
+      }
+      shell.appendChild(provinceCard);
+
+      const rebelConsoleCard = document.createElement("div");
+      rebelConsoleCard.className = "gallery-card";
+      rebelConsoleCard.style.marginBottom = "1rem";
+      const rebelConsoleHead = document.createElement("div");
+      rebelConsoleHead.className = "gallery-head";
+      rebelConsoleHead.textContent = "Rebel Cells";
+      rebelConsoleCard.appendChild(rebelConsoleHead);
+      const rebelConsoleSub = document.createElement("div");
+      rebelConsoleSub.className = "gallery-sub";
+      rebelConsoleSub.textContent = "Dissident queens, hidden claimants, and underground partners tracked as real faction dossiers.";
+      rebelConsoleCard.appendChild(rebelConsoleSub);
+      const rebelEntries = [
+        ...underworldRebelQueens().map((faction) => ({ faction, kind: "active_rebel" })),
+        ...kingdomlessUnderworldQueens().map((faction) => ({ faction, kind: "hidden_claimant" })),
+        ...eligibleUnderworldQueens().filter((id) => queenEntry(id).underworldAssigned).map((id) => ({ faction: factionById(id), kind: "off_field_cell" })),
+      ].filter((entry, index, list) => list.findIndex((other) => other.faction?.id === entry.faction?.id) === index);
+      const rebelCellGrid = document.createElement("div");
+      rebelCellGrid.className = "gallery-grid";
+      rebelCellGrid.style.alignItems = "stretch";
+      if (!rebelEntries.length) {
+        const none = document.createElement("div");
+        none.className = "tiny";
+        none.textContent = "No active rebel cells on file.";
+        rebelConsoleCard.appendChild(none);
+      } else {
+        for (const entry of rebelEntries) {
+          const faction = entry.faction;
+          const st = queenEntry(faction.id);
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.style.display = "flex";
+          card.style.flexDirection = "column";
+          card.style.gap = "0.5rem";
+          card.style.minHeight = "0";
+          card.style.overflow = "hidden";
+          card.innerHTML = `
+            <div class="gallery-head">${faction.leader}</div>
+            <div class="gallery-sub">${underworldFactionKindLabel(entry.kind)} • ${faction.name}</div>
+            <div class="tiny">Stance ${rebelCellStanceLabel(faction.id)} • Momentum ${st.underworldRiseSupport} • Trust ${st.trust} • Romance ${st.romance}</div>
+            <div class="tiny">${rebelCellMotivation(faction.id)}</div>
+          `;
+          const head = card.querySelector(".gallery-head");
+          if (head) head.style.order = "0";
+          const sub = card.querySelector(".gallery-sub");
+          if (sub) sub.style.order = "1";
+          const tinyRows = [...card.querySelectorAll(".tiny")];
+          tinyRows.forEach((node, index) => {
+            node.style.order = String(index + 2);
+          });
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = underworldFactionBadge(entry.kind);
+          img.alt = `${underworldFactionKindLabel(entry.kind)} placeholder banner`;
+          img.style.order = "6";
+          img.style.width = "100%";
+          img.style.height = "160px";
+          img.style.objectFit = "cover";
+          img.style.objectPosition = "center";
+          img.style.borderRadius = "12px";
+          img.style.margin = "0.25rem 0";
+          img.style.display = "block";
+          img.style.flex = "0 0 auto";
+          card.appendChild(img);
+          const row = document.createElement("div");
+          row.className = "row";
+          row.style.marginTop = "auto";
+          row.style.flexWrap = "wrap";
+          const dossierBtn = document.createElement("button");
+          dossierBtn.textContent = "Open Dossier";
+          bindReliablePress(dossierBtn, () => openUnderworldFactionDossier(faction.id, entry.kind));
+          row.appendChild(dossierBtn);
+          const chatBtn = document.createElement("button");
+          chatBtn.textContent = "Converse";
+          bindReliablePress(chatBtn, () => converseUndergroundQueen(faction.id));
+          row.appendChild(chatBtn);
+          card.appendChild(row);
+          rebelCellGrid.appendChild(card);
+        }
+        rebelConsoleCard.appendChild(rebelCellGrid);
+      }
+      shell.appendChild(rebelConsoleCard);
+
+      const crimeCard = document.createElement("div");
+      crimeCard.className = "gallery-card";
+      const crimeHead = document.createElement("div");
+      crimeHead.className = "gallery-head";
+      crimeHead.textContent = "Criminal Gangs";
+      crimeCard.appendChild(crimeHead);
+      const crimeSub = document.createElement("div");
+      crimeSub.className = "gallery-sub";
+      crimeSub.textContent = "Named underworld bosses are separate from rebel cells. They can remain hostile, become controlled assets, move into your court, or end in prison if you choose a hard crackdown.";
+      crimeCard.appendChild(crimeSub);
+      const crimeGrid = document.createElement("div");
+      crimeGrid.className = "gallery-grid";
+      const crimeQueens = activeCrimeQueens();
+      if (!crimeQueens.length) {
+        const none = document.createElement("div");
+        none.className = "tiny";
+        none.textContent = "No named crime queens are active yet.";
+        crimeCard.appendChild(none);
+      } else {
+        for (const profile of crimeQueens) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${profile.name}</div>
+            <div class="gallery-sub">${profile.title} - ${profile.region}</div>
+            <div class="tiny">Specialty ${profile.specialty} - Ambition ${profile.ambition} - Cruelty ${profile.cruelty} - Leverage ${profile.leverage}</div>
+            <div class="tiny">Honeypot ${profile.trapLevel || 0}/3 - Recruitment Pressure ${profile.recruitmentPressure || 0}/3</div>
+            <div class="tiny">${profile.notes}</div>
+          `;
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = crimeQueenPortraitSeed(profile);
+          img.alt = `${profile.name} portrait`;
+          card.appendChild(img);
+          const tile = (() => {
+            const [q, r] = String(profile.tileKey || "").split(",").map(Number);
+            return Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+          })();
+          const row = document.createElement("div");
+          row.className = "row";
+          const dossierBtn = document.createElement("button");
+          dossierBtn.textContent = "Open Dossier";
+          bindReliablePress(dossierBtn, () => openCrimeQueenDossier(profile.id));
+          row.appendChild(dossierBtn);
+          const honeypotBtn = document.createElement("button");
+          honeypotBtn.textContent = "Set Honeypot";
+          honeypotBtn.disabled = !tile || treasury < 2;
+          bindReliablePress(honeypotBtn, () => stageCrimeHoneypot(profile));
+          row.appendChild(honeypotBtn);
+          const recruitBtn = document.createElement("button");
+          recruitBtn.textContent = "Pressure Recruit";
+          recruitBtn.disabled = !tile;
+          bindReliablePress(recruitBtn, () => pressureRecruitCrimeQueen(profile));
+          row.appendChild(recruitBtn);
+          const pressureBtn = document.createElement("button");
+          pressureBtn.textContent = "Force Takedown";
+          pressureBtn.disabled = !tile;
+          bindReliablePress(pressureBtn, () => tile && breakCrimeQueen(tile));
+          row.appendChild(pressureBtn);
+          card.appendChild(row);
+          crimeGrid.appendChild(card);
+        }
+        crimeCard.appendChild(crimeGrid);
+      }
+      shell.appendChild(crimeCard);
+
+      const controlledCrimeQueens = assetCrimeQueens();
+      if (controlledCrimeQueens.length) {
+        const assetCard = document.createElement("div");
+        assetCard.className = "gallery-card";
+        const assetHead = document.createElement("div");
+        assetHead.className = "gallery-head";
+        assetHead.textContent = "Controlled Networks";
+        assetCard.appendChild(assetHead);
+        const assetSub = document.createElement("div");
+        assetSub.className = "gallery-sub";
+        assetSub.textContent = "These former criminal queens now work for you as managed shadow assets and can be promoted into court when it suits your rule.";
+        assetCard.appendChild(assetSub);
+        const assetGrid = document.createElement("div");
+        assetGrid.className = "gallery-grid";
+        for (const profile of controlledCrimeQueens) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${profile.name}</div>
+            <div class="gallery-sub">${crimeQueenStatusLabel(profile)} - ${profile.region}</div>
+            <div class="tiny">Assignment ${profile.assignment || "underworld"} - Specialty ${profile.specialty}</div>
+            <div class="tiny">Loyalty ${profile.loyalty} - Trust ${profile.trust} - Romance ${profile.romance}</div>
+            <div class="tiny">${profile.notes}</div>
+          `;
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = crimeQueenPortraitSeed(profile);
+          img.alt = `${profile.name} portrait`;
+          card.appendChild(img);
+          const row = document.createElement("div");
+          row.className = "row";
+          const dossierBtn = document.createElement("button");
+          dossierBtn.textContent = "Open Dossier";
+          bindReliablePress(dossierBtn, () => openCrimeQueenDossier(profile.id));
+          row.appendChild(dossierBtn);
+          const courtBtn = document.createElement("button");
+          courtBtn.textContent = "Bring To Court";
+          bindReliablePress(courtBtn, () => {
+            takeCrimeQueenIntoCourt(profile, crimeQueenTile(profile), "promotion from shadow service");
+            render();
+          });
+          row.appendChild(courtBtn);
+          card.appendChild(row);
+          assetGrid.appendChild(card);
+        }
+        assetCard.appendChild(assetGrid);
+        shell.appendChild(assetCard);
+      }
+
+      const jailedCrimeQueens = imprisonedCrimeQueens();
+      if (jailedCrimeQueens.length) {
+        const prisonCard = document.createElement("div");
+        prisonCard.className = "gallery-card";
+        const prisonHead = document.createElement("div");
+        prisonHead.className = "gallery-head";
+        prisonHead.textContent = "Imprisoned Bosses";
+        prisonCard.appendChild(prisonHead);
+        const prisonSub = document.createElement("div");
+        prisonSub.className = "gallery-sub";
+        prisonSub.textContent = "These crime queens were thrown in chains during direct crackdowns.";
+        prisonCard.appendChild(prisonSub);
+        const prisonList = document.createElement("div");
+        prisonList.className = "gallery-grid";
+        for (const profile of jailedCrimeQueens) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          card.innerHTML = `
+            <div class="gallery-head">${profile.name}</div>
+            <div class="gallery-sub">${crimeQueenStatusLabel(profile)} - ${profile.region}</div>
+            <div class="tiny">Specialty ${profile.specialty} - Cruelty ${profile.cruelty}</div>
+            <div class="tiny">${profile.notes}</div>
+          `;
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = crimeQueenPortraitSeed(profile);
+          img.alt = `${profile.name} portrait`;
+          card.appendChild(img);
+          const row = document.createElement("div");
+          row.className = "row";
+          const dossierBtn = document.createElement("button");
+          dossierBtn.textContent = "Open Dossier";
+          bindReliablePress(dossierBtn, () => openCrimeQueenDossier(profile.id));
+          row.appendChild(dossierBtn);
+          card.appendChild(row);
+          prisonList.appendChild(card);
+        }
+        prisonCard.appendChild(prisonList);
+        shell.appendChild(prisonCard);
       }
 
       const domesticCard = document.createElement("div");
@@ -9561,7 +18660,7 @@ const BASE_FACTIONS = [
       domesticCard.appendChild(domesticHead);
       const domesticSub = document.createElement("div");
       domesticSub.className = "gallery-sub";
-      domesticSub.textContent = "Queens without deployed units can gather in the underworld to conspire, romance, and help rebellion plots.";
+      domesticSub.textContent = "Queens without deployed units can gather underground as unofficial queens, moving between tiles to conspire, romance, and help rebellion plots.";
       domesticCard.appendChild(domesticSub);
 
       const domesticGrid = document.createElement("div");
@@ -9580,8 +18679,8 @@ const BASE_FACTIONS = [
           card.className = "gallery-card";
           card.innerHTML = `
             <div class="gallery-head">${queen.title}</div>
-            <div class="gallery-sub">${st.underworldAssigned ? "Assigned To The Underworld" : "Available For Conspiracy"} • Affair ${affairStatusLabel(queenFaction)}</div>
-            <div class="tiny">Morale ${st.morale} • Trust ${st.trust} • Romance ${st.romance} • Attraction ${st.attraction} • ${pregnancyStatusLabel(queenFaction)}</div>
+            <div class="gallery-sub">${st.underworldAssigned ? "Unofficial Queen Underground" : "Available For Conspiracy"} • Affair ${affairStatusLabel(queenFaction)}</div>
+            <div class="tiny">Morale ${st.morale} • Trust ${st.trust} • Romance ${st.romance} • Attraction ${st.attraction} • Respect ${st.respect || 0} • Ego ${st.ego || 0} • ${pregnancyStatusLabel(queenFaction)}</div>
           `;
           if (queenPortraits[queenFaction]) {
             const img = document.createElement("img");
@@ -9590,22 +18689,37 @@ const BASE_FACTIONS = [
             img.alt = `${queen.title} portrait`;
             card.appendChild(img);
           }
+          const location = undergroundTileForQueen(queenFaction);
+          const locationLine = document.createElement("div");
+          locationLine.className = "tiny";
+          locationLine.textContent = location ? `Current Tile: (${location.q}, ${location.r}) â€¢ ${duchessRegionName(location)}` : "Current Tile: hidden";
+          card.appendChild(locationLine);
           const row = document.createElement("div");
           row.className = "row";
           const assignBtn = document.createElement("button");
           assignBtn.textContent = st.underworldAssigned ? "Withdraw" : "Assign";
-          assignBtn.addEventListener("click", () => toggleUnderworldQueen(queenFaction));
+          bindReliablePress(assignBtn, () => toggleUnderworldQueen(queenFaction));
           row.appendChild(assignBtn);
           const conspireBtn = document.createElement("button");
           conspireBtn.textContent = "Conspire";
           conspireBtn.disabled = !st.underworldAssigned || st.underworldUsedThisTurn;
-          conspireBtn.addEventListener("click", () => conspireWithQueen(queenFaction));
+          bindReliablePress(conspireBtn, () => conspireWithQueen(queenFaction));
           row.appendChild(conspireBtn);
           const romanceBtn = document.createElement("button");
-          romanceBtn.textContent = "Underworld Date";
+          romanceBtn.textContent = "Underground Date";
           romanceBtn.disabled = !st.underworldAssigned || st.underworldRomanceUsedThisTurn;
-          romanceBtn.addEventListener("click", () => romanceUnderworldQueen(queenFaction));
+          bindReliablePress(romanceBtn, () => romanceUnderworldQueen(queenFaction));
           row.appendChild(romanceBtn);
+          const talkBtn = document.createElement("button");
+          talkBtn.textContent = "Converse";
+          talkBtn.disabled = !st.underworldAssigned;
+          bindReliablePress(talkBtn, () => converseUndergroundQueen(queenFaction));
+          row.appendChild(talkBtn);
+          const spyBtn = document.createElement("button");
+          spyBtn.textContent = "Use Spies";
+          spyBtn.disabled = !st.underworldAssigned;
+          bindReliablePress(spyBtn, () => influenceUndergroundQueenWithSpies(queenFaction));
+          row.appendChild(spyBtn);
           card.appendChild(row);
           domesticGrid.appendChild(card);
         }
@@ -9629,7 +18743,7 @@ const BASE_FACTIONS = [
       if (!rebels.length) {
         const none = document.createElement("div");
         none.className = "tiny";
-        none.textContent = "No rebel queens currently need underworld support.";
+        none.textContent = "No rebel queens currently need underground support.";
         rebelCard.appendChild(none);
       } else {
         for (const faction of rebels) {
@@ -9654,13 +18768,32 @@ const BASE_FACTIONS = [
           const aidBtn = document.createElement("button");
           aidBtn.textContent = "Send 4 Troops";
           aidBtn.disabled = st.lastUnderworldAidTurn === diplomacyTurnNumber;
-          aidBtn.addEventListener("click", () => sendArmyToRebelQueen(faction.id, 4));
+          bindReliablePress(aidBtn, () => sendArmyToRebelQueen(faction.id, 4));
           row.appendChild(aidBtn);
           const romanceBtn = document.createElement("button");
           romanceBtn.textContent = "Moonlit Rendezvous";
           romanceBtn.disabled = st.lastUnderworldRomanceTurn === diplomacyTurnNumber;
-          romanceBtn.addEventListener("click", () => romanceRebelQueenInUnderworld(faction.id));
+          bindReliablePress(romanceBtn, () => romanceRebelQueenInUnderworld(faction.id));
           row.appendChild(romanceBtn);
+          const bargainBtn = document.createElement("button");
+          bargainBtn.textContent = "Support For Intimacy";
+          bargainBtn.disabled =
+            st.lastSupportBargainTurn === diplomacyTurnNumber ||
+            st.lastUnderworldAidTurn === diplomacyTurnNumber ||
+            st.lastUnderworldRomanceTurn === diplomacyTurnNumber;
+          bindReliablePress(bargainBtn, () => proposeSupportForIntimacy(faction.id, "rebel"));
+          row.appendChild(bargainBtn);
+          const joinBtn = document.createElement("button");
+          joinBtn.textContent = "Support Her Defection";
+          joinBtn.disabled =
+            st.lastJoinBargainTurn === diplomacyTurnNumber ||
+            st.lastUnderworldAidTurn === diplomacyTurnNumber;
+          bindReliablePress(joinBtn, () => proposeSupportForHaremJoin(faction.id, "rebel"));
+          row.appendChild(joinBtn);
+          const talkBtn = document.createElement("button");
+          talkBtn.textContent = "Converse";
+          bindReliablePress(talkBtn, () => converseUndergroundQueen(faction.id));
+          row.appendChild(talkBtn);
           card.appendChild(row);
           rebelGrid.appendChild(card);
         }
@@ -9684,7 +18817,7 @@ const BASE_FACTIONS = [
       if (!exiles.length) {
         const none = document.createElement("div");
         none.className = "tiny";
-        none.textContent = "No reserve queens are currently reachable through the underworld.";
+        none.textContent = "No reserve queens are currently reachable through the underground.";
         exileCard.appendChild(none);
       } else {
         for (const faction of exiles) {
@@ -9710,13 +18843,32 @@ const BASE_FACTIONS = [
           const fundBtn = document.createElement("button");
           fundBtn.textContent = "Fund Rebellion / Escape (3)";
           fundBtn.disabled = st.lastUnderworldRiseTurn === diplomacyTurnNumber;
-          fundBtn.addEventListener("click", () => fundKingdomlessQueen(faction.id, 3));
+          bindReliablePress(fundBtn, () => fundKingdomlessQueen(faction.id, 3));
           row.appendChild(fundBtn);
           const romanceBtn = document.createElement("button");
           romanceBtn.textContent = "Court In Secret";
           romanceBtn.disabled = st.lastUnderworldRomanceTurn === diplomacyTurnNumber;
-          romanceBtn.addEventListener("click", () => romanceKingdomlessQueen(faction.id));
+          bindReliablePress(romanceBtn, () => romanceKingdomlessQueen(faction.id));
           row.appendChild(romanceBtn);
+          const bargainBtn = document.createElement("button");
+          bargainBtn.textContent = "Patronage For Intimacy";
+          bargainBtn.disabled =
+            st.lastSupportBargainTurn === diplomacyTurnNumber ||
+            st.lastUnderworldRiseTurn === diplomacyTurnNumber ||
+            st.lastUnderworldRomanceTurn === diplomacyTurnNumber;
+          bindReliablePress(bargainBtn, () => proposeSupportForIntimacy(faction.id, "claimant"));
+          row.appendChild(bargainBtn);
+          const joinBtn = document.createElement("button");
+          joinBtn.textContent = "Offer Sanctuary In Harem";
+          joinBtn.disabled =
+            st.lastJoinBargainTurn === diplomacyTurnNumber ||
+            st.lastUnderworldRiseTurn === diplomacyTurnNumber;
+          bindReliablePress(joinBtn, () => proposeSupportForHaremJoin(faction.id, "claimant"));
+          row.appendChild(joinBtn);
+          const talkBtn = document.createElement("button");
+          talkBtn.textContent = "Converse";
+          bindReliablePress(talkBtn, () => converseUndergroundQueen(faction.id));
+          row.appendChild(talkBtn);
           card.appendChild(row);
           exileGrid.appendChild(card);
         }
@@ -9779,7 +18931,510 @@ const BASE_FACTIONS = [
       setMenuTab("dev");
     }
 
-    function renderDevPanel() {
+    function developerTriggerTile() {
+      const capital = playerCapitalTile();
+      if (capital && capital.owner === playerFactionId() && capital.terrain === "land") return capital;
+      return ownedTiles(playerFactionId()).find((tile) => tile.terrain === "land") || null;
+    }
+
+    function developerSelectedQueenPayload() {
+      const queenFaction = QUEEN_POWERS[Number(developerState.selectedQueenFaction)]
+        ? Number(developerState.selectedQueenFaction)
+        : 0;
+      return {
+        queenFaction,
+        queen: QUEEN_POWERS[queenFaction],
+        state: queenEntry(queenFaction),
+        leader: leaderState[queenFaction] || null,
+      };
+    }
+
+    function developerQueenStatusLabel(queenFaction) {
+      if (capturedQueens.includes(queenFaction)) return "In Court";
+      if (leaderState[queenFaction]?.defeated) return "Defeated";
+      if (leaderState[queenFaction]?.active) return "Independent";
+      return queenFaction === 0 ? "Player Court" : "Inactive";
+    }
+
+    function developerQueenSummaryLine(queenFaction = Number(developerState.selectedQueenFaction || 0)) {
+      if (!QUEEN_POWERS[queenFaction]) return "No queen selected.";
+      const st = queenEntry(queenFaction);
+      const rank = queenRelationshipRank(queenFaction);
+      return `Status ${developerQueenStatusLabel(queenFaction)} | Rank ${rank.id} | Morale ${st.morale} | Trust ${st.trust} | Romance ${st.romance} | Attraction ${st.attraction} | Hate ${st.hate} | Ego ${st.ego}`;
+    }
+
+    function bindDevButton(button, handler) {
+      button.type = "button";
+      button.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+      });
+      button.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+      });
+      bindReliablePress(button, () => {
+        if (button.disabled) return;
+        handler();
+      });
+    }
+
+    function mutateDeveloperSelectedQueen(actionLabel, mutate) {
+      const { queen, queenFaction, state } = developerSelectedQueenPayload();
+      if (!queen || !state) return false;
+      mutate(state, queenFaction);
+      addLog(`Dev mode: ${actionLabel} for ${queen.title}.`);
+      render();
+      return true;
+    }
+
+    function severantInterdictCovertCapture(queenFaction, sourceLabel) {
+      ensureCampaignRouteState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") return false;
+      const faction = factionById(queenFaction);
+      if (!faction) return false;
+      const st = queenEntry(queenFaction);
+      highSeverantState.influence = clamp(highSeverantState.influence + 5, 0, 100);
+      highSeverantState.respect = clamp(highSeverantState.respect + 4, 0, 100);
+      highSeverantState.obsession = clamp(highSeverantState.obsession + 3, 0, 100);
+      highSeverantProfile.fascination = clamp(highSeverantProfile.fascination + 2, 0, 100);
+      st.hate = clamp((st.hate || 0) + 16, -100, 999);
+      st.fear = clamp((st.fear || 0) + 18, 0, 100);
+      st.trust = clamp((st.trust || 0) - 10, -100, 100);
+      st.romance = Math.max(0, (st.romance || 0) - 6);
+      st.attraction = Math.max(0, (st.attraction || 0) - 4);
+      st.joinOfferPending = false;
+      st.affairOfferPending = false;
+      st.elopeOfferPending = false;
+      st.affair = false;
+      st.treaty = "none";
+      st.trade = false;
+      st.routeStatus = queenFaction === campaignRouteState.claimantQueenId ? "claimant" : "subdued";
+      st.lastRouteChangeRound = round;
+      st.assignment = "court";
+      st.forbiddenThisTurn = true;
+      st.morale = clamp((st.morale || 0) - 8, 0, 100);
+
+      const body = `${faction.leader} chooses ${sourceLabel.toLowerCase()} as the moment to spring her trap and take you for herself.\n\nShe is too late. ${highSeverantProfile.hiddenName}'s women are already in the walls, behind the curtains, and in the corridors outside the room. The snare closes around the queen instead.\n\nThe Severant keeps you untouched, strips the traitor of her leverage, and drags her back beneath your roof in chains of obedience before dawn.`;
+      if (!capturedQueens.includes(queenFaction) && leaderState[queenFaction]?.active && !leaderState[queenFaction]?.defeated) {
+        return submitQueenToPlayer(
+          queenFaction,
+          body,
+          "Severant Interdiction",
+          {
+            title: `${highSeverantProfile.hiddenName} Protects What Is Hers`,
+            cta: "Watch Her Brought Low",
+            logText: `${highSeverantProfile.hiddenName} intercepts ${faction.leader}'s betrayal during ${sourceLabel.toLowerCase()} and has the traitor broken into your court instead.`,
+            routeStatus: queenFaction === campaignRouteState.claimantQueenId ? "claimant" : "subdued",
+          }
+        );
+      }
+      queueEventModal({
+        label: "Severant Interdiction",
+        title: `${highSeverantProfile.hiddenName} Protects What Is Hers`,
+        body,
+        portrait: highSeverantPortrait(),
+        cta: "Continue",
+      });
+      addLog(`${highSeverantProfile.hiddenName} stops ${faction.leader}'s attempted betrayal during ${sourceLabel.toLowerCase()} and has her dragged back under discipline.`);
+      render();
+      return true;
+    }
+
+    function applyDeveloperQueenPreset(kind = "bond") {
+      const { queen, queenFaction, state, leader } = developerSelectedQueenPayload();
+      if (!queen || !state) return false;
+      if (kind === "bond") {
+        state.morale = clamp(state.morale + 18, 0, 100);
+        state.trust = clamp(state.trust + 22, -100, 100);
+        state.romance = clamp(state.romance + 22, 0, 100);
+        state.attraction = clamp(state.attraction + 18, 0, 100);
+        state.hate = clamp(state.hate - 12, 0, 100);
+        addLog(`Dev mode: ${queen.title}'s bond is sharply improved.`);
+        render();
+        return true;
+      }
+      if (kind === "devoted") {
+        state.morale = Math.max(state.morale, 88);
+        state.trust = Math.max(state.trust, 90);
+        state.romance = Math.max(state.romance, 90);
+        state.attraction = Math.max(state.attraction, 86);
+        state.hate = Math.min(state.hate, 4);
+        state.fear = Math.min(state.fear, 18);
+        if (queenFaction !== 0 && !capturedQueens.includes(queenFaction) && leader?.active) {
+          maybeQueueJoinOffer(queenFaction);
+        }
+        addLog(`Dev mode: ${queen.title} is pushed into a devoted state.`);
+        render();
+        return true;
+      }
+      if (kind === "offer_join") {
+        if (queenFaction === 0 || capturedQueens.includes(queenFaction) || !leader?.active) {
+          addLog(`Dev trigger skipped: ${queen.title} cannot make a fresh surrender offer right now.`);
+          render();
+          return false;
+        }
+        state.trust = Math.max(state.trust, 72);
+        state.romance = Math.max(state.romance, 74);
+        state.attraction = Math.max(state.attraction, 86);
+        state.hate = Math.min(state.hate, 8);
+        maybeQueueJoinOffer(queenFaction);
+        addLog(`Dev mode: ${queen.title} is primed to offer surrender.`);
+        render();
+        return true;
+      }
+      return false;
+    }
+
+    function triggerDevSeverantObjectiveBriefing(phase = campaignRouteState?.severantObjectivePhase || 1) {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Dev trigger skipped: choose the Severant route first.");
+        return false;
+      }
+      const nextPhase = clamp(Math.floor(phase || 1), 1, 4);
+      if (campaignRouteState.severantObjectivePhase < 1) {
+        campaignRouteState.severantObjectivePhase = 1;
+      }
+      queueSeverantObjectiveBriefing(nextPhase);
+      render();
+      return true;
+    }
+
+    function developerPreferredSeverantDissenter() {
+      ensureCampaignRouteState();
+      syncSeverantRouteCourtAlignment();
+      const existing = severantRouteResisters().find((queenFaction) => queenFaction > 0);
+      if (existing) return existing;
+      const preferredOrder = [
+        Number(developerState.selectedQueenFaction),
+        ...capturedQueens,
+      ].filter((queenFaction, index, list) =>
+        Number.isFinite(queenFaction) &&
+        queenFaction > 0 &&
+        capturedQueens.includes(queenFaction) &&
+        queenFaction !== campaignRouteState.claimantQueenId &&
+        list.indexOf(queenFaction) === index
+      );
+      const targetId = preferredOrder[0] || null;
+      if (!targetId) return null;
+      const st = queenEntry(targetId);
+      st.routeStatus = "resisting";
+      st.lastRouteChangeRound = round;
+      st.forbiddenThisTurn = true;
+      return targetId;
+    }
+
+    function triggerDevSeverantPressureEvent(kind = "auto") {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Dev trigger skipped: only the Severant route has these pressure events.");
+        return false;
+      }
+      maybeResolveSeverantRouteClaimantSetup();
+      syncSeverantRouteCourtAlignment();
+      if (kind === "elara") {
+        if (!capturedQueens.includes(0)) {
+          addLog("Dev trigger skipped: Elara is not in your court.");
+          return false;
+        }
+        return queueSeverantElaraPressureEvent();
+      }
+      if (kind === "matriarch") {
+        if (!matriarchMatron()) {
+          addLog("Dev trigger skipped: no Matriarch profile is active.");
+          return false;
+        }
+        return queueSeverantMatriarchPressureEvent();
+      }
+      if (kind === "dissenter") {
+        const targetId = developerPreferredSeverantDissenter();
+        if (!targetId) {
+          addLog("Dev trigger skipped: no captured queen is available to turn into a dissenter.");
+          return false;
+        }
+        return queueSeverantDissenterEvent(targetId);
+      }
+      if (queueSeverantElaraPressureEvent()) return true;
+      if (queueSeverantMatriarchPressureEvent()) return true;
+      const targetId = developerPreferredSeverantDissenter();
+      if (targetId) return queueSeverantDissenterEvent(targetId);
+      addLog("Dev trigger skipped: no Severant pressure event target is available.");
+      return false;
+    }
+
+    function triggerDevSeverantBlackSiteEvent() {
+      ensureUnderworldState();
+      const tile = developerTriggerTile();
+      if (!tile) {
+        addLog("Dev trigger skipped: you need at least one owned land tile.");
+        return false;
+      }
+      const systems = ensureTileSystems(tile);
+      systems.tunnelNode = true;
+      systems.severantContamination = clamp(Math.max(systems.severantContamination, 66), 0, 100);
+      systems.slaveRouteRisk = clamp(Math.max(systems.slaveRouteRisk, 38), 0, 100);
+      underworldState.lastBlackSiteRound = -1;
+      addLog(`Dev trigger arms a black-site lead beneath ${duchessRegionName(tile)}.`);
+      queueSeverantBlackSiteEventForTile(tile);
+      render();
+      return true;
+    }
+
+    function triggerDevSeverantOrderRouteEvent() {
+      ensureUnderworldState();
+      ensureRestorationState();
+      const tile = developerTriggerTile();
+      if (!tile) {
+        addLog("Dev trigger skipped: you need at least one owned land tile.");
+        return false;
+      }
+      const systems = ensureTileSystems(tile);
+      systems.tunnelNode = true;
+      systems.slaveRouteRisk = clamp(Math.max(systems.slaveRouteRisk, 30), 0, 100);
+      systems.severantDependency = clamp(Math.max(systems.severantDependency, 58), 0, 100);
+      underworldState.lastOrderRouteRound = -1;
+      addLog(`Dev trigger reopens an Order captive route beneath ${duchessRegionName(tile)}.`);
+      queueSeverantSlaveRouteEventForTile(tile);
+      render();
+      return true;
+    }
+
+    function triggerDevResolveBlackSite(outcome = "storm") {
+      ensureUnderworldState();
+      ensureRestorationState();
+      ensureDynastyState();
+      ensureHighSeverantState();
+      const tile = developerTriggerTile();
+      if (!tile) {
+        addLog("Dev trigger skipped: you need at least one owned land tile.");
+        render();
+        return false;
+      }
+      const systems = ensureTileSystems(tile);
+      systems.tunnelNode = true;
+      systems.severantContamination = clamp(Math.max(systems.severantContamination, 66), 0, 100);
+      systems.slaveRouteRisk = clamp(Math.max(systems.slaveRouteRisk, 38), 0, 100);
+      underworldState.lastBlackSiteRound = round;
+      if (outcome === "archive") {
+        systems.severantContamination = clamp(systems.severantContamination - 8, 0, 100);
+        restorationState.reformProgress = clamp(restorationState.reformProgress + 4, 0, 100);
+        highSeverantState.interest = clamp(highSeverantState.interest + 3, 0, 100);
+        addPrisoner({
+          category: "severant_operative",
+          name: `${SEVERANT_ORDER_NAME} Archivist`,
+          title: "Captured Black-Site Handler",
+          spirit: 42,
+          fear: 54,
+          compliance: 18,
+          health: 66,
+          notes: `Taken alive from a black site beneath ${duchessRegionName(tile)}.`,
+        });
+        addLog(`Dev trigger seizes the black-site archive beneath ${duchessRegionName(tile)}.`);
+        render();
+        return true;
+      }
+      freeSlaveRoute(tile);
+      systems.severantContamination = clamp(systems.severantContamination - 14, 0, 100);
+      highSeverantState.exposure = clamp(highSeverantState.exposure + 4, 0, 100);
+      dynastyState.orderCellsBroken = Math.max(0, (dynastyState.orderCellsBroken || 0) + 1);
+      addLog(`Dev trigger storms the black site beneath ${duchessRegionName(tile)}.`);
+      render();
+      return true;
+    }
+
+    function triggerDevResolveOrderRoute(outcome = "interdict") {
+      ensureUnderworldState();
+      ensureRestorationState();
+      ensureDynastyState();
+      ensureHighSeverantState();
+      const tile = developerTriggerTile();
+      if (!tile) {
+        addLog("Dev trigger skipped: you need at least one owned land tile.");
+        render();
+        return false;
+      }
+      const systems = ensureTileSystems(tile);
+      systems.tunnelNode = true;
+      systems.slaveRouteRisk = clamp(Math.max(systems.slaveRouteRisk, 30), 0, 100);
+      systems.severantDependency = clamp(Math.max(systems.severantDependency, 58), 0, 100);
+      underworldState.lastOrderRouteRound = round;
+      if (outcome === "track") {
+        systems.dissidentPresence = clamp(systems.dissidentPresence + 8, 0, 100);
+        dynastyState.counterIntelRating = clamp((dynastyState.counterIntelRating || 0) + 3, 0, 100);
+        highSeverantState.influence = clamp(highSeverantState.influence + 1, 0, 100);
+        addLog(`Dev trigger quietly tracks the captive route beneath ${duchessRegionName(tile)}.`);
+        render();
+        return true;
+      }
+      freeSlaveRoute(tile);
+      systems.severantDependency = clamp(systems.severantDependency - 6, 0, 100);
+      restorationState.orderContamination = clamp(restorationState.orderContamination - 3, 0, 100);
+      addLog(`Dev trigger interdicts the captive route beneath ${duchessRegionName(tile)}.`);
+      render();
+      return true;
+    }
+
+    function resetDeveloperCampaignRouteState() {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureRestorationState();
+      campaignRouteState.side = null;
+      campaignRouteState.choiceRound = -1;
+      campaignRouteState.lastOfferRound = -1;
+      campaignRouteState.deferUntilRound = 0;
+      campaignRouteState.severantDoctrine = null;
+      campaignRouteState.claimantQueenId = null;
+      campaignRouteState.setupDone = false;
+      campaignRouteState.claimantSeatLabel = null;
+      campaignRouteState.matriarchStanding = "sovereign";
+      campaignRouteState.lastPressureRound = -1;
+      campaignRouteState.lastRealignmentRound = -1;
+      campaignRouteState.orderReserve = 0;
+      campaignRouteState.lastDetachmentRound = -1;
+      campaignRouteState.lastDisciplineRound = -1;
+      campaignRouteState.lastCoronationRound = -1;
+      campaignRouteState.severantObjectivePhase = 0;
+      campaignRouteState.severantBriefedPhase = 0;
+      campaignRouteState.severantRewardedPhase = 0;
+      campaignRouteState.claimantCrownedQueenId = null;
+      campaignRouteState.severantCrowned = false;
+      campaignRouteState.successionSecured = false;
+      campaignRouteState.lastObjectiveAdvanceRound = -1;
+      campaignRouteState.severantCommandInstalled = false;
+      highSeverantProfile.directAudienceUnlocked = false;
+      highSeverantProfile.safehouseKnown = false;
+      highSeverantProfile.captive = false;
+      highSeverantProfile.escaped = false;
+      highSeverantProfile.confrontationOutcome = null;
+      highSeverantProfile.judgedRound = -1;
+      for (const faction of FACTIONS) {
+        if (faction.isHuman || !QUEEN_POWERS[faction.id]) continue;
+        const st = queenEntry(faction.id);
+        st.routeStatus = "neutral";
+        st.lastRouteChangeRound = -1;
+        st.forbiddenThisTurn = false;
+      }
+    }
+
+    function triggerDevPickCampaignSide() {
+      ensureCampaignRouteState();
+      if (campaignRouteState.side) {
+        resetDeveloperCampaignRouteState();
+        addLog("Dev trigger reopens the campaign fork so you can pick a side again.");
+      } else {
+        addLog("Dev trigger opens the campaign side picker.");
+      }
+      const opened = queueCampaignRouteChoice(true);
+      render();
+      return opened;
+    }
+
+    function triggerDevChooseCampaignRoute(side, force = false) {
+      ensureCampaignRouteState();
+      if (side !== "severant" && side !== "hidden_court") return false;
+      if (campaignRouteState.side === side && !force) {
+        addLog(`Dev trigger skipped: the campaign already belongs to the ${campaignRouteSideLabel(side)}.`);
+        if (side === "severant") openCampaignRouteReview();
+        render();
+        return true;
+      }
+      if (campaignRouteState.side && campaignRouteState.side !== side && !force) {
+        addLog(`Dev trigger skipped: the campaign is already locked to the ${campaignRouteSideLabel(campaignRouteState.side)}. Use the force button to override it.`);
+        render();
+        return false;
+      }
+      if (force) {
+        resetDeveloperCampaignRouteState();
+      }
+      const moved = chooseCampaignRoute(side);
+      if (moved) {
+        addLog(
+          force
+            ? `Dev trigger force-locks the campaign onto the ${campaignRouteSideLabel(side)}.`
+            : `Dev trigger moves the campaign onto the ${campaignRouteSideLabel(side)}.`
+        );
+      }
+      render();
+      return moved;
+    }
+
+    function triggerDevSeverantFinalApproach() {
+      ensureCampaignRouteState();
+      ensureDynastyState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Dev trigger skipped: take the Severant route first.");
+        render();
+        return false;
+      }
+      dynastyState.knownThreat = true;
+      dynastyState.counterIntelRating = Math.max(dynastyState.counterIntelRating || 0, 36);
+      dynastyState.orderCellsBroken = Math.max(dynastyState.orderCellsBroken || 0, 2);
+      dynastyState.highSeverantExposure = Math.max(dynastyState.highSeverantExposure || 0, 28);
+      highSeverantProfile.dossierStage = Math.max(highSeverantProfile.dossierStage || 0, 2);
+      highSeverantProfile.safehouseKnown = true;
+      highSeverantProfile.directAudienceUnlocked = true;
+      highSeverantState.exposure = Math.max(highSeverantState.exposure || 0, 20);
+      addLog("Dev trigger opens the High Severant's final approach.");
+      openHighSeverantAudience();
+      render();
+      return true;
+    }
+
+    function triggerDevPreviewSeverantEnding(doctrine = "dark_alliance") {
+      ensureCampaignRouteState();
+      ensureHighSeverantProfile();
+      if (campaignRouteState.side !== "severant") {
+        addLog("Dev trigger skipped: take the Severant route first.");
+        render();
+        return false;
+      }
+      const resolvedDoctrine = doctrine === "continuity" ? "continuity" : "dark_alliance";
+      campaignRouteState.severantDoctrine = resolvedDoctrine;
+      campaignRouteState.severantObjectivePhase = Math.max(campaignRouteState.severantObjectivePhase || 0, 4);
+      campaignRouteState.severantBriefedPhase = Math.max(campaignRouteState.severantBriefedPhase || 0, 4);
+      campaignRouteState.severantRewardedPhase = Math.max(campaignRouteState.severantRewardedPhase || 0, 3);
+      const ending = severantVictoryEndingData();
+      queueEventModal({
+        label: `${ending.label} Preview`,
+        title: ending.title,
+        body: `${ending.modalBody}\n\n[Developer Preview] This does not lock the campaign or end the current run.`,
+        portrait: highSeverantPortrait(),
+        cta: "Close Preview",
+      });
+      showEndingScreen(`${ending.title} Preview`, `${ending.summary}\n\nDeveloper preview only.`, playerFactionId());
+      addLog(`Dev trigger previews the ${resolvedDoctrine === "continuity" ? "continuity" : "dark alliance"} ending.`);
+      render();
+      return true;
+    }
+
+    function triggerDevPreviewSeverantJudgment() {
+      ensureHighSeverantProfile();
+      queueEventModal({
+        label: "Final Judgment Preview",
+        title: `${highSeverantProfile.hiddenName} Faces Punishment`,
+        body: `${highSeverantProfile.hiddenName} can no longer hide behind rival crowns, underground claimants, or puppet courts. Every queen she might have used as a shield now stands inside your order.\n\nYou drag the mistress of the ${SEVERANT_ORDER_NAME} before the court she thought she would manipulate forever. She stands trial for her crimes, loses the last illusion of full control, and is bent to your will under chains, sentence, and possession.\n\n[Developer Preview] This preview does not require the real victory gate.`,
+        portrait: highSeverantPortrait(),
+        cta: "Close Preview",
+      });
+      showEndingScreen(
+        "Severant Punished Preview",
+        `${highSeverantProfile.hiddenName} is captured alive, stripped of her hidden network, tried for the crimes of the ${SEVERANT_ORDER_NAME}, and forced under your command after every queen on the board and in the underground has been secured. The realm can continue afterward, with the former High Severant kept in your court as the last womb.\n\nDeveloper preview only.`,
+        playerFactionId()
+      );
+      addLog("Dev trigger previews the judgment ending.");
+      render();
+      return true;
+    }
+
+    function renderDevPanelLegacy() {
       devPanelEl.innerHTML = "";
       const shell = document.createElement("div");
       shell.className = "dev-shell";
@@ -9787,7 +19442,7 @@ const BASE_FACTIONS = [
       const options = developerQueenOptions();
       if (!options.length) {
         const empty = document.createElement("div");
-        empty.textContent = "Capture at least one queen first, or use the harem panel after the opening court is available.";
+        empty.textContent = "No queen data is available for developer testing yet.";
         devPanelEl.appendChild(empty);
         return;
       }
@@ -9825,21 +19480,81 @@ const BASE_FACTIONS = [
       });
       queenCard.appendChild(queenSelect);
 
-      const quickRow = document.createElement("div");
-      quickRow.className = "dev-inline";
-      for (const [label, mutate] of [
-        ["+10 Morale", () => { const st = queenEntry(Number(queenSelect.value)); st.morale = clamp(st.morale + 10, 0, 100); render(); renderDevPanel(); }],
-        ["+10 Trust", () => { const st = queenEntry(Number(queenSelect.value)); st.trust = clamp(st.trust + 10, -100, 100); render(); renderDevPanel(); }],
-        ["+10 Romance", () => { const st = queenEntry(Number(queenSelect.value)); st.romance = clamp(st.romance + 10, 0, 100); render(); renderDevPanel(); }],
-        ["Reset Draft", () => { developerState.sceneDraft = defaultSceneDraft(Number(queenSelect.value)); renderDevPanel(); }],
-      ]) {
-        const btn = document.createElement("button");
-        btn.textContent = label;
-        btn.addEventListener("click", mutate);
-        quickRow.appendChild(btn);
+      const queenStatus = document.createElement("div");
+      queenStatus.className = "tiny";
+      queenStatus.textContent = developerQueenSummaryLine(Number(draft.queenFaction));
+      queenCard.appendChild(queenStatus);
+
+      const quickRows = [
+        [
+          ["+25 Trust", () => mutateDeveloperSelectedQueen("raised trust", (st) => { st.trust = clamp(st.trust + 25, -100, 100); })],
+          ["+25 Romance", () => mutateDeveloperSelectedQueen("raised romance", (st) => { st.romance = clamp(st.romance + 25, 0, 100); })],
+          ["+25 Attraction", () => mutateDeveloperSelectedQueen("raised attraction", (st) => { st.attraction = clamp(st.attraction + 25, 0, 100); })],
+          ["-25 Hate", () => mutateDeveloperSelectedQueen("reduced hate", (st) => { st.hate = clamp(st.hate - 25, 0, 100); })],
+        ],
+        [
+          ["Bond Boost", () => applyDeveloperQueenPreset("bond")],
+          ["Devoted", () => applyDeveloperQueenPreset("devoted")],
+          ["Prime Surrender", () => applyDeveloperQueenPreset("offer_join")],
+          ["Reset Draft", () => { developerState.sceneDraft = defaultSceneDraft(Number(queenSelect.value)); renderDevPanel(); }],
+        ],
+      ];
+      for (const defs of quickRows) {
+        const quickRow = document.createElement("div");
+        quickRow.className = "dev-inline";
+        for (const [label, mutate] of defs) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = !developerState.enabled;
+          bindDevButton(btn, mutate);
+          quickRow.appendChild(btn);
+        }
+        queenCard.appendChild(quickRow);
       }
-      queenCard.appendChild(quickRow);
       shell.appendChild(queenCard);
+
+      const triggerCard = document.createElement("div");
+      triggerCard.className = "dev-card";
+      triggerCard.innerHTML = `<strong>Event Triggers</strong><br>Force route and underworld events so you can test the exact windows without waiting on turn RNG.`;
+
+      const triggerStatus = document.createElement("div");
+      triggerStatus.className = "tiny";
+      triggerStatus.textContent = `Route ${campaignRouteSideLabel()} • Objective ${campaignRouteState.side === "severant" ? severantObjectivePhaseTitle() : "Unavailable"} • Selected Queen ${QUEEN_POWERS[Number(queenSelect.value)]?.title || "None"}`;
+      triggerCard.appendChild(triggerStatus);
+
+      const triggerRows = [
+        [
+          ["Current Briefing", () => triggerDevSeverantObjectiveBriefing(campaignRouteState.severantObjectivePhase || 1)],
+          ["Briefing I", () => triggerDevSeverantObjectiveBriefing(1)],
+          ["Briefing II", () => triggerDevSeverantObjectiveBriefing(2)],
+          ["Briefing III", () => triggerDevSeverantObjectiveBriefing(3)],
+        ],
+        [
+          ["Elara Pressure", () => triggerDevSeverantPressureEvent("elara")],
+          ["Matriarch Pressure", () => triggerDevSeverantPressureEvent("matriarch")],
+          ["Dissenter Pressure", () => triggerDevSeverantPressureEvent("dissenter")],
+          ["Court Split", () => openSeverantCourtRoster()],
+        ],
+        [
+          ["Black Site", () => triggerDevSeverantBlackSiteEvent()],
+          ["Order Route", () => triggerDevSeverantOrderRouteEvent()],
+          ["Pick A Side", () => triggerDevPickCampaignSide()],
+          ["Objective Review", () => openSeverantObjectiveReview()],
+        ],
+      ];
+      for (const defs of triggerRows) {
+        const row = document.createElement("div");
+        row.className = "dev-inline";
+        for (const [label, fn] of defs) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = !developerState.enabled;
+          btn.addEventListener("click", fn);
+          row.appendChild(btn);
+        }
+        triggerCard.appendChild(row);
+      }
+      shell.appendChild(triggerCard);
 
       const sceneCard = document.createElement("div");
       sceneCard.className = "dev-card";
@@ -10124,33 +19839,668 @@ const BASE_FACTIONS = [
       haremPanelEl.appendChild(grid);
     }
 
+    function renderDevPanel() {
+      devPanelEl.innerHTML = "";
+      const shell = document.createElement("div");
+      shell.className = "dev-shell";
+
+      const options = developerQueenOptions();
+      if (!options.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No queen data is available for developer testing yet.";
+        devPanelEl.appendChild(empty);
+        return;
+      }
+
+      if (!developerState.selectedQueenFaction || !QUEEN_POWERS[developerState.selectedQueenFaction]) {
+        developerState.selectedQueenFaction = options[0].id;
+      }
+      const draft = ensureSceneDraft(developerState.selectedQueenFaction);
+
+      const toggleCard = document.createElement("div");
+      toggleCard.className = "dev-card";
+      toggleCard.innerHTML = `<label class="dev-toggle"><input type="checkbox" ${developerState.enabled ? "checked" : ""}> Developer mode enabled</label>`;
+      const toggleInput = toggleCard.querySelector("input");
+      toggleInput.addEventListener("change", () => {
+        developerState.enabled = toggleInput.checked;
+        renderDevPanel();
+        if (activeMenuTab === "harem") renderHaremPanel();
+      });
+      shell.appendChild(toggleCard);
+
+      const queenCard = document.createElement("div");
+      queenCard.className = "dev-card";
+      const queenSelect = document.createElement("select");
+      for (const option of options) {
+        const opt = document.createElement("option");
+        opt.value = option.id;
+        opt.textContent = option.title;
+        opt.selected = option.id === Number(draft.queenFaction);
+        queenSelect.appendChild(opt);
+      }
+      queenSelect.addEventListener("change", () => {
+        developerState.selectedQueenFaction = Number(queenSelect.value);
+        developerState.sceneDraft = defaultSceneDraft(developerState.selectedQueenFaction);
+        renderDevPanel();
+      });
+      queenCard.appendChild(queenSelect);
+
+      const queenStatus = document.createElement("div");
+      queenStatus.className = "tiny";
+      queenStatus.textContent = developerQueenSummaryLine(Number(draft.queenFaction));
+      queenCard.appendChild(queenStatus);
+
+      const quickRows = [
+        [
+          ["+25 Trust", () => mutateDeveloperSelectedQueen("raised trust", (st) => { st.trust = clamp(st.trust + 25, -100, 100); })],
+          ["+25 Romance", () => mutateDeveloperSelectedQueen("raised romance", (st) => { st.romance = clamp(st.romance + 25, 0, 100); })],
+          ["+25 Attraction", () => mutateDeveloperSelectedQueen("raised attraction", (st) => { st.attraction = clamp(st.attraction + 25, 0, 100); })],
+          ["-25 Hate", () => mutateDeveloperSelectedQueen("reduced hate", (st) => { st.hate = clamp(st.hate - 25, 0, 100); })],
+        ],
+        [
+          ["Bond Boost", () => applyDeveloperQueenPreset("bond")],
+          ["Devoted", () => applyDeveloperQueenPreset("devoted")],
+          ["Prime Surrender", () => applyDeveloperQueenPreset("offer_join")],
+          ["Reset Draft", () => { developerState.sceneDraft = defaultSceneDraft(Number(queenSelect.value)); renderDevPanel(); }],
+        ],
+      ];
+      for (const defs of quickRows) {
+        const quickRow = document.createElement("div");
+        quickRow.className = "dev-inline";
+        for (const [label, mutate] of defs) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = !developerState.enabled;
+          bindDevButton(btn, mutate);
+          quickRow.appendChild(btn);
+        }
+        queenCard.appendChild(quickRow);
+      }
+      shell.appendChild(queenCard);
+
+      const triggerCard = document.createElement("div");
+      triggerCard.className = "dev-card";
+      triggerCard.innerHTML = `<strong>Event Triggers</strong><br>Force route and underworld events so you can test the exact windows without waiting on turn RNG.`;
+
+      const triggerStatus = document.createElement("div");
+      triggerStatus.className = "tiny";
+      triggerStatus.textContent = `Route ${campaignRouteSideLabel()} | Objective ${campaignRouteState.side === "severant" ? severantObjectivePhaseTitle() : "Unavailable"} | Selected Queen ${QUEEN_POWERS[Number(queenSelect.value)]?.title || "None"}`;
+      triggerCard.appendChild(triggerStatus);
+
+      const triggerRows = [
+        [
+          ["Current Briefing", () => triggerDevSeverantObjectiveBriefing(campaignRouteState.severantObjectivePhase || 1)],
+          ["Briefing I", () => triggerDevSeverantObjectiveBriefing(1)],
+          ["Briefing II", () => triggerDevSeverantObjectiveBriefing(2)],
+          ["Briefing III", () => triggerDevSeverantObjectiveBriefing(3)],
+        ],
+        [
+          ["Elara Pressure", () => triggerDevSeverantPressureEvent("elara")],
+          ["Matriarch Pressure", () => triggerDevSeverantPressureEvent("matriarch")],
+          ["Dissenter Pressure", () => triggerDevSeverantPressureEvent("dissenter")],
+          ["Court Split", () => openSeverantCourtRoster()],
+        ],
+        [
+          ["Black Site Event", () => triggerDevSeverantBlackSiteEvent()],
+          ["Black Site Storm", () => triggerDevResolveBlackSite("storm")],
+          ["Black Site Archive", () => triggerDevResolveBlackSite("archive")],
+        ],
+        [
+          ["Order Event", () => triggerDevSeverantOrderRouteEvent()],
+          ["Order Interdict", () => triggerDevResolveOrderRoute("interdict")],
+          ["Order Shadow", () => triggerDevResolveOrderRoute("track")],
+        ],
+        [
+          ["Choose Severant", () => triggerDevChooseCampaignRoute("severant")],
+          ["Force Severant", () => triggerDevChooseCampaignRoute("severant", true)],
+          ["Choose Hidden Court", () => triggerDevChooseCampaignRoute("hidden_court")],
+          ["Force Hidden Court", () => triggerDevChooseCampaignRoute("hidden_court", true)],
+        ],
+        [
+          ["Pick A Side", () => triggerDevPickCampaignSide()],
+          ["Objective Review", () => openSeverantObjectiveReview()],
+          ["Final Approach", () => triggerDevSeverantFinalApproach()],
+        ],
+        [
+          ["Preview Dark Alliance", () => triggerDevPreviewSeverantEnding("dark_alliance")],
+          ["Preview Continuity", () => triggerDevPreviewSeverantEnding("continuity")],
+          ["Preview Judgment", () => triggerDevPreviewSeverantJudgment()],
+        ],
+      ];
+      for (const defs of triggerRows) {
+        const row = document.createElement("div");
+        row.className = "dev-inline";
+        for (const [label, fn] of defs) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = !developerState.enabled;
+          bindDevButton(btn, fn);
+          row.appendChild(btn);
+        }
+        triggerCard.appendChild(row);
+      }
+      shell.appendChild(triggerCard);
+
+      const sceneCard = document.createElement("div");
+      sceneCard.className = "dev-card";
+      const fields = [
+        ["title", "Scene title"],
+        ["summary", "Scene setup"],
+        ["optionA", "Option A label"],
+        ["optionAText", "Option A scene text"],
+        ["optionB", "Option B label"],
+        ["optionBText", "Option B scene text"],
+        ["aftercare", "Aftercare / next hook"],
+      ];
+      for (const [key, label] of fields) {
+        const el = key === "summary" || key.endsWith("Text") || key === "aftercare"
+          ? document.createElement("textarea")
+          : document.createElement("input");
+        el.value = draft[key] || "";
+        el.placeholder = label;
+        el.addEventListener("input", () => { draft[key] = el.value; });
+        sceneCard.appendChild(el);
+      }
+
+      const statGrid = document.createElement("div");
+      statGrid.className = "dev-grid";
+      for (const key of ["optionAMorale", "optionATrust", "optionARomance", "optionAAttraction", "optionBMorale", "optionBTrust", "optionBRomance", "optionBAttraction"]) {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = draft[key];
+        input.placeholder = key;
+        input.addEventListener("input", () => { draft[key] = Number(input.value || 0); });
+        statGrid.appendChild(input);
+      }
+      sceneCard.appendChild(statGrid);
+
+      const actionRow = document.createElement("div");
+      actionRow.className = "dev-inline";
+      for (const [label, fn] of [
+        ["Preview Scene", () => previewDevScene()],
+        ["Open From Harem", () => setMenuTab("harem")],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.disabled = !developerState.enabled;
+        bindDevButton(btn, fn);
+        actionRow.appendChild(btn);
+      }
+      sceneCard.appendChild(actionRow);
+
+      const exportBlock = document.createElement("div");
+      exportBlock.className = "dev-code";
+      exportBlock.textContent = JSON.stringify(draft, null, 2);
+      sceneCard.appendChild(exportBlock);
+      shell.appendChild(sceneCard);
+
+      if (developerState.sceneHistory.length) {
+        const historyCard = document.createElement("div");
+        historyCard.className = "dev-card";
+        historyCard.innerHTML = developerState.sceneHistory
+          .map((entry) => `${formatTimestamp(entry.at)} - ${QUEEN_POWERS[entry.queenFaction]?.title || "Queen"} - ${entry.title} [${entry.branch}]`)
+          .join("<br>");
+        shell.appendChild(historyCard);
+      }
+
+      devPanelEl.appendChild(shell);
+    }
+
     function renderHaremPanel() {
       ensureMatronState();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      ensureCampaignRouteState();
+      if (campaignRouteState.side === "severant") {
+        ensureSeverantCourtWomenSeeded(3);
+        syncSeverantRouteCourtAlignment();
+      }
       haremPanelEl.innerHTML = "";
 
       const heading = document.createElement("div");
       heading.className = "gallery-sub";
-      heading.textContent = gameMode === "servitude"
-        ? `Manage queens and matrons within your harem. Your overlord can restrict or claim queens. Harem autonomy: ${haremAutonomyLabel()}.`
-        : "Manage queens and matrons within your harem.";
+      heading.textContent = campaignRouteState.side === "severant"
+        ? "Manage the claimant queen, the High Severant's inner service wing, and the women who stayed with you after the court split."
+        : gameMode === "servitude"
+        ? `Manage queens, consorts, and matrons within your harem. Your overlord can restrict or claim queens. Harem autonomy: ${haremAutonomyLabel()}.`
+        : "Manage queens, consorts, and matrons within your harem.";
       haremPanelEl.appendChild(heading);
 
       const isHumanTurn = !gameOver && isPlayerControlledFaction(FACTIONS[currentFactionIndex].id);
+      const underworldConsorts = courtCrimeQueens();
+      const severantCourtWomen = campaignRouteState.side === "severant" ? activeSeverantCourtWomen() : [];
+
+      if (underworldConsorts.length) {
+        const crimeHeading = document.createElement("div");
+        crimeHeading.className = "gallery-sub";
+        crimeHeading.textContent = "Underworld Consorts";
+        haremPanelEl.appendChild(crimeHeading);
+
+        const crimeGrid = document.createElement("div");
+        crimeGrid.className = "gallery-grid";
+        for (const profile of underworldConsorts) {
+          const wrap = document.createElement("div");
+          wrap.className = "gallery-card";
+
+          const title = document.createElement("div");
+          title.className = "gallery-head";
+          title.textContent = profile.name;
+          wrap.appendChild(title);
+
+          const sub = document.createElement("div");
+          sub.className = "gallery-sub";
+          sub.textContent = `${profile.title} - ${profile.region}`;
+          wrap.appendChild(sub);
+
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = crimeQueenPortraitSeed(profile);
+          img.alt = `${profile.name} portrait`;
+          wrap.appendChild(img);
+
+          const tag = document.createElement("div");
+          tag.className = "tag";
+          tag.textContent = `Assignment: ${profile.assignment || "court"}`;
+          wrap.appendChild(tag);
+
+          const bond = document.createElement("div");
+          bond.className = "tiny";
+          bond.textContent = `Bond: ${crimeQueenBondLabel(profile)} - Loyalty ${profile.loyalty} - Trust ${profile.trust} - Romance ${profile.romance}`;
+          wrap.appendChild(bond);
+
+          const talent = document.createElement("div");
+          talent.className = "tiny";
+          talent.textContent = `Specialty ${profile.specialty} - Leverage ${profile.leverage} - Cruelty ${profile.cruelty}`;
+          wrap.appendChild(talent);
+
+          const family = document.createElement("div");
+          family.className = "tiny";
+          family.textContent = `Family: ${crimeQueenPregnancyStatusLabel(profile)}`;
+          wrap.appendChild(family);
+
+          const notes = document.createElement("div");
+          notes.className = "tiny";
+          notes.textContent = profile.notes;
+          wrap.appendChild(notes);
+
+          const row = document.createElement("div");
+          row.className = "row";
+          const converseBtn = document.createElement("button");
+          converseBtn.textContent = "Converse";
+          converseBtn.disabled = !isHumanTurn || profile.converseUsedThisTurn;
+          bindReliablePress(converseBtn, () => converseCrimeQueen(profile));
+          row.appendChild(converseBtn);
+          const flirtBtn = document.createElement("button");
+          flirtBtn.textContent = "Flirt";
+          flirtBtn.disabled = !isHumanTurn || profile.flirtUsedThisTurn;
+          bindReliablePress(flirtBtn, () => flirtCrimeQueen(profile));
+          row.appendChild(flirtBtn);
+          const confideBtn = document.createElement("button");
+          confideBtn.textContent = "Confide";
+          confideBtn.disabled = !isHumanTurn || profile.confideUsedThisTurn;
+          bindReliablePress(confideBtn, () => confideCrimeQueen(profile));
+          row.appendChild(confideBtn);
+          wrap.appendChild(row);
+
+          const privateRow = document.createElement("div");
+          privateRow.className = "row";
+          const audienceBtn = document.createElement("button");
+          audienceBtn.textContent = "Private Audience";
+          audienceBtn.disabled = !isHumanTurn || profile.audienceUsedThisTurn;
+          bindReliablePress(audienceBtn, () => audienceCrimeQueen(profile));
+          privateRow.appendChild(audienceBtn);
+          const intimacyBtn = document.createElement("button");
+          intimacyBtn.textContent = "Intimacy";
+          intimacyBtn.disabled = !isHumanTurn || profile.intimacyUsedThisTurn;
+          bindReliablePress(intimacyBtn, () => intimacyCrimeQueen(profile));
+          privateRow.appendChild(intimacyBtn);
+          const giftBtn = document.createElement("button");
+          giftBtn.textContent = "Gift Her";
+          giftBtn.disabled = !isHumanTurn || profile.giftUsedThisTurn;
+          bindReliablePress(giftBtn, () => giftCrimeQueen(profile));
+          privateRow.appendChild(giftBtn);
+          const spoilBtn = document.createElement("button");
+          spoilBtn.textContent = "Let Her Spoil You";
+          spoilBtn.disabled = !isHumanTurn || profile.spoilUsedThisTurn;
+          bindReliablePress(spoilBtn, () => spoilFromCrimeQueen(profile));
+          privateRow.appendChild(spoilBtn);
+          wrap.appendChild(privateRow);
+
+          const assignRow = document.createElement("div");
+          assignRow.className = "row";
+          for (const mode of ["court", "intrigue", "underworld"]) {
+            const assignBtn = document.createElement("button");
+            assignBtn.textContent = mode[0].toUpperCase() + mode.slice(1);
+            assignBtn.disabled = !isHumanTurn || profile.assignment === mode;
+            bindReliablePress(assignBtn, () => assignCrimeQueen(profile, mode));
+            assignRow.appendChild(assignBtn);
+          }
+          wrap.appendChild(assignRow);
+
+          crimeGrid.appendChild(wrap);
+        }
+        haremPanelEl.appendChild(crimeGrid);
+      }
+
+      if (campaignRouteState.side === "severant") {
+        const serviceHeading = document.createElement("div");
+        serviceHeading.className = "gallery-sub";
+        serviceHeading.textContent = "Severant Service Wing";
+        haremPanelEl.appendChild(serviceHeading);
+
+        const serviceGrid = document.createElement("div");
+        serviceGrid.className = "gallery-grid";
+
+        const doctrineCard = document.createElement("div");
+        doctrineCard.className = "gallery-card";
+        doctrineCard.innerHTML = `<strong>Service Wing</strong><br>These women were broken out of the Order's old machinery and now serve close to you inside the Severant court. Their assignment, loyalty, and family status all matter.`;
+        serviceGrid.appendChild(doctrineCard);
+
+        if (!severantCourtWomen.length) {
+          const empty = document.createElement("div");
+          empty.className = "gallery-card";
+          empty.textContent = "No Severant service women are attached to your court yet. Converted defectors will appear here.";
+          serviceGrid.appendChild(empty);
+        } else {
+          for (const profile of severantCourtWomen) {
+            const wrap = document.createElement("div");
+            wrap.className = "gallery-card";
+
+            const title = document.createElement("div");
+            title.className = "gallery-head";
+            title.textContent = profile.name;
+            wrap.appendChild(title);
+
+            const sub = document.createElement("div");
+            sub.className = "gallery-sub";
+            sub.textContent = `${profile.title} - ${severantCourtAssignmentLabel(profile)}`;
+            wrap.appendChild(sub);
+
+            const portrait = document.createElement("img");
+            portrait.className = "leader-portrait";
+            portrait.src = severantCourtPortrait(profile);
+            portrait.alt = `${profile.name} portrait`;
+            wrap.appendChild(portrait);
+
+            const tag = document.createElement("div");
+            tag.className = "tag";
+            tag.textContent = `Bond: ${severantCourtBondLabel(profile)} - Assignment ${profile.assignment || "household"}`;
+            wrap.appendChild(tag);
+
+            const statLine = document.createElement("div");
+            statLine.className = "tiny";
+            statLine.textContent = `Trust ${profile.trust || 0} - Devotion ${profile.devotion || 0} - Romance ${profile.romance || 0} - Attraction ${profile.attraction || 0}`;
+            wrap.appendChild(statLine);
+
+            const dutyLine = document.createElement("div");
+            dutyLine.className = "tiny";
+            dutyLine.textContent = `Usefulness ${profile.usefulness || 0} - False Loyalty Risk ${profile.falseLoyaltyRisk || 0} - Cover ${profile.cover || 0}`;
+            wrap.appendChild(dutyLine);
+
+            const familyLine = document.createElement("div");
+            familyLine.className = "tiny";
+            familyLine.textContent = `Family: ${severantCourtPregnancyStatusLabel(profile)}`;
+            wrap.appendChild(familyLine);
+
+            const notes = document.createElement("div");
+            notes.className = "tiny";
+            notes.textContent = profile.notes || "Serving under guard within the Severant household.";
+            wrap.appendChild(notes);
+
+            const socialRow = document.createElement("div");
+            socialRow.className = "row";
+            for (const [label, handler, disabled] of [
+              ["Converse", () => converseSeverantCourtWoman(profile), !isHumanTurn || profile.converseUsedThisTurn],
+              ["Flirt", () => flirtSeverantCourtWoman(profile), !isHumanTurn || profile.flirtUsedThisTurn],
+              ["Gift Her", () => giftSeverantCourtWoman(profile), !isHumanTurn || profile.giftUsedThisTurn || treasury < 1],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.disabled = Boolean(disabled);
+              bindReliablePress(btn, handler);
+              socialRow.appendChild(btn);
+            }
+            wrap.appendChild(socialRow);
+
+            const privateRow = document.createElement("div");
+            privateRow.className = "row";
+            for (const [label, handler, disabled] of [
+              ["Let Her Spoil You", () => severantCourtWomanSpoilPlayer(profile), !isHumanTurn || profile.spoilUsedThisTurn],
+              ["Intimacy", () => intimacySeverantCourtWoman(profile), !isHumanTurn || profile.intimacyUsedThisTurn],
+              ["Reassign", () => reassignSeverantCourtWoman(profile), !isHumanTurn],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.disabled = Boolean(disabled);
+              bindReliablePress(btn, handler);
+              privateRow.appendChild(btn);
+            }
+            wrap.appendChild(privateRow);
+
+            serviceGrid.appendChild(wrap);
+          }
+        }
+
+        haremPanelEl.appendChild(serviceGrid);
+      }
 
       const queenHeading = document.createElement("div");
       queenHeading.className = "gallery-sub";
-      queenHeading.textContent = "Queens";
+      queenHeading.textContent = "Queens And Primary Consorts";
       haremPanelEl.appendChild(queenHeading);
 
       const queenGrid = document.createElement("div");
       queenGrid.className = "gallery-grid";
-      if (capturedQueens.length === 0) {
+      const matriarch = matriarchMatron();
+      const showSeverantConsort = campaignRouteState.side === "severant";
+      const showMatriarch = Boolean(matriarch) && !(campaignRouteState.side === "severant" && campaignRouteState.matriarchStanding === "hidden_court");
+      const visibleCourtQueens = capturedQueens.filter((queenFaction) =>
+        !(campaignRouteState.side === "severant" && queenEntry(queenFaction).routeStatus === "gone")
+      );
+      if (showSeverantConsort) {
+        const wrap = document.createElement("div");
+        wrap.className = "gallery-card";
+
+        const title = document.createElement("div");
+        title.className = "gallery-head";
+        title.textContent = highSeverantProfile.hiddenName;
+        wrap.appendChild(title);
+
+        const sub = document.createElement("div");
+        sub.className = "gallery-sub";
+        sub.textContent = "High Severant - Center Of The Pact";
+        wrap.appendChild(sub);
+
+        const portrait = document.createElement("img");
+        portrait.className = "leader-portrait";
+        portrait.src = highSeverantPortrait();
+        portrait.alt = `${highSeverantProfile.hiddenName} portrait`;
+        wrap.appendChild(portrait);
+
+        const tag = document.createElement("div");
+        tag.className = "tag";
+        tag.textContent = `Assignment: Inner Circle - Doctrine ${severantDoctrineLabel()}`;
+        wrap.appendChild(tag);
+
+        const statsA = document.createElement("div");
+        statsA.className = "tiny";
+        statsA.textContent = `Influence ${highSeverantState.influence} - Respect ${highSeverantState.respect} - Obsession ${highSeverantState.obsession}`;
+        wrap.appendChild(statsA);
+
+        const statsB = document.createElement("div");
+        statsB.className = "tiny";
+        statsB.textContent = `Fascination ${highSeverantProfile.fascination} - Seduction ${highSeverantProfile.seduction} - Hostility ${highSeverantProfile.hostility}`;
+        wrap.appendChild(statsB);
+
+        const serviceText = document.createElement("div");
+        serviceText.className = "tiny";
+        serviceText.textContent = "She has replaced Elara at the center of the household and now drives the pact, the claimant court, and your phase objectives directly.";
+        wrap.appendChild(serviceText);
+
+        const familyText = document.createElement("div");
+        familyText.className = "tiny";
+        familyText.textContent = `Family: ${highSeverantPregnancyStatusLabel()}`;
+        wrap.appendChild(familyText);
+
+        const notes = document.createElement("div");
+        notes.className = "tiny";
+        notes.textContent = highSeverantProfile.notes;
+        wrap.appendChild(notes);
+
+        const row = document.createElement("div");
+        row.className = "row";
+        for (const [label, handler, disabled] of [
+          ["Audience", openHighSeverantAudience, !highSeverantProfile.directAudienceUnlocked && !highSeverantProfile.safehouseKnown],
+          ["Open Dossier", openHighSeverantDossier, false],
+          ["Objectives", openSeverantObjectiveReview, false],
+        ]) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          bindReliablePress(btn, handler);
+          row.appendChild(btn);
+        }
+        wrap.appendChild(row);
+
+        const privateRow = document.createElement("div");
+        privateRow.className = "row";
+        for (const [label, handler, disabled] of [
+          ["Converse", converseWithHighSeverant, !isHumanTurn || highSeverantProfile.converseUsedThisTurn],
+          ["Flirt", flirtWithHighSeverant, !isHumanTurn || highSeverantProfile.flirtUsedThisTurn],
+          ["Gift Her", giftHighSeverant, !isHumanTurn || highSeverantProfile.giftUsedThisTurn || treasury < 1],
+          ["Let Her Spoil You", letHighSeverantSpoilYou, !isHumanTurn || highSeverantProfile.spoilUsedThisTurn],
+          [highSeverantProfile.confrontationOutcome === "judged" ? "Use Last Womb" : "Intimacy", privateIntimacyWithHighSeverant, !isHumanTurn || highSeverantProfile.intimacyUsedThisTurn],
+        ]) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          bindReliablePress(btn, handler);
+          privateRow.appendChild(btn);
+        }
+        wrap.appendChild(privateRow);
+        queenGrid.appendChild(wrap);
+      }
+
+      if (campaignRouteState.side === "severant" && campaignRouteState.matriarchStanding === "hidden_court") {
+        const absenceCard = document.createElement("div");
+        absenceCard.className = "gallery-card";
+        absenceCard.innerHTML = `<strong>Hidden Court Break</strong><br>Elara and the Matriarch fled the active court when the Severant seized your household. They are no longer part of the harem side of this route.`;
+        queenGrid.appendChild(absenceCard);
+      }
+
+      if (showMatriarch) {
+        const wrap = document.createElement("div");
+        wrap.className = "gallery-card";
+
+        const title = document.createElement("div");
+        title.className = "gallery-head";
+        title.textContent = matriarch.title || "The Matriarch";
+        wrap.appendChild(title);
+
+        const sub = document.createElement("div");
+        sub.className = "gallery-sub";
+        sub.textContent = `${matriarch.name} - Primary Consort and Household Sovereign`;
+        wrap.appendChild(sub);
+
+        if (matriarch.portrait) {
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = matriarch.portrait;
+          img.alt = `${matriarch.name} portrait`;
+          wrap.appendChild(img);
+        }
+
+        const tag = document.createElement("div");
+        tag.className = "tag";
+        tag.textContent = campaignRouteState.side === "severant"
+          ? `Route Status: ${matriarchSeverantStandingLabel()}`
+          : (matriarch.assignedProtection ? "Assignment: Primary Protector" : "Assignment: Inner Court");
+        wrap.appendChild(tag);
+
+        const moraleText = document.createElement("div");
+        moraleText.className = "tiny";
+        moraleText.textContent = `Loyalty: ${matriarch.loyalty} - Trust ${matriarch.trust} - Romance ${matriarch.romance}`;
+        wrap.appendChild(moraleText);
+
+        const rankText = document.createElement("div");
+        rankText.className = "tiny";
+        rankText.textContent = `Bond: Primary Consort - Insight ${matriarch.insight} - Protectiveness ${matriarch.protectiveness} - Authority ${matriarch.accessAuthority}/5`;
+        wrap.appendChild(rankText);
+
+        const serviceText = document.createElement("div");
+        serviceText.className = "tiny";
+        serviceText.textContent = campaignRouteState.side === "severant"
+          ? (campaignRouteState.matriarchStanding === "sealed"
+            ? "The bad route has sealed the Matriarch away from the active court."
+            : "The Matriarch remains in your orbit, but only under the Severant's watch.")
+          : "Equal to Queen Elara as your wife, lover, and household sovereign.";
+        wrap.appendChild(serviceText);
+
+        const familyText = document.createElement("div");
+        familyText.className = "tiny";
+        familyText.textContent = `Family: ${matronPregnancyStatusLabel(matriarch)}`;
+        wrap.appendChild(familyText);
+
+        const moraleWrap = document.createElement("div");
+        moraleWrap.className = "morale-wrap";
+        const moraleFill = document.createElement("div");
+        moraleFill.className = "morale-fill";
+        moraleFill.style.width = `${clamp(((matriarch.loyalty || 0) + (matriarch.romance || 0) + (matriarch.trust || 0)) / 3, 0, 100)}%`;
+        moraleWrap.appendChild(moraleFill);
+        wrap.appendChild(moraleWrap);
+
+        const info = document.createElement("div");
+        info.className = "tiny";
+        info.textContent = `${matriarch.notes} Traits: ${Array.isArray(matriarch.traits) ? matriarch.traits.join(", ") : ""}${campaignRouteState.side === "severant" ? ` Route standing: ${matriarchSeverantStandingLabel()}.` : ""}`;
+        wrap.appendChild(info);
+
+        const chatBtn = document.createElement("button");
+        chatBtn.textContent = "Converse";
+        chatBtn.disabled = matriarch.status !== "active" || !isHumanTurn || matriarch.converseUsedThisTurn || matriarchPersonalLocked();
+        bindReliablePress(chatBtn, () => matronConverse(matriarch));
+        wrap.appendChild(chatBtn);
+
+        const socialRow = document.createElement("div");
+        socialRow.className = "row";
+        for (const [label, handler, disabled] of [
+          ["Flirt", () => matronFlirt(matriarch), matriarch.status !== "active" || !isHumanTurn || matriarch.flirtUsedThisTurn || matriarchPersonalLocked()],
+          ["Confide", () => matronConfide(matriarch), matriarch.status !== "active" || !isHumanTurn || matriarch.confideUsedThisTurn || matriarchPersonalLocked()],
+          ["Intimacy", () => matronIntimacy(matriarch), matriarch.status !== "active" || !isHumanTurn || matriarch.intimacyUsedThisTurn || matriarchPersonalLocked()],
+        ]) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          bindReliablePress(btn, handler);
+          socialRow.appendChild(btn);
+        }
+        wrap.appendChild(socialRow);
+
+        const supportRow = document.createElement("div");
+        supportRow.className = "row";
+        for (const [label, handler, disabled] of [
+          ["Gift Her", () => giftMatron(matriarch), matriarch.status !== "active" || !isHumanTurn || matriarch.giftUsedThisTurn || matriarchPersonalLocked()],
+          ["Let Her Spoil You", () => matronSpoilPlayer(matriarch), matriarch.status !== "active" || !isHumanTurn || matriarch.spoilUsedThisTurn || matriarchPersonalLocked()],
+          ["Ask Counsel", () => askCounselFromMatron(matriarch), matriarch.status !== "active" || matriarchSupportLocked()],
+          ["Screen Visitor", () => screenVisitorWithMatron(matriarch), matriarch.status !== "active" || matronState.protectionLevel < 2 || matriarchSupportLocked()],
+        ]) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          bindReliablePress(btn, handler);
+          supportRow.appendChild(btn);
+        }
+        wrap.appendChild(supportRow);
+
+        queenGrid.appendChild(wrap);
+      }
+
+      if (visibleCourtQueens.length === 0 && !showMatriarch && !showSeverantConsort) {
         const emptyQueens = document.createElement("div");
         emptyQueens.className = "gallery-card";
         emptyQueens.textContent = "No queens are currently housed here.";
         queenGrid.appendChild(emptyQueens);
       } else {
-        for (const queenFaction of capturedQueens) {
+        for (const queenFaction of visibleCourtQueens) {
           const queen = QUEEN_POWERS[queenFaction];
           const st = queenEntry(queenFaction);
           const rank = queenRelationshipRank(queenFaction);
@@ -10178,7 +20528,9 @@ const BASE_FACTIONS = [
 
           const tag = document.createElement("div");
           tag.className = "tag";
-          tag.textContent = `Assignment: ${st.assignment}`;
+          tag.textContent = campaignRouteState.side === "severant" && st.routeStatus === "claimant"
+            ? `Assignment: ${st.assignment} • Claimant Throne`
+            : `Assignment: ${st.assignment}`;
           wrap.appendChild(tag);
 
           const moraleText = document.createElement("div");
@@ -10193,8 +20545,15 @@ const BASE_FACTIONS = [
 
           const serviceText = document.createElement("div");
           serviceText.className = "tiny";
-          serviceText.textContent = gameMode === "servitude" ? haremStatusText(queenFaction) : "Under your supervision";
+          serviceText.textContent = severantRouteQueenServiceText(queenFaction);
           wrap.appendChild(serviceText);
+
+          if (campaignRouteState.side === "severant") {
+            const routeText = document.createElement("div");
+            routeText.className = "tiny";
+            routeText.textContent = `Route: ${severantRouteQueenStatusLabel(st.routeStatus)}`;
+            wrap.appendChild(routeText);
+          }
 
           const familyText = document.createElement("div");
           familyText.className = "tiny";
@@ -10357,15 +20716,18 @@ const BASE_FACTIONS = [
       matronHeading.textContent = "Matron Court";
       haremPanelEl.appendChild(matronHeading);
 
+      const knownMatrons = discoveredCourtMatrons();
+      const hiddenMatrons = undiscoveredCourtMatrons();
+
       const matronSummary = document.createElement("div");
       matronSummary.className = "gallery-card";
       matronSummary.style.marginBottom = "1rem";
-      matronSummary.innerHTML = `<strong>Matron Doctrine</strong><br>Matrons belong to the harem as its watchful elder heart: protectors, advisors, and deeply affectionate guardians of the Hylsar.<br><br>Protection Level ${matronState.protectionLevel} - ${matronProtectionLevelLabel()} - Active Matrons ${activeMatrons().length}`;
+      matronSummary.innerHTML = `<strong>Matron Doctrine</strong><br>The Matriarch is not part of the matron court. She stands beside Queen Elara as a primary consort and household sovereign. The matron court beneath her remains the watchful elder heart of your harem: protectors, advisors, and guardians against traps around your line.<br><br>Protection Level ${matronState.protectionLevel} - ${matronProtectionLevelLabel()} - Active Court Matrons ${activeCourtMatrons().length} - Known Court Matrons ${knownMatrons.length}${hiddenMatrons.length ? ` - Unfound Matrons ${hiddenMatrons.length}` : ""}`;
       haremPanelEl.appendChild(matronSummary);
 
       const matronGrid = document.createElement("div");
       matronGrid.className = "gallery-grid";
-      for (const matron of matrons) {
+      for (const matron of knownMatrons) {
         const wrap = document.createElement("div");
         wrap.className = "gallery-card";
 
@@ -10418,13 +20780,13 @@ const BASE_FACTIONS = [
           ["Converse", () => matronConverse(matron), matron.status !== "active" || !isHumanTurn || matron.converseUsedThisTurn],
           ["Flirt", () => matronFlirt(matron), matron.status !== "active" || !isHumanTurn || matron.flirtUsedThisTurn],
           ["Confide", () => matronConfide(matron), matron.status !== "active" || !isHumanTurn || matron.confideUsedThisTurn],
-          ["Private Time", () => matronIntimacy(matron), matron.status !== "active" || !isHumanTurn || matron.intimacyUsedThisTurn],
+          ["Intimacy", () => matronIntimacy(matron), matron.status !== "active" || !isHumanTurn || matron.intimacyUsedThisTurn],
         ];
         for (const [label, handler, disabled] of matronActions) {
           const btn = document.createElement("button");
           btn.textContent = label;
           btn.disabled = Boolean(disabled);
-          btn.addEventListener("click", () => handler());
+          bindReliablePress(btn, handler);
           socialRow.appendChild(btn);
         }
         wrap.appendChild(socialRow);
@@ -10432,6 +20794,7 @@ const BASE_FACTIONS = [
         const careRow = document.createElement("div");
         careRow.className = "row";
         const careActions = [
+          ["Gift Her", () => giftMatron(matron), matron.status !== "active" || !isHumanTurn || matron.giftUsedThisTurn],
           ["Let Her Spoil You", () => matronSpoilPlayer(matron), matron.status !== "active" || !isHumanTurn || matron.spoilUsedThisTurn],
           ["Ask Counsel", () => askCounselFromMatron(matron), matron.status !== "active"],
           ["Screen Visitor", () => screenVisitorWithMatron(matron), matron.status !== "active" || matronState.protectionLevel < 2],
@@ -10441,11 +20804,17 @@ const BASE_FACTIONS = [
           const btn = document.createElement("button");
           btn.textContent = label;
           btn.disabled = Boolean(disabled);
-          btn.addEventListener("click", () => handler());
+          bindReliablePress(btn, handler);
           careRow.appendChild(btn);
         }
         wrap.appendChild(careRow);
         matronGrid.appendChild(wrap);
+      }
+      if (hiddenMatrons.length) {
+        const hiddenCard = document.createElement("div");
+        hiddenCard.className = "gallery-card";
+        hiddenCard.innerHTML = `<strong>Unfound Matrons</strong><br>There are still older women in the realm who may join your household in time.<br><br>Continue ruling, surviving danger, and letting your court grow.`;
+        matronGrid.appendChild(hiddenCard);
       }
       haremPanelEl.appendChild(matronGrid);
     }
@@ -10453,26 +20822,581 @@ const BASE_FACTIONS = [
     function renderGovernmentPanel() {
       if (!governmentPanelEl) return;
       ensureMatronState();
+      ensureDynastyState();
+      ensureRestorationState();
+      ensureFertilityState();
+      ensureCabinetState();
+      ensureCampaignRouteState();
+      if (campaignRouteState.side === "severant") syncSeverantRouteCourtAlignment();
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      refreshCounterIntelRating();
       governmentPanelEl.innerHTML = "";
       const heading = document.createElement("div");
       heading.className = "gallery-sub";
-      heading.textContent = "Manage matrons, duchesses, provincial stability, and your captured queens.";
+      heading.textContent = "Manage consorts, matrons, duchesses, provincial stability, automation protocols, and your captured queens.";
       governmentPanelEl.appendChild(heading);
 
       const provinces = tiles.filter((tile) => tile.owner === playerFactionId());
       const ownedDuchesses = duchesses.filter((duchess) => duchess.ownerFaction === playerFactionId() && duchess.assignedTile);
       const vacantProvinces = provinces.filter((tile) => tile.terrain === "land" && !tile.duchessId);
-      const activeMatronRoster = activeMatrons();
+      const activeMatronRoster = activeCourtMatrons();
+      const knownMatrons = discoveredCourtMatrons();
+      const hiddenMatrons = undiscoveredCourtMatrons();
+      const matriarch = matriarchMatron();
+      const dynastyRoster = allHeirs();
+      const unstableHeirs = dynastyRoster.filter((heir) => heir.instability >= 55 || heir.rival);
+      const loyalHeirsList = loyalHeirs();
+      const compromisedHeirsList = compromisedHeirs();
       const summary = document.createElement("div");
       summary.className = "tile-command-meta";
-      summary.textContent = `Protection Level ${matronState.protectionLevel} - ${matronProtectionLevelLabel()} - Active Matrons ${activeMatronRoster.length} - Provinces ${provinces.length} - Assigned Duchesses ${ownedDuchesses.length} - Vacant Provinces ${vacantProvinces.length} - Captured Queens ${capturedQueens.length}`;
+      summary.textContent = `Protection Level ${matronState.protectionLevel} - ${matronProtectionLevelLabel()} - Active Court Matrons ${activeMatronRoster.length} - Known Court Matrons ${knownMatrons.length}${hiddenMatrons.length ? ` - Unfound Matrons ${hiddenMatrons.length}` : ""} - Provinces ${provinces.length} - Assigned Duchesses ${ownedDuchesses.length} - Vacant Provinces ${vacantProvinces.length} - Captured Queens ${capturedQueens.length} - Sons ${dynastyRoster.length}`;
       governmentPanelEl.appendChild(summary);
+
+      const governanceCard = document.createElement("div");
+      governanceCard.className = "gallery-card";
+      governanceCard.style.marginBottom = "1rem";
+      governanceCard.innerHTML = `<strong>Provincial Protocols</strong><br>Duchess takeover protocol: ${governmentProtocolLabel()}<br>Auto-assign duchesses: ${governanceState.autoAssignDuchesses ? "On" : "Off"}<br>Auto-build provinces: ${governanceState.autoBuildProvinces ? "On" : "Off"}`;
+      const governanceRow = document.createElement("div");
+      governanceRow.className = "row";
+      for (const [label, handler] of [
+        ["Cycle Protocol", cycleDuchessProtocol],
+        ["Toggle Auto-Assign", toggleAutoAssignDuchesses],
+        ["Toggle Auto-Build", toggleAutoBuildProvinces],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", () => handler());
+        governanceRow.appendChild(btn);
+      }
+      governanceCard.appendChild(governanceRow);
+      governmentPanelEl.appendChild(governanceCard);
+
+      const restorationHeading = document.createElement("div");
+      restorationHeading.className = "gallery-sub";
+      restorationHeading.textContent = "Reconstruction";
+      governmentPanelEl.appendChild(restorationHeading);
+
+      const restorationCard = document.createElement("div");
+      restorationCard.className = "gallery-card";
+      restorationCard.style.marginBottom = "1rem";
+      restorationCard.innerHTML = `<strong>Restoration Doctrine</strong><br>The world still runs on systems the ${SEVERANT_ORDER_NAME} built: clinics, dependency networks, and tightly controlled fertility infrastructure. Remove them too fast and provinces shake apart. Leave them intact and the old regime survives inside the bones of society.<br><br>Population Stability ${restorationState.populationStability} - Birth Recovery ${restorationState.birthRecovery} - Reserve Stock ${restorationState.reserveStock} - Public Dependence ${restorationState.publicDependence} - Infrastructure Dependency ${restorationState.infrastructureDependency} - Withdrawal Risk ${restorationState.withdrawalRisk} - Reform Progress ${restorationState.reformProgress} - Order Contamination ${restorationState.orderContamination}<br><br>${HIGH_SEVERANT_TITLE}: Interest ${highSeverantState.interest} - Influence ${highSeverantState.influence} - Respect ${highSeverantState.respect} - Obsession ${highSeverantState.obsession} - Exposure ${highSeverantState.exposure}`;
+      governmentPanelEl.appendChild(restorationCard);
+
+      const cabinetHeading = document.createElement("div");
+      cabinetHeading.className = "gallery-sub";
+      cabinetHeading.textContent = "Cabinet";
+      governmentPanelEl.appendChild(cabinetHeading);
+
+      const cabinetGrid = document.createElement("div");
+      cabinetGrid.className = "gallery-grid";
+      const cabinetDefs = [
+        ["War Office", "warHead", `Head ${cabinetAdvisorLabel("warHead")}`],
+        ["Intelligence Office", "intelligenceHead", `Head ${cabinetAdvisorLabel("intelligenceHead")}`],
+        ["Household Office", "householdHead", `Head ${cabinetAdvisorLabel("householdHead")}`],
+        ["Fertility Department", "fertilityHead", `Head ${cabinetAdvisorLabel("fertilityHead")}`],
+      ];
+      for (const [title, slot, body] of cabinetDefs) {
+        const card = document.createElement("div");
+        card.className = "gallery-card";
+        card.innerHTML = `<strong>${title}</strong><br>${body}`;
+        const row = document.createElement("div");
+        row.className = "row";
+        const btn = document.createElement("button");
+        btn.textContent = "Cycle Head";
+        btn.addEventListener("click", () => cycleCabinetAssignment(slot));
+        row.appendChild(btn);
+        card.appendChild(row);
+        cabinetGrid.appendChild(card);
+      }
+      governmentPanelEl.appendChild(cabinetGrid);
+
+      const fertilityHeading = document.createElement("div");
+      fertilityHeading.className = "gallery-sub";
+      fertilityHeading.textContent = "Fertility Department";
+      governmentPanelEl.appendChild(fertilityHeading);
+
+      const fertilityCard = document.createElement("div");
+      fertilityCard.className = "gallery-card";
+      fertilityCard.style.marginBottom = "1rem";
+      fertilityCard.innerHTML = `<strong>Preservation And Conception Logistics</strong><br>Your expanding state can now preserve seed, route it through secured banks, and answer provincial requests for sanctioned conception support.<br><br>Preserved Seed ${fertilityState.preservedSeed} - Logistics ${fertilityState.logistics} - Public Trust ${fertilityState.publicTrust} - Province Demand ${fertilityState.provinceDemand} - Policy ${fertilityPolicyLabel(fertilityState.conceptionPolicy)} - Petitions Handled ${fertilityState.petitionsHandled}`;
+      const fertilityRow = document.createElement("div");
+      fertilityRow.className = "row";
+      for (const [label, handler] of [
+        ["Expand Storage", () => investInFertility("preserve")],
+        ["Improve Logistics", () => investInFertility("logistics")],
+        ["Build Trust", () => investInFertility("trust")],
+        ["Cycle Policy", () => investInFertility("policy")],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", () => handler());
+        fertilityRow.appendChild(btn);
+      }
+      fertilityCard.appendChild(fertilityRow);
+      governmentPanelEl.appendChild(fertilityCard);
+
+      const routeHeading = document.createElement("div");
+      routeHeading.className = "gallery-sub";
+      routeHeading.textContent = "Campaign Route";
+      governmentPanelEl.appendChild(routeHeading);
+
+      const routeCard = document.createElement("div");
+      routeCard.className = "gallery-card";
+      routeCard.style.marginBottom = "1rem";
+      const claimant = campaignRouteClaimantQueen();
+      const followerCount = severantRouteFollowers().length;
+      const resisterCount = severantRouteResisters().length;
+      const objectiveTitle = campaignRouteState.side === "severant" ? severantObjectivePhaseTitle() : "";
+      const objectiveProgress = campaignRouteState.side === "severant" ? severantObjectiveProgressText() : "";
+      const severantFinalMapLocked = campaignRouteState.side === "severant" &&
+        severantRouteFinalMapLocked();
+      const successionInfraReady = allHeirs().length > 0 || (fertilityState.preservedSeed >= 24 && fertilityState.logistics >= 24);
+      const routeBody = campaignRouteState.side === "hidden_court"
+        ? `You stayed with Elara and the Matriarch. Queens who come over can now trade naked ambition for sanctuary, intimacy, children, and a better lot in life inside the Hidden Court.`
+        : campaignRouteState.side === "severant"
+        ? `You chose the bad route. ${highSeverantProfile.hiddenName} now treats you as the ring of power behind her future order, with doctrine set to ${severantDoctrineLabel().toLowerCase()}${claimant ? ` and ${claimant.leader} marked as her claimant queen beneath you both.` : " and no claimant queen named yet."} The court is now split between followers, guarded resisters, and the Hidden Court women the Severant keeps trying to erase.`
+        : `Elara and the Matriarch still shelter you, but the fork has not been locked yet. Once the Severant becomes concrete enough, you will have to choose whether the war ends in restoration or in a pact with the woman who wants to own the ring of power.`;
+      routeCard.innerHTML = `<strong>${campaignRouteSideLabel()}</strong><br>${routeBody}<br><br>${campaignRouteOpportunitySummary()}${campaignRouteState.side === "severant" ? ` - Doctrine ${severantDoctrineLabel()}${claimant ? ` - Claimant ${claimant.leader}` : " - Claimant Unchosen"} - Seat ${severantRouteSeatSummary()} - Followers ${followerCount} - Resisters ${resisterCount} - Matriarch ${matriarchSeverantStandingLabel()}<br><br><strong>${objectiveTitle}</strong><br>${objectiveProgress}` : ""}`;
+      const routeRow = document.createElement("div");
+      routeRow.className = "row";
+      const routeBtn = document.createElement("button");
+      routeBtn.textContent = campaignRouteState.side ? "Review Route" : "Choose Side";
+      routeBtn.addEventListener("click", () => openCampaignRouteReview());
+      routeRow.appendChild(routeBtn);
+      if (campaignRouteState.side === "severant") {
+        const doctrineBtn = document.createElement("button");
+        doctrineBtn.textContent = "Cycle Doctrine";
+        doctrineBtn.addEventListener("click", () => cycleSeverantDoctrine());
+        routeRow.appendChild(doctrineBtn);
+        const claimantBtn = document.createElement("button");
+        claimantBtn.textContent = "Cycle Claimant";
+        claimantBtn.disabled = campaignRouteClaimantCandidates().length === 0 || campaignRouteState.severantCrowned;
+        claimantBtn.addEventListener("click", () => cycleSeverantClaimantQueen());
+        routeRow.appendChild(claimantBtn);
+        const objectiveBtn = document.createElement("button");
+        objectiveBtn.textContent = "Review Objectives";
+        objectiveBtn.addEventListener("click", () => openSeverantObjectiveReview());
+        routeRow.appendChild(objectiveBtn);
+      }
+      routeCard.appendChild(routeRow);
+      governmentPanelEl.appendChild(routeCard);
+
+      if (campaignRouteState.side === "severant") {
+        const commandCard = document.createElement("div");
+        commandCard.className = "gallery-card";
+        commandCard.style.marginBottom = "1rem";
+        commandCard.innerHTML = `<strong>Severant Command</strong><br>The bad route now runs on sealed detachments, court fear, and the public elevation of your claimant queen.<br><br>Order Reserve ${campaignRouteState.orderReserve} - Seat ${severantRouteSeatSummary()} - Followers ${followerCount} - Resisters ${resisterCount}<br><br><strong>${objectiveTitle}</strong><br>${objectiveProgress}`;
+        const commandRowA = document.createElement("div");
+        commandRowA.className = "row";
+        for (const [label, handler, disabled] of [
+          ["Inspect Court Split", openSeverantCourtRoster, false],
+          ["Deploy Detachment", deploySeverantDetachment, !campaignRouteState.setupDone || campaignRouteState.orderReserve < 4 || campaignRouteState.lastDetachmentRound === round],
+          ["Discipline Resister", disciplineSeverantResister, severantRouteResisters().filter((queenFaction) => queenFaction > 0).length === 0 || campaignRouteState.orderReserve < 3 || campaignRouteState.lastDisciplineRound === round],
+        ]) {
+          const btn = document.createElement("button");
+          btn.textContent = label;
+          btn.disabled = Boolean(disabled);
+          btn.addEventListener("click", () => handler());
+          commandRowA.appendChild(btn);
+        }
+        commandCard.appendChild(commandRowA);
+
+        const commandRowB = document.createElement("div");
+        commandRowB.className = "row";
+        const objectiveReviewBtn = document.createElement("button");
+        objectiveReviewBtn.textContent = "Receive Briefing";
+        objectiveReviewBtn.addEventListener("click", () => openSeverantObjectiveReview());
+        commandRowB.appendChild(objectiveReviewBtn);
+        const coronationBtn = document.createElement("button");
+        coronationBtn.textContent = "Stage Claimant Coronation";
+        coronationBtn.disabled = !claimant || treasury < 3 || campaignRouteState.lastCoronationRound === round || severantClaimantCrowned();
+        coronationBtn.addEventListener("click", () => holdSeverantClaimantCoronation());
+        commandRowB.appendChild(coronationBtn);
+        commandCard.appendChild(commandRowB);
+        const commandRowC = document.createElement("div");
+        commandRowC.className = "row";
+        const crownBtn = document.createElement("button");
+        crownBtn.textContent = "Crown The Severant";
+        crownBtn.disabled = campaignRouteState.severantObjectivePhase < 3 || campaignRouteState.severantCrowned || treasury < 6 || campaignRouteState.orderReserve < 8 || !claimant || !severantClaimantCrowned() || !severantFinalMapLocked;
+        crownBtn.addEventListener("click", () => crownTheSeverant());
+        commandRowC.appendChild(crownBtn);
+        const charterBtn = document.createElement("button");
+        charterBtn.textContent = "Seal Succession Charter";
+        charterBtn.disabled = campaignRouteState.severantObjectivePhase < 3 || !campaignRouteState.severantCrowned || campaignRouteState.successionSecured || treasury < 4 || campaignRouteState.orderReserve < 5 || !successionInfraReady;
+        charterBtn.addEventListener("click", () => sealSeverantSuccessionCharter());
+        commandRowC.appendChild(charterBtn);
+        commandCard.appendChild(commandRowC);
+        governmentPanelEl.appendChild(commandCard);
+      }
+
+      const severantHeading = document.createElement("div");
+      severantHeading.className = "gallery-sub";
+      severantHeading.textContent = "Hidden Adversary";
+      governmentPanelEl.appendChild(severantHeading);
+
+      const severantCard = document.createElement("div");
+      severantCard.className = "gallery-card";
+      severantCard.style.marginBottom = "1rem";
+      if (highSeverantPortrait()) {
+        const img = document.createElement("img");
+        img.className = "leader-portrait";
+        img.src = highSeverantPortrait();
+        img.alt = `${highSeverantDisplayName()} portrait`;
+        severantCard.appendChild(img);
+      }
+      const severantTitle = document.createElement("div");
+      severantTitle.className = "gallery-head";
+      severantTitle.textContent = `${highSeverantDisplayName()} - ${highSeverantDisplayTitle()}`;
+      severantCard.appendChild(severantTitle);
+      const severantBody = document.createElement("div");
+      severantBody.className = "tiny";
+      severantBody.textContent = highSeverantProfile.dossierStage >= 3 || dynastyState.highSeverantExposure >= 60
+        ? `${highSeverantProfile.hiddenName} is now profiled as a real woman at the center of the Order, not merely a title or rumor.`
+        : highSeverantProfile.dossierStage >= 1 || dynastyState.knownThreat
+        ? `She remains hidden from the public world, but your court now tracks her as a distinct opponent with habits, appetites, and pressure points.`
+        : `You know there is a controlling intelligence behind the Order, but not yet enough to name her cleanly.`;
+      severantCard.appendChild(severantBody);
+      const severantStatsA = document.createElement("div");
+      severantStatsA.className = "tiny";
+      severantStatsA.textContent = `Influence ${highSeverantState.influence} - Interest ${highSeverantState.interest} - Respect ${highSeverantState.respect} - Obsession ${highSeverantState.obsession} - Exposure ${highSeverantState.exposure}`;
+      severantCard.appendChild(severantStatsA);
+      const severantStatsB = document.createElement("div");
+      severantStatsB.className = "tiny";
+      severantStatsB.textContent = `Fascination ${highSeverantProfile.fascination} - Hostility ${highSeverantProfile.hostility} - Seduction ${highSeverantProfile.seduction} - Fear ${highSeverantProfile.fear} - Dossier ${highSeverantProfile.dossierStage}/4`;
+      severantCard.appendChild(severantStatsB);
+      const severantStatus = document.createElement("div");
+      severantStatus.className = "tiny";
+      severantStatus.textContent = `Safehouse ${highSeverantProfile.safehouseKnown ? "Tracked" : "Unknown"} - Audience ${highSeverantProfile.directAudienceUnlocked ? "Possible" : "Distant"} - Outcome ${highSeverantProfile.confrontationOutcome || "Unresolved"}${highSeverantProfile.captive ? " - Captive" : ""} - Queens Secured ${FACTIONS.filter((faction) => !faction.isHuman).length - unsecuredSeverantQueens().length}/${FACTIONS.filter((faction) => !faction.isHuman).length}`;
+      severantCard.appendChild(severantStatus);
+      const severantFamily = document.createElement("div");
+      severantFamily.className = "tiny";
+      severantFamily.textContent = `Family ${highSeverantPregnancyStatusLabel()}${highSeverantProfile.judgedRound >= 0 ? ` - Judged Round ${highSeverantProfile.judgedRound}` : ""}`;
+      severantCard.appendChild(severantFamily);
+      const severantNotes = document.createElement("div");
+      severantNotes.className = "tiny";
+      severantNotes.textContent = highSeverantProfile.notes;
+      severantCard.appendChild(severantNotes);
+      const severantRow = document.createElement("div");
+      severantRow.className = "row";
+      for (const [label, handler, disabled] of [
+        ["Open Dossier", openHighSeverantDossier, false],
+        ["Study Her", studyHighSeverantDossier, false],
+        ["Send Bait", sendBaitToHighSeverant, !dynastyState.knownThreat && highSeverantProfile.dossierStage < 1],
+        ["Provoke Her", provokeHighSeverant, !highSeverantProfile.directAudienceUnlocked && highSeverantProfile.dossierStage < 2],
+        ["Force Audience", openHighSeverantAudience, (!highSeverantProfile.directAudienceUnlocked && !highSeverantProfile.safehouseKnown)],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.disabled = Boolean(disabled);
+        btn.addEventListener("click", () => handler());
+        severantRow.appendChild(btn);
+      }
+      if (highSeverantProfile.confrontationOutcome === "judged") {
+        const wombBtn = document.createElement("button");
+        wombBtn.textContent = "Use Last Womb";
+        wombBtn.disabled = highSeverantProfile.intimacyUsedThisTurn;
+        wombBtn.addEventListener("click", () => intimacyWithHighSeverant());
+        severantRow.appendChild(wombBtn);
+      }
+      severantCard.appendChild(severantRow);
+      governmentPanelEl.appendChild(severantCard);
+
+      const restorationGrid = document.createElement("div");
+      restorationGrid.className = "gallery-grid";
+
+      const clinicCard = document.createElement("div");
+      clinicCard.className = "gallery-card";
+      clinicCard.innerHTML = `<strong>Clinic Network</strong><br>Policy: ${restorationPolicyLabel("clinicPolicy", restorationState.clinicPolicy)}<br><br>Former drug facilities and compliance clinics still regulate parts of daily life. Their staff, stock, and routines can be repurposed, phased out, or broken outright.`;
+      const clinicRow = document.createElement("div");
+      clinicRow.className = "row";
+      for (const [label, handler] of [
+        ["Cycle Clinic Policy", () => cycleRestorationPolicy("clinicPolicy")],
+        ["Secure Clinics", () => investInRestoration("clinics")],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", () => handler());
+        clinicRow.appendChild(btn);
+      }
+      clinicCard.appendChild(clinicRow);
+      restorationGrid.appendChild(clinicCard);
+
+      const bankCard = document.createElement("div");
+      bankCard.className = "gallery-card";
+      bankCard.innerHTML = `<strong>Population Restoration</strong><br>Policy: ${restorationPolicyLabel("bankPolicy", restorationState.bankPolicy)}<br><br>The fertility infrastructure left behind by the old regime still underpins population recovery. Reforming it changes how quickly society can recover, and how dependent it remains on legacy control.`;
+      const bankRow = document.createElement("div");
+      bankRow.className = "row";
+      for (const [label, handler] of [
+        ["Cycle Bank Policy", () => cycleRestorationPolicy("bankPolicy")],
+        ["Reinforce Reserves", () => investInRestoration("reserves")],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", () => handler());
+        bankRow.appendChild(btn);
+      }
+      bankCard.appendChild(bankRow);
+      restorationGrid.appendChild(bankCard);
+
+      const publicCard = document.createElement("div");
+      publicCard.className = "gallery-card";
+      publicCard.innerHTML = `<strong>Public Transition</strong><br>Policy: ${restorationPolicyLabel("publicStory", restorationState.publicStory)}<br><br>The truth about the old world cannot arrive all at once without consequences. You decide whether to soothe the population, gradually expose the truth, or rupture the illusion immediately.`;
+      const publicRow = document.createElement("div");
+      publicRow.className = "row";
+      for (const [label, handler] of [
+        ["Cycle Public Story", () => cycleRestorationPolicy("publicStory")],
+        ["Fund Messaging", () => investInRestoration("messaging")],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.addEventListener("click", () => handler());
+        publicRow.appendChild(btn);
+      }
+      publicCard.appendChild(publicRow);
+      restorationGrid.appendChild(publicCard);
+
+      governmentPanelEl.appendChild(restorationGrid);
+
+      const reconstructionHeading = document.createElement("div");
+      reconstructionHeading.className = "gallery-sub";
+      reconstructionHeading.textContent = "Provincial Reconstruction";
+      governmentPanelEl.appendChild(reconstructionHeading);
+
+      const reconstructionGrid = document.createElement("div");
+      reconstructionGrid.className = "gallery-grid";
+      for (const tile of provinces.slice(0, 8)) {
+        const systems = ensureTileSystems(tile);
+        const card = document.createElement("div");
+        card.className = "gallery-card";
+        card.innerHTML = `<strong>${duchessRegionName(tile)}</strong><br>(${tile.q}, ${tile.r})<br>Dependency ${systems.severantDependency} - Contamination ${systems.severantContamination} - Withdrawal ${systems.withdrawalStress}<br>Loyalty ${systems.loyalty} - Unrest ${systems.unrest} - Prosperity ${systems.prosperity}<br>Family Demand ${systems.familyDemand} - Fulfillment ${systems.familyFulfillment}`;
+        reconstructionGrid.appendChild(card);
+      }
+      governmentPanelEl.appendChild(reconstructionGrid);
+
+      const dynastyHeading = document.createElement("div");
+      dynastyHeading.className = "gallery-sub";
+      dynastyHeading.textContent = "Dynasty";
+      governmentPanelEl.appendChild(dynastyHeading);
+
+      const dynastySummary = document.createElement("div");
+      dynastySummary.className = "gallery-card";
+      dynastySummary.style.marginBottom = "1rem";
+      dynastySummary.innerHTML = `<strong>Heir Doctrine</strong><br>Sons begin hidden, watched by women you trust, and shaped by measured discipline. Too much punishment breeds resentment. Too little breeds disorder. A single unstable son can poison the rest.<br><br>${SEVERANT_ORDER_NAME} awareness ${dynastyState.severantAwareness} - Order progress ${dynastyState.severantProgress}${dynastyState.knownThreat ? " - Threat Named" : ""} - Loyal sons ${loyalHeirsList.length} - Compromised sons ${compromisedHeirsList.length} - Unstable sons ${unstableHeirs.length} - Rival pressure ${dynastyState.rivalHouseholdPressure} - Succession tension ${dynastyState.successionTension} - Counterintel ${dynastyState.counterIntelRating} - Cells broken ${dynastyState.orderCellsBroken} - Exposure ${dynastyState.highSeverantExposure}${dynastyState.activeRivalHeirId ? ` - Active rival ${heirById(dynastyState.activeRivalHeirId)?.name || "Unknown"}` : ""}${dynastyState.namedHeirId ? ` - Named heir ${heirById(dynastyState.namedHeirId)?.name || "Unknown"}` : ""}`;
+      governmentPanelEl.appendChild(dynastySummary);
+
+      const dynastyGrid = document.createElement("div");
+      dynastyGrid.className = "gallery-grid";
+      if (!dynastyRoster.length) {
+        const empty = document.createElement("div");
+        empty.className = "gallery-card";
+        empty.textContent = "No sons have been born into your line yet.";
+        dynastyGrid.appendChild(empty);
+      } else {
+        for (const heir of dynastyRoster) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+
+          const title = document.createElement("div");
+          title.className = "gallery-head";
+          title.textContent = heir.name;
+          card.appendChild(title);
+
+          const stageLine = document.createElement("div");
+          stageLine.className = "tiny";
+          stageLine.textContent = `${heirSummaryLine(heir)} - ${heir.hidden ? "Hidden" : "Exposed"}`;
+          card.appendChild(stageLine);
+
+          const motherLine = document.createElement("div");
+          motherLine.className = "tiny";
+          motherLine.textContent = `Mother ${heirMotherLabel(heir)} - Guardian ${heirGuardianLabel(heir)}`;
+          card.appendChild(motherLine);
+
+          const relationLine = document.createElement("div");
+          relationLine.className = "tiny";
+          relationLine.textContent = `Affection ${heir.affection} - Respect ${heir.respect} - Fear ${heir.fear} - Resentment ${heir.resentment}`;
+          card.appendChild(relationLine);
+
+          const disciplineLine = document.createElement("div");
+          disciplineLine.className = "tiny";
+          disciplineLine.textContent = `Discipline ${heir.discipline} - Maturity ${heir.maturity} - Security ${heir.security} - Exposure ${heir.exposure}`;
+          card.appendChild(disciplineLine);
+
+          const threatLine = document.createElement("div");
+          threatLine.className = "tiny";
+          threatLine.textContent = `Stance ${heirPoliticalStance(heir)} - Loyalist ${Math.round(heir.loyalistReadiness)} - Rebel ${Math.round(heir.rebelReadiness)} - Corruption ${heir.corruption} - Harem Pressure ${heir.haremPressure} - Succession ${Math.round(heir.successionScore || heirSuccessionScore(heir))}`;
+          card.appendChild(threatLine);
+
+          const maternalLine = document.createElement("div");
+          maternalLine.className = "tiny";
+          maternalLine.textContent = heirMaternalSummary(heir);
+          card.appendChild(maternalLine);
+
+          if (heir.stage === "young_adult") {
+            const householdLine = document.createElement("div");
+            householdLine.className = "tiny";
+            householdLine.textContent = heirHouseholdSummary(heir);
+            card.appendChild(householdLine);
+
+            const brotherLine = document.createElement("div");
+            brotherLine.className = "tiny";
+            brotherLine.textContent = heirBrotherSummary(heir);
+            card.appendChild(brotherLine);
+          }
+
+          const noteLine = document.createElement("div");
+          noteLine.className = "tiny";
+          noteLine.textContent = heir.notes || "No recent developments.";
+          card.appendChild(noteLine);
+
+          const rowOne = document.createElement("div");
+          rowOne.className = "row";
+          for (const [label, handler, disabled] of [
+            [heir.hidden ? "Reveal" : "Hide", () => toggleHeirExposure(heir), false],
+            ["More Guards", () => reinforceHeirSecurity(heir), false],
+            ["Guide", () => disciplineHeir(heir, "guidance"), false],
+            ["Discipline", () => disciplineHeir(heir, "measured"), false],
+            ["Punish Hard", () => disciplineHeir(heir, "harsh"), false],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.disabled = Boolean(disabled);
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            rowOne.appendChild(btn);
+          }
+          card.appendChild(rowOne);
+
+          const rowTwo = document.createElement("div");
+          rowTwo.className = "row";
+          const guardianActions = [
+            ["With Mother", () => setHeirGuardian(heir, "mother"), false],
+            ["Matriarch", () => setHeirGuardian(heir, "matriarch"), !matriarchMatron()],
+            ["Lead Matron", () => setHeirGuardian(heir, "lead_matron"), !activeMatronRoster.length],
+            ["Guard Captain", () => setHeirGuardian(heir, "guard_captain"), false],
+            ["Safe Estate", () => setHeirGuardian(heir, "safe_estate"), false],
+          ];
+          for (const [label, handler, disabled] of guardianActions) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.disabled = Boolean(disabled);
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            rowTwo.appendChild(btn);
+          }
+          card.appendChild(rowTwo);
+
+          if (heir.stage === "young_adult") {
+            const rowThree = document.createElement("div");
+            rowThree.className = "row";
+            for (const [label, handler] of [
+              ["Praise", () => rewardHeir(heir, "praise")],
+              ["Grant Woman", () => rewardHeir(heir, "grant_woman")],
+              ["Strip Privileges", () => rewardHeir(heir, "strip_privileges")],
+              [dynastyState.namedHeirId === heir.id ? "Named Heir" : "Name Heir", () => designateNamedHeir(heir)],
+              [heir.disinherited ? "Restore Claim" : "Disinherit", () => (heir.disinherited ? restoreHeirClaim(heir) : disinheritHeir(heir))],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                handler();
+              });
+              rowThree.appendChild(btn);
+            }
+            card.appendChild(rowThree);
+
+            const rowFour = document.createElement("div");
+            rowFour.className = "row";
+            for (const [label, handler] of [
+              ["Inspect Harem", () => manageHeirHarem(heir, "inspect")],
+              ["Loyal Attendants", () => manageHeirHarem(heir, "attendants")],
+              ["Purge Women", () => manageHeirHarem(heir, "purge")],
+              ["Expand Harem", () => manageHeirHarem(heir, "expand")],
+              ["Break It Up", () => manageHeirHarem(heir, "break_up")],
+              ["Take Woman", () => manageHeirHarem(heir, "reclaim")],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                handler();
+              });
+              rowFour.appendChild(btn);
+            }
+            card.appendChild(rowFour);
+
+            const rowFive = document.createElement("div");
+            rowFive.className = "row";
+            for (const [label, handler] of [
+              ["Mother Shield", () => manageMotherPolitics(heir, "shield")],
+              ["Mother Lobby", () => manageMotherPolitics(heir, "lobby")],
+              ["Mother Rebuke", () => manageMotherPolitics(heir, "rebuke")],
+              ["Cycle Agenda", () => manageMotherPolitics(heir, "agenda")],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                handler();
+              });
+              rowFive.appendChild(btn);
+            }
+            card.appendChild(rowFive);
+          }
+
+          if (heir.rival) {
+            const crisisRow = document.createElement("div");
+            crisisRow.className = "row";
+            for (const [label, handler] of [
+              ["Call Loyal Sons", () => resolveRivalHeirConflict(heir, "loyalist")],
+              ["Matriarch Moves", () => resolveRivalHeirConflict(heir, "matriarch")],
+              ["Crush Him", () => resolveRivalHeirConflict(heir, "force")],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                handler();
+              });
+              crisisRow.appendChild(btn);
+            }
+            card.appendChild(crisisRow);
+          }
+
+          dynastyGrid.appendChild(card);
+        }
+      }
+      governmentPanelEl.appendChild(dynastyGrid);
 
       const provinceList = document.createElement("div");
       provinceList.className = "gallery-card";
       provinceList.style.marginBottom = "1rem";
       provinceList.innerHTML = `<strong>Your Provinces</strong><br>${provinces.length > 0 ? provinces.map((tile) => `${tile.q},${tile.r}`).join(" • ") : "None"}`;
       governmentPanelEl.appendChild(provinceList);
+
+      if (matriarch) {
+        const consortHeading = document.createElement("div");
+        consortHeading.className = "gallery-sub";
+        consortHeading.textContent = "Primary Consort";
+        governmentPanelEl.appendChild(consortHeading);
+
+        const consortCard = document.createElement("div");
+        consortCard.className = "gallery-card";
+        consortCard.style.marginBottom = "1rem";
+        consortCard.innerHTML = `<strong>${matriarch.title || "The Matriarch"}</strong><br>${matriarch.name} is not counted as one of the formal matrons. She stands beside Queen Elara as your wife, lover, and household sovereign while still anchoring the house's deeper security.<br><br>Loyalty ${matriarch.loyalty} - Trust ${matriarch.trust} - Romance ${matriarch.romance} - Attraction ${matriarch.attraction} - Insight ${matriarch.insight} - Protectiveness ${matriarch.protectiveness}`;
+        governmentPanelEl.appendChild(consortCard);
+      }
 
       const matronHeading = document.createElement("div");
       matronHeading.className = "gallery-sub";
@@ -10482,12 +21406,12 @@ const BASE_FACTIONS = [
       const matronSummary = document.createElement("div");
       matronSummary.className = "gallery-card";
       matronSummary.style.marginBottom = "1rem";
-      matronSummary.innerHTML = `<strong>Doctrine</strong><br>Guards protect the Hylsar from blades. Matrons protect him from desire, lies, obsession, and pretty traps.<br><br>Recent screenings: ${matronState.screeningsCompleted} - Interventions: ${matronState.interventionsCompleted} - Rescues: ${matronState.rescuesCompleted}`;
+      matronSummary.innerHTML = `<strong>Doctrine</strong><br>The Matriarch is not a matron. She stands beside Queen Elara as a primary consort while the matrons beneath her protect the Hylsar from desire, lies, obsession, and pretty traps.<br><br>Discoveries: ${matronState.discoveriesCompleted || 0} - Recent screenings: ${matronState.screeningsCompleted} - Interventions: ${matronState.interventionsCompleted} - Rescues: ${matronState.rescuesCompleted}`;
       governmentPanelEl.appendChild(matronSummary);
 
       const matronGrid = document.createElement("div");
       matronGrid.className = "gallery-grid";
-      for (const matron of matrons) {
+      for (const matron of knownMatrons) {
         const card = document.createElement("div");
         card.className = "gallery-card";
 
@@ -10552,6 +21476,12 @@ const BASE_FACTIONS = [
         card.appendChild(actionRow);
         matronGrid.appendChild(card);
       }
+      if (hiddenMatrons.length) {
+        const hiddenCard = document.createElement("div");
+        hiddenCard.className = "gallery-card";
+        hiddenCard.innerHTML = `<strong>Unfound Matrons</strong><br>${hiddenMatrons.length} potential matron${hiddenMatrons.length === 1 ? "" : "s"} have not entered your service yet.`;
+        matronGrid.appendChild(hiddenCard);
+      }
       governmentPanelEl.appendChild(matronGrid);
 
       const duchessGrid = document.createElement("div");
@@ -10596,6 +21526,11 @@ const BASE_FACTIONS = [
           bondLine.textContent = `Trust ${duchess.trust} • Romance ${duchess.romance} • Attraction ${duchess.attraction} • ${duchessPregnancyStatusLabel(duchess)}`;
           card.appendChild(bondLine);
 
+          const automationLine = document.createElement("div");
+          automationLine.className = "tiny";
+          automationLine.textContent = `Auto Manage ${duchess.autoManage === false ? "Off" : "On"}`;
+          card.appendChild(automationLine);
+
           const tileLine = document.createElement("div");
           tileLine.className = "tiny";
           tileLine.textContent = `Province: ${duchess.assignedTile}`;
@@ -10639,6 +21574,7 @@ const BASE_FACTIONS = [
               const tile = getTile(Number(coords[0]), Number(coords[1]));
               openDuchessActionModal(tile, "intimacy");
             }],
+            ["Auto Govern", () => toggleDuchessAutoManage(duchess)],
             ["Inspect", () => {
               const coords = duchess.assignedTile.split(",");
               const tile = getTile(Number(coords[0]), Number(coords[1]));
@@ -10750,6 +21686,830 @@ const BASE_FACTIONS = [
       governmentPanelEl.appendChild(queenGrid);
     }
 
+    function renderMilitaryPanel() {
+      if (!militaryPanelEl) return;
+      reconcileMilitaryState();
+      ensureCampaignRouteState();
+      militaryPanelEl.innerHTML = "";
+
+      const playerId = playerFactionId();
+      const severantRoute = campaignRouteState.side === "severant";
+      const officers = officersForFaction(playerId);
+      const generals = officers.filter((officer) => ["grand_general", "general", "colonel"].includes(officer.rank));
+      const assigned = officers.filter((officer) => officer.assignedTile);
+      const commandedTroops = assigned.reduce((sum, officer) => {
+        const [q, r] = String(officer.assignedTile).split(",").map(Number);
+        const tile = Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+        return sum + (tile?.troops || 0);
+      }, 0);
+
+      const heading = document.createElement("div");
+      heading.className = "gallery-sub";
+      heading.textContent = severantRoute
+        ? "The High Severant strips away the old banner hierarchy and replaces it with sealed detachments, claimant guards, and Red Chamber women loyal to the pact."
+        : "Your army is led by women of the banner, from high generals commanding major armies down to lower-ranked officers guiding smaller field formations.";
+      militaryPanelEl.appendChild(heading);
+
+      const summary = document.createElement("div");
+      summary.className = "tile-command-meta";
+      summary.textContent = severantRoute
+        ? `Severant Officer Corps ${officers.length} - Claimant Senior Command ${generals.length} - Active Detachments ${assigned.length} - Commanded Troops ${commandedTroops}`
+        : `Officer Corps ${officers.length} - Senior Command ${generals.length} - Active Commands ${assigned.length} - Commanded Troops ${commandedTroops}`;
+      militaryPanelEl.appendChild(summary);
+
+      const selectedSummary = document.createElement("div");
+      selectedSummary.className = "gallery-card";
+      const selectedOwned = selectedTile && selectedTile.owner === playerId && selectedTile.terrain === "land" ? selectedTile : null;
+      selectedSummary.innerHTML = severantRoute
+        ? `<strong>Selected Detachment Seat</strong><br>${selectedOwned ? `(${selectedOwned.q}, ${selectedOwned.r}) - Troops ${selectedOwned.troops} - ${officerOnTile(selectedOwned, playerId)?.name || "No assigned marshal"}` : "Select one of your land army tiles on the map to assign a Severant commander there."}`
+        : `<strong>Selected Command Tile</strong><br>${selectedOwned ? `(${selectedOwned.q}, ${selectedOwned.r}) - Troops ${selectedOwned.troops} - ${officerOnTile(selectedOwned, playerId)?.name || "No assigned officer"}` : "Select one of your land army tiles on the map to assign a specific officer there."}`;
+      militaryPanelEl.appendChild(selectedSummary);
+
+      const rankOrder = ["grand_general", "general", "colonel", "captain", "lieutenant", "sergeant"];
+      const rankGroups = new Map(rankOrder.map((rank) => [rank, []]));
+      for (const officer of officers) {
+        if (!rankGroups.has(officer.rank)) rankGroups.set(officer.rank, []);
+        rankGroups.get(officer.rank).push(officer);
+      }
+
+      if (!officers.length) {
+        const grid = document.createElement("div");
+        grid.className = "gallery-grid";
+        const empty = document.createElement("div");
+        empty.className = "gallery-card";
+        empty.textContent = severantRoute
+          ? "No Severant officers are currently serving in your command."
+          : "No officers are currently serving in your military.";
+        grid.appendChild(empty);
+        militaryPanelEl.appendChild(grid);
+      } else {
+        for (const rankId of rankOrder) {
+          const group = (rankGroups.get(rankId) || []).sort((a, b) => (b.loyalty + b.tactics + b.discipline) - (a.loyalty + a.tactics + a.discipline));
+          if (!group.length) continue;
+          const sectionHeading = document.createElement("div");
+          sectionHeading.className = "gallery-sub";
+          sectionHeading.textContent = officerRankLabel(rankId);
+          militaryPanelEl.appendChild(sectionHeading);
+
+          const sectionSummary = document.createElement("div");
+          sectionSummary.className = "gallery-card";
+          sectionSummary.style.marginBottom = "1rem";
+          sectionSummary.innerHTML = severantRoute
+            ? `<strong>${officerRankLabel(rankId)} Detachment Chain</strong><br>${group.length} Severant officer${group.length === 1 ? "" : "s"} in this rank band. These women are installed to hold ${OFFICER_RANKS[rankId]?.minTroops || 1}-${OFFICER_RANKS[rankId]?.maxTroops >= 999 ? "many" : OFFICER_RANKS[rankId]?.maxTroops || 4} troops under the pact.`
+            : `<strong>${officerRankLabel(rankId)} Chain</strong><br>${group.length} officer${group.length === 1 ? "" : "s"} in this rank band. These commanders fit best with ${OFFICER_RANKS[rankId]?.minTroops || 1}-${OFFICER_RANKS[rankId]?.maxTroops >= 999 ? "many" : OFFICER_RANKS[rankId]?.maxTroops || 4} troops.`;
+          militaryPanelEl.appendChild(sectionSummary);
+
+          const grid = document.createElement("div");
+          grid.className = "gallery-grid";
+          for (const officer of group) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+
+          const title = document.createElement("div");
+          title.className = "gallery-head";
+          title.textContent = `${officer.title} ${officer.name}`;
+          card.appendChild(title);
+
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = officerPortrait(officer);
+          img.alt = `${officer.name} portrait`;
+          img.style.maxWidth = "100%";
+          img.style.marginBottom = "0.75rem";
+          card.appendChild(img);
+
+          const rankLine = document.createElement("div");
+          rankLine.className = "tiny";
+          rankLine.textContent = `${officerRankLabel(officer.rank)} - ${officerCommandSummary(officer)}`;
+          card.appendChild(rankLine);
+
+          const statLine = document.createElement("div");
+          statLine.className = "tiny";
+          statLine.textContent = `Loyalty ${officer.loyalty} - Tactics ${officer.tactics} - Discipline ${officer.discipline} - Trust ${officer.trust}`;
+          card.appendChild(statLine);
+
+          const bondLine = document.createElement("div");
+          bondLine.className = "tiny";
+          bondLine.textContent = `Romance ${officer.romance} - Attraction ${officer.attraction} - Influence ${officer.influence} - ${officerPregnancyStatusLabel(officer)}`;
+          card.appendChild(bondLine);
+
+          const assignmentLine = document.createElement("div");
+          assignmentLine.className = "tiny";
+          if (officer.assignedTile) {
+            const [q, r] = String(officer.assignedTile).split(",").map(Number);
+            const tile = Number.isFinite(q) && Number.isFinite(r) ? getTile(q, r) : null;
+            assignmentLine.textContent = tile
+              ? `Command: (${tile.q}, ${tile.r}) - Troops ${tile.troops} - Attack +${officerCombatBonus(officer, tile.troops, "attack")} - Defense +${officerCombatBonus(officer, tile.troops, "defense")}`
+              : "Command: awaiting reassignment";
+          } else {
+            assignmentLine.textContent = "Command: currently unassigned";
+          }
+          card.appendChild(assignmentLine);
+
+          const personalRow = document.createElement("div");
+          personalRow.className = "row";
+          for (const [label, handler, disabled] of [
+            ["Converse", () => officerConverse(officer), officer.converseUsedThisTurn || gameOver],
+            ["Flirt", () => officerFlirt(officer), officer.flirtUsedThisTurn || gameOver],
+            ["Confide", () => officerConfide(officer), officer.confideUsedThisTurn || gameOver],
+            ["Gift Her", () => officerGift(officer), officer.giftUsedThisTurn || gameOver || treasury < 2],
+            ["Intimacy", () => officerIntimacy(officer), officer.intimacyUsedThisTurn || gameOver],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.disabled = Boolean(disabled);
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            personalRow.appendChild(btn);
+          }
+          card.appendChild(personalRow);
+
+          const commandRow = document.createElement("div");
+          commandRow.className = "row";
+          for (const [label, handler, disabled] of [
+            ["Assign To Selected Tile", () => assignOfficer(officer, selectedOwned), !selectedOwned || selectedOwned.troops < 1 || gameOver],
+            ["Auto Assign", () => assignOfficer(officer), gameOver],
+            ["Relieve", () => relieveOfficer(officer), !officer.assignedTile || gameOver],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.disabled = Boolean(disabled);
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            commandRow.appendChild(btn);
+          }
+          card.appendChild(commandRow);
+          grid.appendChild(card);
+        }
+          militaryPanelEl.appendChild(grid);
+        }
+      }
+      resolveHighSeverantPregnancy();
+    }
+
+    function renderSpiesPanel() {
+      if (!spiesPanelEl) return;
+      reconcileSpyState();
+      ensureCampaignRouteState();
+      spiesPanelEl.innerHTML = "";
+
+      const spies = spiesForFaction(playerFactionId());
+      const assigned = spies.filter((spy) => spy.assignedTile);
+      const selectedHostile = selectedTile && selectedTile.terrain === "land" && selectedTile.owner !== playerFactionId() ? selectedTile : null;
+      const severantRoute = campaignRouteState.side === "severant";
+
+      const heading = document.createElement("div");
+      heading.className = "gallery-sub";
+      heading.textContent = severantRoute
+        ? "The Severant replaces your old whisper network with confessors, archive listeners, and black-ribbon agents built to pry open hostile courts from the inside."
+        : "Your female spy network handles infiltration, seduction pressure, covert capture, and quiet manipulation inside hostile or neutral provinces.";
+      spiesPanelEl.appendChild(heading);
+
+      const summary = document.createElement("div");
+      summary.className = "tile-command-meta";
+      summary.textContent = severantRoute
+        ? `Order Agents ${spies.length} - Active Cells ${assigned.length} - Selected Mark ${selectedHostile ? `(${selectedHostile.q}, ${selectedHostile.r})` : "None"}`
+        : `Active Spies ${spies.length} - Field Assignments ${assigned.length} - Selected Target ${selectedHostile ? `(${selectedHostile.q}, ${selectedHostile.r})` : "None"}`;
+      spiesPanelEl.appendChild(summary);
+
+      const targetCard = document.createElement("div");
+      targetCard.className = "gallery-card";
+      if (selectedHostile) {
+        const duchess = selectedHostile.duchessId ? getDuchess(selectedHostile.duchessId) : null;
+        const systems = ensureTileSystems(selectedHostile);
+        targetCard.innerHTML = severantRoute
+          ? `<strong>Selected Order Mark</strong><br>${duchessRegionName(selectedHostile)} (${selectedHostile.q}, ${selectedHostile.r})<br>Owner: ${selectedHostile.owner === NEUTRAL ? "Neutral" : factionById(selectedHostile.owner)?.leader || "Unknown"} - Troops ${selectedHostile.troops} - Loyalty ${systems.loyalty} - Unrest ${systems.unrest}${duchess ? `<br>Duchess: ${duchess.name} - Status ${duchess.status}` : "<br>No duchess currently holds the tile."}`
+          : `<strong>Selected Spy Target</strong><br>${duchessRegionName(selectedHostile)} (${selectedHostile.q}, ${selectedHostile.r})<br>Owner: ${selectedHostile.owner === NEUTRAL ? "Neutral" : factionById(selectedHostile.owner)?.leader || "Unknown"} - Troops ${selectedHostile.troops} - Loyalty ${systems.loyalty} - Unrest ${systems.unrest}${duchess ? `<br>Duchess: ${duchess.name} - Status ${duchess.status}` : "<br>No duchess currently holds the tile."}`;
+      } else {
+        targetCard.innerHTML = severantRoute
+          ? "<strong>Selected Order Mark</strong><br>Select an enemy or neutral land tile on the map to assign a specific Order agent there."
+          : "<strong>Selected Spy Target</strong><br>Select an enemy or neutral land tile on the map to assign a specific spy there.";
+      }
+      spiesPanelEl.appendChild(targetCard);
+
+      const grid = document.createElement("div");
+      grid.className = "gallery-grid";
+      if (!spies.length) {
+        const empty = document.createElement("div");
+        empty.className = "gallery-card";
+        empty.textContent = severantRoute
+          ? "No Order agents are currently serving in your intelligence wing."
+          : "No spies are currently serving in your network.";
+        grid.appendChild(empty);
+      } else {
+        for (const spy of spies) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+
+          const title = document.createElement("div");
+          title.className = "gallery-head";
+          title.textContent = `${spy.title} ${spy.name}`;
+          card.appendChild(title);
+
+          const img = document.createElement("img");
+          img.className = "leader-portrait";
+          img.src = spyPortrait(spy);
+          img.alt = `${spy.name} portrait`;
+          img.style.maxWidth = "100%";
+          img.style.marginBottom = "0.75rem";
+          card.appendChild(img);
+
+          const statLine = document.createElement("div");
+          statLine.className = "tiny";
+          statLine.textContent = `Specialty ${spy.specialty} - Loyalty ${spy.loyalty} - Subtlety ${spy.subtlety} - Influence ${spy.influence}`;
+          card.appendChild(statLine);
+
+          const skillLine = document.createElement("div");
+          skillLine.className = "tiny";
+          skillLine.textContent = `Seduction ${spy.seduction} - Capture ${spy.captureSkill} - Trust ${spy.trust} - Romance ${spy.romance}`;
+          card.appendChild(skillLine);
+
+          const familyLine = document.createElement("div");
+          familyLine.className = "tiny";
+          familyLine.textContent = spy.pregnant
+            ? `Pregnant - Children ${spy.children || 0}`
+            : `Children ${spy.children || 0} - ${spy.lastReport || "Awaiting assignment."}`;
+          card.appendChild(familyLine);
+
+          const targetTile = spyTargetTile(spy);
+          const targetLine = document.createElement("div");
+          targetLine.className = "tiny";
+          targetLine.textContent = targetTile
+            ? `Target: (${targetTile.q}, ${targetTile.r}) - ${duchessRegionName(targetTile)}${hasTunnelSpyAccess(targetTile) ? " - tunnel support" : ""}`
+            : "Target: currently unassigned";
+          card.appendChild(targetLine);
+
+          const personalRow = document.createElement("div");
+          personalRow.className = "row";
+          for (const [label, handler, disabled] of [
+            ["Converse", () => spyConverse(spy), spy.converseUsedThisTurn || gameOver],
+            ["Flirt", () => spyFlirt(spy), spy.flirtUsedThisTurn || gameOver],
+            ["Gift Her", () => spyGift(spy), spy.giftUsedThisTurn || gameOver || treasury < 2],
+            ["Intimacy", () => spyIntimacy(spy), spy.intimacyUsedThisTurn || gameOver],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.disabled = Boolean(disabled);
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            personalRow.appendChild(btn);
+          }
+          card.appendChild(personalRow);
+
+          const missionRow = document.createElement("div");
+          missionRow.className = "row";
+          for (const [label, handler, disabled] of [
+            ["Infiltrate Selected Tile", () => assignSpy(spy, selectedHostile), !selectedHostile || gameOver],
+            ["Gather Intel", () => gatherSpyIntel(spy), spy.gatherUsedThisTurn || !targetTile || gameOver],
+            ["Influence Tile", () => influenceSpyTarget(spy), spy.influenceUsedThisTurn || !targetTile || gameOver],
+            ["Capture Target", () => captureWithSpy(spy), spy.captureUsedThisTurn || !targetTile || gameOver],
+            ["Recall", () => relieveSpy(spy), !targetTile || gameOver],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.disabled = Boolean(disabled);
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            missionRow.appendChild(btn);
+          }
+          card.appendChild(missionRow);
+          grid.appendChild(card);
+        }
+      }
+
+      spiesPanelEl.appendChild(grid);
+    }
+
+    function renderPrisonPanel() {
+      if (!prisonPanelEl) return;
+      prisonPanelEl.innerHTML = "";
+
+      const heading = document.createElement("div");
+      heading.className = "gallery-sub";
+      heading.textContent = "Your prison block holds captured officers, rebellious provincial women, and anyone dragged out of a failed plot alive enough to question.";
+      prisonPanelEl.appendChild(heading);
+
+      const summary = document.createElement("div");
+      summary.className = "tile-command-meta";
+      summary.textContent = `Cells ${prisonState.cells} - Occupied ${prisonState.prisoners.length} - Open ${Math.max(0, prisonState.cells - prisonState.prisoners.length)}`;
+      prisonPanelEl.appendChild(summary);
+
+      const doctrine = document.createElement("div");
+      doctrine.className = "gallery-card";
+      doctrine.innerHTML = "<strong>Prison Doctrine</strong><br>Prisons turn battlefield victories and internal discipline into lasting leverage. Some women are broken, some bargained with, and some leave marked forever.";
+      prisonPanelEl.appendChild(doctrine);
+
+      const grid = document.createElement("div");
+      grid.className = "gallery-grid";
+      if (!prisonState.prisoners.length) {
+        const empty = document.createElement("div");
+        empty.className = "gallery-card";
+        empty.textContent = "Your prison cells are currently empty.";
+        grid.appendChild(empty);
+      } else {
+        for (const prisoner of prisonState.prisoners) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+
+          const title = document.createElement("div");
+          title.className = "gallery-head";
+          title.textContent = prisoner.name;
+          card.appendChild(title);
+
+          const sub = document.createElement("div");
+          sub.className = "tiny";
+          sub.textContent = `${prisoner.title} - ${prisonCategoryLabel(prisoner)}${Number.isInteger(prisoner.originFaction) ? ` - ${factionById(prisoner.originFaction)?.name || "Unknown Origin"}` : ""}`;
+          card.appendChild(sub);
+
+          const stats = document.createElement("div");
+          stats.className = "tiny";
+          stats.textContent = prisonExtendedLabel(prisoner);
+          card.appendChild(stats);
+
+          const healthLine = document.createElement("div");
+          healthLine.className = "tiny";
+          healthLine.textContent = `Health ${prisoner.health}${prisoner.category === "severant_defector" ? ` - Assignment ${prisoner.assignment || "household"}` : ""} - ${prisoner.notes || "Under guard."}`;
+          card.appendChild(healthLine);
+
+          const actions = document.createElement("div");
+          actions.className = "row";
+          for (const [label, handler] of [
+            ["Question", () => questionPrisoner(prisoner)],
+            ["Comfort", () => comfortPrisoner(prisoner)],
+            ["Sentence", () => sentencePrisoner(prisoner)],
+            ["Release", () => releasePrisoner(prisoner)],
+          ]) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              handler();
+            });
+            actions.appendChild(btn);
+          }
+          if (prisoner.category === "severant_operative") {
+            for (const [label, handler] of [
+              ["Convert", () => convertSeverantOperative(prisoner)],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                handler();
+              });
+              actions.appendChild(btn);
+            }
+          }
+          if (prisoner.category === "severant_defector") {
+            for (const [label, handler] of [
+              ["Reassign", () => reassignDefector(prisoner)],
+            ]) {
+              const btn = document.createElement("button");
+              btn.textContent = label;
+              btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                handler();
+              });
+              actions.appendChild(btn);
+            }
+          }
+          card.appendChild(actions);
+          grid.appendChild(card);
+        }
+      }
+
+      prisonPanelEl.appendChild(grid);
+    }
+
+    function applyQueenDemandChoice(queenFaction, demand, choice) {
+      const st = queenEntry(queenFaction);
+      const queen = factionById(queenFaction);
+      const effects = {
+        kneel: { respect: 4, ego: 5, trust: 1, attraction: 1, log: "kneels and offers formal submission" },
+        kiss: { respect: 5, ego: 5, trust: 1, attraction: 2, log: "answers her demand with a deliberate kiss" },
+        lick: { respect: 6, ego: 7, trust: 1, attraction: 2, hate: 1, log: "obeys her more humiliating demand" },
+        touch: { respect: 2, ego: 2, trust: 2, attraction: 3, log: "touches her with careful intimacy instead of pure submission" },
+        praise: { respect: 3, ego: 6, trust: 1, attraction: 1, log: "praises her until her ego is clearly fed" },
+      }[choice] || { respect: 2, ego: 2, trust: 0, attraction: 0, log: "answers her demand" };
+      st.respect = (st.respect || 0) + effects.respect;
+      st.ego = clamp((st.ego || 42) + effects.ego, 0, 100);
+      st.trust = clamp(st.trust + effects.trust, -100, 100);
+      st.attraction = clamp(st.attraction + effects.attraction, 0, 100);
+      st.hate = clamp(st.hate + (effects.hate || 0), 0, 100);
+      addLog(`You ${effects.log} for ${queen.leader}. Respect rises, and her ego grows.`);
+      queueEventModal({
+        label: "One On One",
+        title: `${queen.leader} Receives Your Answer`,
+        body: `${queen.leader} watches you closely as the private moment ends.\n\nRespect ${st.respect || 0} • Ego ${st.ego || 0} • Trust ${st.trust} • Hate ${st.hate}`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        cta: "Leave Her",
+      });
+      render();
+    }
+
+    function queenWorshipPoseOptions(queen) {
+      return QUEEN_WORSHIP_POSES_BY_LEADER[queen?.leader] || [{ id: "default", label: "Default", src: null }];
+    }
+
+    function queenWorshipPoseImage(queen, poseId, fallback) {
+      const pose = queenWorshipPoseOptions(queen).find((entry) => entry.id === poseId);
+      return pose?.src || fallback;
+    }
+
+    function queenWorshipZoneFromPoint(ev, frame, poseId = "default") {
+      const rect = frame.getBoundingClientRect();
+      const x = clamp((ev.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const y = clamp((ev.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
+      if (poseId === "ass") {
+        if (y < 0.28) return { key: "back", label: "her lower back", respect: 2, ego: 2, attraction: 1, pleasure: 0.75 };
+        if (y < 0.50) {
+          if (x < 0.47) return { key: "ass_left", label: "her left ass cheek", respect: 2, ego: 3, attraction: 2, pleasure: 1.05 };
+          if (x > 0.53) return { key: "ass_right", label: "her right ass cheek", respect: 2, ego: 3, attraction: 2, pleasure: 1.05 };
+          return { key: "ass_center", label: "between her ass cheeks", respect: 2, ego: 3, attraction: 3, pleasure: 1.35 };
+        }
+        if (y < 0.69) {
+          if (x > 0.39 && x < 0.61) return { key: "asshole", label: "her asshole", respect: 1, ego: 4, attraction: 4, pleasure: 2.25 };
+          return { key: x < 0.5 ? "ass_low_left" : "ass_low_right", label: x < 0.5 ? "the lower curve of her left ass cheek" : "the lower curve of her right ass cheek", respect: 2, ego: 3, attraction: 2, pleasure: 1.15 };
+        }
+        if (y < 0.82) {
+          if (x > 0.42 && x < 0.58) return { key: "pussy", label: "her pussy", respect: 1, ego: 4, attraction: 4, pleasure: 2.1 };
+          return { key: "inner_thighs", label: x < 0.5 ? "her left inner thigh" : "her right inner thigh", respect: 2, ego: 2, attraction: 3, pleasure: 1.3 };
+        }
+        return { key: "thighs", label: x < 0.5 ? "her left thigh" : "her right thigh", respect: 2, ego: 2, attraction: 2, pleasure: 0.95 };
+      }
+      if (poseId === "feet") {
+        if (y < 0.36) return { key: "legs", label: "her legs", respect: 2, ego: 2, attraction: 1, pleasure: 0.75 };
+        if (y < 0.62) return { key: "ankles", label: "her ankles", respect: 3, ego: 3, attraction: 1, pleasure: 0.85 };
+        if (x < 0.45) return { key: "left_foot", label: "her left foot", respect: 4, ego: 4, attraction: 1, pleasure: 1 };
+        if (x > 0.55) return { key: "right_foot", label: "her right foot", respect: 4, ego: 4, attraction: 1, pleasure: 1 };
+        return { key: "soles", label: "her soles", respect: 4, ego: 4, attraction: 1, pleasure: 1.1 };
+      }
+      if (poseId === "pussy") {
+        if (y < 0.28) return { key: "waist", label: "her waist", respect: 2, ego: 2, attraction: 2, pleasure: 0.8 };
+        if (y < 0.48) return { key: "hips", label: x < 0.5 ? "her left hip" : "her right hip", respect: 2, ego: 2, attraction: 2, pleasure: 1 };
+        if (y < 0.72 && x > 0.34 && x < 0.66) return { key: "pussy", label: "her pussy", respect: 1, ego: 4, attraction: 4, pleasure: 2.2 };
+        return { key: "thighs", label: x < 0.5 ? "her left thigh" : "her right thigh", respect: 2, ego: 2, attraction: 2, pleasure: 1 };
+      }
+      if (y < 0.18) return { key: "crown", label: "her crown and hair", respect: 2, ego: 2, attraction: 0 };
+      if (y < 0.30) return { key: "face", label: x < 0.5 ? "her cheek and lips" : "her neck and jaw", respect: 2, ego: 2, attraction: 1 };
+      if (y < 0.44) {
+        if (x < 0.32) return { key: "shoulder", label: "her shoulder", respect: 2, ego: 1, attraction: 1 };
+        if (x > 0.68) return { key: "armpit", label: "beneath her arm", respect: 1, ego: 2, attraction: 2 };
+        return { key: "chest", label: "her chest and collar", respect: 2, ego: 2, attraction: 2 };
+      }
+      if (y < 0.58) {
+        if (x < 0.34) return { key: "hand_left", label: "her left hand", respect: 3, ego: 1, attraction: 1 };
+        if (x > 0.66) return { key: "hand_right", label: "her right hand", respect: 3, ego: 1, attraction: 1 };
+        return { key: "waist", label: "her waist", respect: 2, ego: 2, attraction: 2 };
+      }
+      if (y < 0.74) {
+        if (x < 0.34) return { key: "hip_left", label: "her left hip", respect: 2, ego: 2, attraction: 2 };
+        if (x > 0.66) return { key: "hip_right", label: "her right hip", respect: 2, ego: 2, attraction: 2 };
+        return { key: "ass", label: "her ass", respect: 2, ego: 3, attraction: 2 };
+      }
+      if (y < 0.86) {
+        if (x > 0.42 && x < 0.58) return { key: "pussy", label: "her pussy", respect: 1, ego: 3, attraction: 3 };
+        return { key: "thighs", label: x < 0.5 ? "her left thigh" : "her right thigh", respect: 2, ego: 2, attraction: 2 };
+      }
+      return { key: "feet", label: "at her feet", respect: 4, ego: 4, attraction: 0 };
+    }
+
+    function renderQueenWorshipScene({ container, event }) {
+      const queen = factionById(event.queenFaction);
+      const st = queenEntry(event.queenFaction);
+      event.mode ||= "kiss";
+      event.pose ||= "default";
+      event.progress ||= 0;
+      event.sensation ||= 0;
+      event.strokeCount ||= 0;
+      event.touches ||= [];
+      event.reaction ||= `${queen.leader} waits, studying whether you will make the worship feel deliberate.`;
+      const poseOptions = queenWorshipPoseOptions(queen);
+      const basePortrait = event.portrait || queenPortraits[event.queenFaction] || QUEEN_PORTRAITS[event.queenFaction] || "";
+
+      const shell = document.createElement("div");
+      shell.className = "worship-shell";
+      const stage = document.createElement("div");
+      stage.className = "worship-stage";
+      shell.appendChild(stage);
+
+      const portraitWrap = document.createElement("div");
+      portraitWrap.className = "worship-portrait-wrap";
+      stage.appendChild(portraitWrap);
+
+      const img = document.createElement("img");
+      img.className = "worship-portrait";
+      img.src = queenWorshipPoseImage(queen, event.pose, basePortrait);
+      img.alt = `${queen.leader} portrait`;
+      portraitWrap.appendChild(img);
+
+      const hint = document.createElement("div");
+      hint.className = "worship-hint";
+      hint.textContent = "Drag slowly across the portrait to run the selected action along her. Clicks are quick worship; strokes build sensation.";
+      portraitWrap.appendChild(hint);
+
+      const trail = document.createElement("div");
+      trail.className = "worship-trail";
+      portraitWrap.appendChild(trail);
+
+      const side = document.createElement("div");
+      side.className = "worship-side";
+      stage.appendChild(side);
+
+      const title = document.createElement("div");
+      title.className = "event-title";
+      title.textContent = `Alone With ${queen.leader}`;
+      side.appendChild(title);
+
+      const reaction = document.createElement("div");
+      reaction.className = "worship-reaction";
+      reaction.textContent = event.reaction;
+      side.appendChild(reaction);
+
+      const stats = document.createElement("div");
+      stats.className = "event-meta";
+      stats.textContent = `Respect ${st.respect || 0} - Ego ${st.ego || 0} - Trust ${st.trust} - Hate ${st.hate} - Worship ${Math.floor(event.progress)}% - Sensation ${Math.floor(event.sensation)}%`;
+      side.appendChild(stats);
+
+      if (poseOptions.length > 1) {
+        const poseRow = document.createElement("div");
+        poseRow.className = "worship-mode-row worship-pose-row";
+        for (const pose of poseOptions) {
+          const btn = document.createElement("button");
+          btn.textContent = pose.label;
+          if (event.pose === pose.id) btn.classList.add("active-tab");
+          btn.addEventListener("click", () => {
+            event.pose = pose.id;
+            event.reaction = pose.id === "default"
+              ? `${queen.leader} lets you return to worshipping her full presence.`
+              : `${queen.leader} shifts, giving you access for ${pose.label.toLowerCase()}.`;
+            renderEventPanel();
+          });
+          poseRow.appendChild(btn);
+        }
+        side.appendChild(poseRow);
+      }
+
+      const meter = document.createElement("div");
+      meter.className = "worship-meter";
+      const fill = document.createElement("div");
+      fill.className = "worship-meter-fill";
+      fill.style.width = `${clamp(event.progress, 0, 100)}%`;
+      meter.appendChild(fill);
+      side.appendChild(meter);
+
+      const modeRow = document.createElement("div");
+      modeRow.className = "worship-mode-row";
+      for (const [mode, label] of [["kiss", "Kiss"], ["touch", "Touch"], ["praise", "Praise"], ["kneel", "Kneel"], ["lick", "Lick"]]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        if (event.mode === mode) btn.classList.add("active-tab");
+        btn.addEventListener("click", () => {
+          event.mode = mode;
+          event.reaction = `${queen.leader}'s eyes follow the shift in your devotion.`;
+          renderEventPanel();
+        });
+        modeRow.appendChild(btn);
+      }
+      side.appendChild(modeRow);
+
+      const log = document.createElement("div");
+      log.className = "worship-log";
+      const recent = event.touches.slice(-5).reverse();
+      log.textContent = recent.length ? recent.join("\n") : "No worship offered yet.";
+      side.appendChild(log);
+
+      const actionRow = document.createElement("div");
+      actionRow.className = "event-actions";
+      const finish = document.createElement("button");
+      finish.className = "event-continue";
+      finish.textContent = event.progress >= 35 ? "Finish Worship" : "Offer This Much";
+      finish.addEventListener("click", () => {
+        dismissEventModal();
+        applyQueenDemandChoice(event.queenFaction, event.demand, event.mode);
+      });
+      actionRow.appendChild(finish);
+
+      const refuse = document.createElement("button");
+      refuse.className = "event-continue";
+      refuse.textContent = "Refuse Her";
+      refuse.addEventListener("click", () => {
+        dismissEventModal();
+        st.respect = (st.respect || 0) - 4;
+        st.ego = clamp((st.ego || 42) + 4, 0, 100);
+        st.hate = Math.min(100, st.hate + 7);
+        st.trust = Math.max(-100, st.trust - 5);
+        addLog(`${queen.leader} is angered by your refusal and grows colder, prouder, and more difficult to manage.`);
+        render();
+      });
+      actionRow.appendChild(refuse);
+      side.appendChild(actionRow);
+
+      let dragging = false;
+      let lastZone = "";
+      let lastStamp = 0;
+      let lastPoint = null;
+      const describeWorshipTarget = (label, modeText) => {
+        if (label.startsWith("at ")) return label;
+        if (label.startsWith("beneath ")) return label;
+        if (modeText.endsWith("along") || modeText.endsWith("over") || modeText.endsWith("before")) return label;
+        return label;
+      };
+      const worshipModeVerb = () => ({
+        kiss: "kiss",
+        touch: "run your hand along",
+        praise: "murmur praise over",
+        kneel: "lower yourself before",
+        lick: "trail your tongue along",
+      }[event.mode] || "honor");
+      const addWorshipTrail = (ev, intensity) => {
+        const rect = portraitWrap.getBoundingClientRect();
+        const dot = document.createElement("span");
+        dot.className = `worship-trail-dot ${event.mode}`;
+        const size = clamp(8 + intensity * 0.28, 8, 22);
+        dot.style.width = `${size}px`;
+        dot.style.height = `${size}px`;
+        dot.style.left = `${ev.clientX - rect.left - size / 2}px`;
+        dot.style.top = `${ev.clientY - rect.top - size / 2}px`;
+        trail.appendChild(dot);
+        setTimeout(() => dot.remove(), 720);
+      };
+      const applyWorshipTouch = (ev, force = false) => {
+        const now = performance.now();
+        const zone = queenWorshipZoneFromPoint(ev, portraitWrap, event.pose);
+        const rect = portraitWrap.getBoundingClientRect();
+        const point = {
+          x: clamp((ev.clientX - rect.left) / Math.max(1, rect.width), 0, 1),
+          y: clamp((ev.clientY - rect.top) / Math.max(1, rect.height), 0, 1),
+        };
+        const distance = lastPoint
+          ? Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y)
+          : 0.035;
+        if (!force && zone.key === lastZone && now - lastStamp < 55 && distance < 0.018) return;
+        lastZone = zone.key;
+        lastStamp = now;
+        lastPoint = point;
+        event.strokeCount += dragging ? 1 : 0;
+        const strokePower = clamp(distance * 62, force ? 0.65 : 0.22, 2.4);
+        const modeBonus = event.mode === "lick" || event.mode === "touch" ? 1.08 : event.mode === "praise" ? 0.9 : 1;
+        const modeText = worshipModeVerb();
+        const zoneGain = zone.respect * 0.42 + (event.mode === "praise" ? 0.45 : 0) + (event.mode === "kneel" && zone.key === "feet" ? 0.75 : 0);
+        const gain = clamp(zoneGain * modeBonus + strokePower, 0.35, 3.2);
+        event.progress = clamp(event.progress + gain, 0, 100);
+        const pleasureBonus = zone.pleasure || 1;
+        const sensationCap = zone.key === "pussy" || zone.key === "asshole" ? 3.8 : 2.1;
+        const sensationGain = clamp((strokePower * modeBonus + zone.attraction * 0.18) * pleasureBonus, 0.15, sensationCap);
+        event.sensation = clamp(event.sensation + sensationGain, 0, 100);
+        if (force || event.strokeCount % 6 === 0 || event.progress >= 100) {
+          st.respect = (st.respect || 0) + Math.max(1, Math.floor(zone.respect / 2));
+          st.ego = clamp((st.ego || 42) + Math.max(1, Math.floor(zone.ego / 2)), 0, 100);
+          st.attraction = clamp(st.attraction + zone.attraction, 0, 100);
+        }
+        const sensationNote = event.sensation > 70
+          ? "Her composure visibly warms under the attention."
+          : event.sensation > 35
+            ? "The repeated motion starts to feel less ceremonial and more personal."
+            : "She watches the motion, judging whether you mean it.";
+        const targetLabel = describeWorshipTarget(zone.label, modeText);
+        event.reaction = `${queen.leader} lets you ${modeText} ${targetLabel}. ${sensationNote}`;
+        const touchLine = dragging
+          ? `You ${modeText} ${targetLabel}, keeping the motion going.`
+          : `You ${modeText} ${targetLabel}.`;
+        if (force || now - lastStamp < 90 || event.touches[event.touches.length - 1] !== touchLine) {
+          event.touches.push(touchLine);
+          if (event.touches.length > 24) event.touches.splice(0, event.touches.length - 24);
+        }
+        addWorshipTrail(ev, strokePower * modeBonus);
+        reaction.textContent = event.reaction;
+        stats.textContent = `Respect ${st.respect || 0} - Ego ${st.ego || 0} - Trust ${st.trust} - Hate ${st.hate} - Worship ${Math.floor(event.progress)}% - Sensation ${Math.floor(event.sensation)}%`;
+        fill.style.width = `${clamp(event.progress, 0, 100)}%`;
+        log.textContent = event.touches.slice(-5).reverse().join("\n");
+        finish.textContent = event.progress >= 35 ? "Finish Worship" : "Offer This Much";
+      };
+
+      portraitWrap.addEventListener("pointerdown", (ev) => {
+        dragging = true;
+        lastPoint = null;
+        portraitWrap.setPointerCapture?.(ev.pointerId);
+        applyWorshipTouch(ev, true);
+      });
+      portraitWrap.addEventListener("pointermove", (ev) => {
+        if (dragging) applyWorshipTouch(ev);
+      });
+      portraitWrap.addEventListener("pointerup", (ev) => {
+        dragging = false;
+        lastPoint = null;
+        portraitWrap.releasePointerCapture?.(ev.pointerId);
+      });
+      portraitWrap.addEventListener("pointerleave", () => {
+        dragging = false;
+        lastPoint = null;
+      });
+
+      container.appendChild(shell);
+    }
+
+    function openQueenDemandChamber(queenFaction, demand) {
+      const st = queenEntry(queenFaction);
+      const queen = factionById(queenFaction);
+      queueEventModal({
+        label: "One On One",
+        title: `Alone With ${queen.leader}`,
+        queenFaction,
+        demand,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        wide: true,
+        render: renderQueenWorshipScene,
+      });
+      return;
+      queueEventModal({
+        label: "One On One",
+        title: `Alone With ${queen.leader}`,
+        body: `${queen.leader} has you brought into a private room where the demand is no longer political theater.\n\nShe is close, watching your pride, your hesitation, and whether you will satisfy her command.\n\nRespect ${st.respect || 0} • Ego ${st.ego || 0} • Trust ${st.trust} • Hate ${st.hate}`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        actions: [
+          { label: "Kneel And Submit", onClick: () => { dismissEventModal(); applyQueenDemandChoice(queenFaction, demand, "kneel"); } },
+          { label: "Kiss Her", onClick: () => { dismissEventModal(); applyQueenDemandChoice(queenFaction, demand, "kiss"); } },
+          { label: "Lick As Ordered", onClick: () => { dismissEventModal(); applyQueenDemandChoice(queenFaction, demand, "lick"); } },
+          { label: "Touch Her Gently", onClick: () => { dismissEventModal(); applyQueenDemandChoice(queenFaction, demand, "touch"); } },
+          { label: "Praise Her", onClick: () => { dismissEventModal(); applyQueenDemandChoice(queenFaction, demand, "praise"); } },
+          {
+            label: "Refuse Her",
+            onClick: () => {
+              dismissEventModal();
+              st.respect = (st.respect || 0) - 4;
+              st.ego = clamp((st.ego || 42) + 4, 0, 100);
+              st.hate = Math.min(100, st.hate + 7);
+              st.trust = Math.max(-100, st.trust - 5);
+              addLog(`${queen.leader} is angered by your refusal and grows colder, prouder, and more difficult to manage.`);
+              render();
+            },
+          },
+        ],
+      });
+    }
+
+    function maybeTriggerQueenDemand() {
+      const candidates = diplomacyTargetQueens()
+        .map((faction) => faction.id)
+        .concat(eligibleUnderworldQueens())
+        .filter((id, index, list) => list.indexOf(id) === index);
+      if (!candidates.length || Math.random() > 0.18) return;
+      const queenFaction = randomItem(candidates);
+      const st = queenEntry(queenFaction);
+      if (st.demandedThisTurn) return;
+      st.demandedThisTurn = true;
+      const queen = factionById(queenFaction);
+      const demand = randomItem([
+        { type: "worship", title: "Demand Worship", obey: "Worship Her", refuse: "Refuse Worship" },
+        { type: "submission", title: "Demand Submission", obey: "Submit To Her", refuse: "Refuse Submission" },
+        { type: "feet", title: "Demand You Kiss Her Feet", obey: "Kiss Her Feet", refuse: "Refuse At Her Feet" },
+        { type: "degradation", title: "Demand You Kiss Her Ass", obey: "Humiliate Yourself For Her", refuse: "Refuse The Humiliation" },
+      ]);
+      queueEventModal({
+        label: "Queen Demand",
+        title: `${queen.leader} Makes A Personal Demand`,
+        body: `${queen.leader} sends word with unmistakable arrogance.\n\nShe wants ${demand.type === "worship" ? "open reverence and praise" : demand.type === "submission" ? "a show of obedience and surrender" : demand.type === "feet" ? "you lowered at her feet" : "a degrading act meant purely to feed her ego"}.\n\nYou can go to her privately and choose how to answer, or refuse the summons before it becomes intimate.\n\nRespect ${st.respect || 0} • Ego ${st.ego || 0} • Trust ${st.trust} • Hate ${st.hate}`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+        actions: [
+          {
+            label: "Go To Her",
+            onClick: () => {
+              dismissEventModal();
+              openQueenDemandChamber(queenFaction, demand);
+            },
+          },
+          {
+            label: "Refuse The Summons",
+            onClick: () => {
+              dismissEventModal();
+              st.respect = (st.respect || 0) - 4;
+              st.ego = Math.min(100, (st.ego || 42) + 4);
+              st.hate = Math.min(100, st.hate + 7);
+              st.trust = Math.max(-100, st.trust - 5);
+              addLog(`${queen.leader} is angered by your refusal and grows colder, prouder, and more difficult to manage.`);
+              render();
+            },
+          },
+        ],
+      });
+    }
+
     function distance2(x1, y1, x2, y2) {
       const dx = x1 - x2;
       const dy = y1 - y2;
@@ -10850,6 +22610,7 @@ const BASE_FACTIONS = [
     function resolveMove(fromTile, toTile, factionId, forceAmount = null, attackBonus = 0) {
       if (fromTile.terrain === "ocean" || toTile.terrain === "ocean") return null;
       const playerId = playerFactionId();
+      reconcileMilitaryState();
       const amount = Math.min(fromTile.troops, forceAmount ?? Math.floor(fromTile.troops / 2));
       if (amount < 1) return null;
       if (toTile.owner === factionId) {
@@ -10891,8 +22652,11 @@ const BASE_FACTIONS = [
       }
       const beforeTroops = toTile.troops;
       const targetWasCapital = toTile.capital;
-      const defenseBonus = tileDefenseBonus(toTile) + (toTile.estate === "palace" ? 1 : 0);
-      const effective = amount + attackBonus;
+      const attackingOfficer = officerOnTile(fromTile, factionId);
+      const defendingOfficer = officerOnTile(toTile, toTile.owner);
+      const hadDuchess = toTile.duchessId ? getDuchess(toTile.duchessId) : null;
+      const defenseBonus = tileDefenseBonus(toTile) + (toTile.estate === "palace" ? 1 : 0) + officerCombatBonus(defendingOfficer, toTile.troops, "defense");
+      const effective = amount + attackBonus + officerCombatBonus(attackingOfficer, amount, "attack");
       fromTile.troops -= amount;
       const defenseTotal = toTile.troops + defenseBonus;
       if (effective > defenseTotal) {
@@ -10900,6 +22664,8 @@ const BASE_FACTIONS = [
         toTile.owner = factionId;
         transferDuchessWithProvince(toTile, factionId);
         toTile.troops = remain;
+        if (attackingOfficer) attackingOfficer.assignedTile = `${toTile.q},${toTile.r}`;
+        if (defendingOfficer) defendingOfficer.assignedTile = null;
         const capturedSystems = ensureTileSystems(toTile);
         capturedSystems.loyalty = clamp(capturedSystems.loyalty - 12, 0, 100);
         capturedSystems.unrest = clamp(capturedSystems.unrest + 10, 0, 100);
@@ -10910,12 +22676,20 @@ const BASE_FACTIONS = [
         if (gameMode === "servitude" && factionId === playerId && defenderId >= 0 && defenderId !== playerId) {
           resistanceState.turnCaptures += 1;
         }
+        if (factionId === playerId && hadDuchess) {
+          resolveCapturedDuchessProtocol(toTile, hadDuchess, attackingOfficer);
+        }
         if (targetWasCapital && defenderId !== factionId) {
           onCapitalTaken(defenderId, factionId);
           toTile.capital = false;
         }
       } else {
         toTile.troops = Math.max(0, beforeTroops - Math.max(0, effective - defenseBonus));
+        if (attackingOfficer) {
+          attackingOfficer.loyalty = Math.min(100, attackingOfficer.loyalty + 1);
+          attackingOfficer.trust = Math.min(100, attackingOfficer.trust + 1);
+        }
+        if (defendingOfficer) defendingOfficer.loyalty = Math.min(100, defendingOfficer.loyalty + 1);
       }
       return {
         mode: "attack",
@@ -10947,11 +22721,11 @@ const BASE_FACTIONS = [
       if (winnerId === playerId && QUEEN_POWERS[defenderId] && !capturedQueens.includes(defenderId)) {
         capturedQueens.push(defenderId);
         queenEntry(defenderId);
+        onSeverantRouteQueenSecured(defenderId, "captured");
         const queen = QUEEN_POWERS[defenderId];
         addLog(`${queen.title} has joined your harem.`);
         eventBody += `\n\n${queen.title} has been taken into your harem.`;
       }
-
       for (const tile of tiles) {
         if (tile.owner === defenderId) {
           tile.owner = winnerId;
@@ -10973,8 +22747,8 @@ const BASE_FACTIONS = [
         endTurnBtn.disabled = true;
         autoTurnBtn.disabled = true;
         resistanceBtn.disabled = true;
-        addLog("Your leader has fallen. Defeat.");
-        eventBody = `${winner.leader} has captured your capital and shattered the Verdant Crown.\n\nYour reign ends here.`;
+        addLog(`${winner.leader} takes your capital and claims you as her personal slave.`);
+        eventBody = `${winner.leader} has captured your capital and broken the Verdant Crown.\n\nShe takes you alive out of the ruin, strips away the last pretense of your rule, and keeps you as her personal slave beneath her throne.\n\nThis is her victory over you.`;
       }
 
       cleanupUnits();
@@ -10992,7 +22766,7 @@ const BASE_FACTIONS = [
       });
       if (gameOver) {
         showEndingScreen(
-          defenderId === 0 ? "Defeat" : "Faction Collapse",
+          defenderId === 0 ? `${winner.leader} Claims You` : "Faction Collapse",
           eventBody,
           winnerId
         );
@@ -11133,24 +22907,69 @@ const BASE_FACTIONS = [
     }
 
     function isNeighbor(a, b) {
-      return inTroopRange(a, b);
+      return inOperationalMoveRange(a, b, a?.owner);
     }
 
     function maybeFinishGame() {
+      ensureHighSeverantProfile();
+      ensureCampaignRouteState();
       const alive = activeFactions();
       if (alive.length === 1 && dormantQueens().length === 0) {
         const winner = alive[0];
+        if (winner.id === playerFactionId()) {
+          if (campaignRouteState.side === "severant" && highSeverantProfile.confrontationOutcome !== "judged") {
+            maybeAdvanceSeverantObjectiveChain();
+            if (!severantRouteVictoryReady()) {
+              render();
+              return;
+            }
+            const ending = severantVictoryEndingData();
+            gameOver = true;
+            endTurnBtn.disabled = true;
+            autoTurnBtn.disabled = true;
+            resistanceBtn.disabled = true;
+            addLog(`${highSeverantProfile.hiddenName} closes the war at your side instead of in chains.`);
+            queueEventModal({
+              label: ending.label,
+              title: ending.title,
+              body: ending.modalBody,
+              portrait: highSeverantPortrait(),
+              banner: `linear-gradient(135deg, #23180e, #6b1f28)`,
+            });
+            showEndingScreen(ending.title, ending.summary, playerFactionId());
+            render();
+            return;
+          }
+          if (highSeverantProfile.confrontationOutcome === "judged") {
+            return;
+          }
+          if (severantJudgmentReady()) {
+            resolveHighSeverantJudgment();
+            return;
+          }
+          if (!highSeverantProfile.captive) {
+            addLog(`${HIGH_SEVERANT_TITLE} is still unresolved. Secure her alive after locking down every queen if you want the true end of the campaign.`);
+            return;
+          }
+        }
         gameOver = true;
         endTurnBtn.disabled = true;
         autoTurnBtn.disabled = true;
         resistanceBtn.disabled = true;
         addLog(`${winner.name} wins the map.`);
+        const dynastyVictory = qualifiesForDynastyVictory(winner);
         const devotedEnding = gameMode === "servitude" && overlordQueenId !== null && winner.id === overlordQueenId;
         const vowedEnding = devotedEnding && resistanceState.vowed;
         queueEventModal({
-          label: vowedEnding ? "Royal Union" : (devotedEnding ? "Devoted Ending" : (winner.id === 0 ? "Victory" : "Campaign End")),
-          title: vowedEnding ? `You Stand Beside ${winner.leader}` : (devotedEnding ? `You Secure ${winner.name}` : (winner.id === 0 ? "Victory" : `${winner.leader} Wins`)),
-          body: vowedEnding
+          label: dynastyVictory
+            ? "Dynasty Victory"
+            : vowedEnding ? "Royal Union" : (devotedEnding ? "Devoted Ending" : (winner.id === 0 ? "Victory" : "Campaign End")),
+          title: dynastyVictory
+            ? "Your Dynasty Endures"
+            : vowedEnding ? `You Stand Beside ${winner.leader}` : (devotedEnding ? `You Secure ${winner.name}` : (winner.id === 0 ? "Victory" : `${winner.leader} Wins`)),
+          body: dynastyVictory
+            ? `The last rival throne falls, but the true victory is behind you rather than beneath your boots.\n\nYour sons remain loyal, ${HIGH_SEVERANT_TITLE} never pries the line open, and the bloodline survives conquest without rotting from within.`
+            : vowedEnding
             ? `Every rival throne has fallen beneath ${winner.leader}'s banner.\n\nBound to her by formal vows, you do not end as a mere servant. You stand beside her as chosen consort, joined permanently to the throne you helped secure.`
             : devotedEnding
             ? `Every rival throne has been destroyed under ${winner.leader}'s banner.\n\nYou remain in her service as the architect of her final victory, with no rival power left to challenge the realm you helped build.`
@@ -11161,8 +22980,12 @@ const BASE_FACTIONS = [
           banner: `linear-gradient(135deg, ${winner.color}, #23180e)`,
         });
         showEndingScreen(
-          winner.id === 0 ? "Conquest Victory" : `${winner.leader} Triumphs`,
-          winner.id === 0
+          dynastyVictory
+            ? "Dynasty Victory"
+            : winner.id === 0 ? "Conquest Victory" : `${winner.leader} Triumphs`,
+          dynastyVictory
+            ? `You do not merely conquer the map. You preserve the line. Loyal sons stand ready, rival blood never overthrows you, and ${HIGH_SEVERANT_TITLE} fails to turn your household into the private engine of ${SEVERANT_ORDER_NAME}.`
+            : winner.id === 0
             ? "The last rival throne has fallen. Your banner stands alone over the realm."
             : `${winner.leader} secures the last crown and closes the campaign on her terms.`,
           winner.id
@@ -11192,6 +23015,15 @@ const BASE_FACTIONS = [
           round += 1;
           resolvePregnancies();
           resolveMatronPregnancies();
+          resolveCrimeQueenPregnancies();
+          resolveSeverantCourtPregnancies();
+          resolveOfficerPregnancies();
+          resolveSpyPregnancies();
+          resolveHeirTurn();
+          resolveRestorationTurn();
+          resolveUnderworldTurn();
+          if (maybeResolveDynastyEndings()) return;
+          moveUndergroundQueens();
           runWorldQueenDiplomacy();
           triggerWorldEvents();
         }
@@ -11272,6 +23104,8 @@ const BASE_FACTIONS = [
       }
 
       const beforeOwner = tile.owner;
+      const tunnelExit = tunnelExitForMove(selectedTile, tile, humanId);
+      const usedTunnelRoute = !inTroopRange(selectedTile, tile) && Boolean(tunnelExit);
       const send = sendAmountForTile(selectedTile);
       const selectedUnit = getUnitAtTile(selectedTile);
       let unitBonus = 0;
@@ -11280,7 +23114,8 @@ const BASE_FACTIONS = [
         const base = QUEEN_POWERS[selectedUnit.queenFaction].unitFightBonus;
         unitBonus = Math.max(1, base + moraleTierBonus(st.morale) + relationBonus(st, "war"));
       }
-      const attackBonus = beforeOwner === humanId ? 0 : passiveWarBonus() + unitBonus;
+      const dynastyWarBonus = beforeOwner === humanId ? 0 : dynastyLoyalistWarBonus();
+      const attackBonus = beforeOwner === humanId ? 0 : passiveWarBonus() + unitBonus + dynastyWarBonus;
       const result = resolveMove(selectedTile, tile, humanId, send, attackBonus);
       if (!result) return;
       await animateArmyMove(selectedTile, tile, humanId, send);
@@ -11305,6 +23140,9 @@ const BASE_FACTIONS = [
           addLog(`You attacked (${tile.q},${tile.r}) for ${send} damage.`);
         }
       }
+      if (usedTunnelRoute && tunnelExit) {
+        addLog(`The move was routed through your tunnel network using an exit near (${tunnelExit.q},${tunnelExit.r}).`);
+      }
 
       if (selectedTile.troops <= 1) selectedTile = null;
       cleanupUnits();
@@ -11312,7 +23150,8 @@ const BASE_FACTIONS = [
       if (!gameOver) {
         humanMovesRemaining = Math.max(0, humanMovesRemaining - 1);
         if (humanMovesRemaining === 0) {
-          addLog("You used all 5 moves. Turn ended.");
+          const moveCap = HUMAN_MOVES_PER_TURN + Math.floor(loyalHeirs().length / 3);
+          addLog(`You used all ${moveCap} moves. Turn ended.`);
           render();
           cycleTurn();
           return;
@@ -11331,7 +23170,7 @@ const BASE_FACTIONS = [
         .sort((a, b) => b.troops - a.troops);
 
       for (const src of sources) {
-        const neigh = tilesInTroopRange(src);
+        const neigh = tilesInOperationalMoveRange(src, factionId);
 
         const enemyTargets = neigh
           .filter(n => {
@@ -11556,7 +23395,10 @@ const BASE_FACTIONS = [
     tabLeadersBtn.addEventListener("click", () => setMenuTab("leaders"));
     tabDiplomacyBtn.addEventListener("click", () => setMenuTab("diplomacy"));
     tabHaremBtn.addEventListener("click", () => setMenuTab("harem"));
+    tabMilitaryBtn.addEventListener("click", () => setMenuTab("military"));
+    tabSpiesBtn.addEventListener("click", () => setMenuTab("spies"));
     tabGovernmentBtn.addEventListener("click", () => setMenuTab("government"));
+    tabPrisonBtn.addEventListener("click", () => setMenuTab("prison"));
     tabUnderworldBtn.addEventListener("click", () => setMenuTab("underworld"));
     tabDevBtn.addEventListener("click", () => setMenuTab("dev"));
     for (const btn of mirroredTabButtons) {
@@ -11566,12 +23408,18 @@ const BASE_FACTIONS = [
       });
     }
     modalCloseBtn.addEventListener("click", () => {
-      if (activeMenuTab === "event") dismissEventModal();
+      if (activeMenuTab === "event") {
+        if (eventRequiresChoice()) return;
+        dismissEventModal();
+      }
       else setMenuTab("overview");
     });
     modalOverlayEl.addEventListener("click", (ev) => {
       if (ev.target !== modalOverlayEl) return;
-      if (activeMenuTab === "event") dismissEventModal();
+      if (activeMenuTab === "event") {
+        if (eventRequiresChoice()) return;
+        dismissEventModal();
+      }
       else setMenuTab("overview");
     });
     document.addEventListener("keydown", (ev) => {
@@ -11606,7 +23454,10 @@ const BASE_FACTIONS = [
     });
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && modalOverlayEl.classList.contains("open")) {
-        if (activeMenuTab === "event") dismissEventModal();
+        if (activeMenuTab === "event") {
+          if (eventRequiresChoice()) return;
+          dismissEventModal();
+        }
         else setMenuTab("overview");
       }
       if (ev.key === "Escape" && endingOverlayEl.classList.contains("open")) {
