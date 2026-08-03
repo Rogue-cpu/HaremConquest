@@ -1138,6 +1138,7 @@ const BASE_FACTIONS = [
     let dragOriginY = 0;
     let dragArmed = false;
     let dragHoldTimer = null;
+    let pendingTurnTimer = null;
     let visualTick = 0;
     let dayNightPhase = 0.18;
     let dayNightTimer = null;
@@ -7746,6 +7747,9 @@ const BASE_FACTIONS = [
         menuMusicEl.currentTime = 0;
         syncAmbienceTrack();
         bootOverlayEl.classList.add("boot-hidden");
+        if (loadExisting && lastSaveMeta?.state) {
+          resumeLoadedTurnState();
+        }
       } catch (err) {
         console.error(err);
         setLoadingProgress(100, "Loading failed. Refresh and try again.");
@@ -8130,6 +8134,68 @@ const BASE_FACTIONS = [
       }
     }
 
+    function clearPendingTurnTimer() {
+      if (pendingTurnTimer === null) return;
+      clearTimeout(pendingTurnTimer);
+      pendingTurnTimer = null;
+    }
+
+    function scheduleTurnCallback(callback, delay) {
+      clearPendingTurnTimer();
+      pendingTurnTimer = window.setTimeout(() => {
+        pendingTurnTimer = null;
+        callback();
+      }, delay);
+    }
+
+    function resetTransientTurnState() {
+      clearPendingTurnTimer();
+      moveAnimation = null;
+      selectedTile = null;
+      if (dragHoldTimer) {
+        clearTimeout(dragHoldTimer);
+        dragHoldTimer = null;
+      }
+      isDraggingBoard = false;
+      dragMoved = false;
+      dragArmed = false;
+      dragPointerId = null;
+      boardWrapEl.style.cursor = "grab";
+    }
+
+    function resumeLoadedTurnState() {
+      resetTransientTurnState();
+      const currentFaction = FACTIONS[currentFactionIndex] || FACTIONS[0];
+      if (!currentFaction) return;
+      if (gameOver) {
+        endTurnBtn.disabled = true;
+        autoTurnBtn.disabled = true;
+        resistanceBtn.disabled = true;
+        updateHUD();
+        render();
+        return;
+      }
+      if (isPlayerControlledFaction(currentFaction.id)) {
+        endTurnBtn.disabled = false;
+        autoTurnBtn.disabled = false;
+        resistanceBtn.disabled = gameMode !== "servitude";
+        updateHUD();
+        render();
+        return;
+      }
+      endTurnBtn.disabled = true;
+      autoTurnBtn.disabled = true;
+      resistanceBtn.disabled = true;
+      updateHUD();
+      render();
+      scheduleTurnCallback(() => {
+        if (gameOver) return;
+        const activeFaction = FACTIONS[currentFactionIndex];
+        if (!activeFaction || activeFaction.id !== currentFaction.id) return;
+        runAiTurn(currentFaction.id);
+      }, 380);
+    }
+
     function updateSaveStatus(text, kind = "warn") {
       if (!saveStatusEl) return;
       saveStatusEl.textContent = text;
@@ -8215,6 +8281,7 @@ const BASE_FACTIONS = [
     }
 
     function hydrateState(snapshot) {
+      resetTransientTurnState();
       const minX = Math.min(...snapshot.tiles.map((tile) => axialToPixel(tile.q, tile.r).x));
       const maxX = Math.max(...snapshot.tiles.map((tile) => axialToPixel(tile.q, tile.r).x));
       const minY = Math.min(...snapshot.tiles.map((tile) => axialToPixel(tile.q, tile.r).y));
@@ -8225,9 +8292,15 @@ const BASE_FACTIONS = [
       boardOriginX = pad - minX;
       boardOriginY = pad - minY;
       restoreTiles(snapshot.tiles);
-      currentFactionIndex = snapshot.currentFactionIndex;
+      currentFactionIndex = Math.max(
+        0,
+        Math.min(
+          FACTIONS.length - 1,
+          Number.isFinite(snapshot.currentFactionIndex) ? Math.floor(snapshot.currentFactionIndex) : 0
+        )
+      );
       round = snapshot.round;
-      gameOver = snapshot.gameOver;
+      gameOver = Boolean(snapshot.gameOver);
       treasury = snapshot.treasury ?? treasury;
       restorationState = snapshot.restorationState || restorationState;
       fertilityState = snapshot.fertilityState || fertilityState;
@@ -8323,7 +8396,7 @@ const BASE_FACTIONS = [
       nextUnitId = snapshot.nextUnitId || 1;
       humanMovesRemaining = snapshot.humanMovesRemaining || HUMAN_MOVES_PER_TURN;
       activeMenuTab = snapshot.activeMenuTab || "overview";
-      eventQueue = snapshot.eventQueue || [];
+      eventQueue = Array.isArray(snapshot.eventQueue) ? snapshot.eventQueue : [];
       diplomacyTurnNumber = snapshot.diplomacyTurnNumber || 0;
       worldRelations = snapshot.worldRelations || {};
       tileSceneState = snapshot.tileSceneState || null;
@@ -8381,6 +8454,7 @@ const BASE_FACTIONS = [
         return true;
       }
       hydrateState(payload.state);
+      resumeLoadedTurnState();
       updateSaveStatus(`Loaded campaign from ${formatTimestamp(payload.savedAt)}.`, "ok");
       return true;
     }
@@ -11834,7 +11908,7 @@ const BASE_FACTIONS = [
         if (t.capital || t.estate === "palace") systems.buildings.manor = Math.max(1, systems.buildings.manor);
       }
 
-      selectedTile = null;
+      resetTransientTurnState();
       currentFactionIndex = 0;
       round = 1;
       gameOver = false;
@@ -15262,7 +15336,7 @@ const BASE_FACTIONS = [
         autoTurnBtn.disabled = true;
         resistanceBtn.disabled = true;
         aiDevelopTile(factionId);
-        setTimeout(() => {
+        scheduleTurnCallback(() => {
           runAiTurn(factionId);
         }, 380);
       } else {
@@ -23005,7 +23079,7 @@ const BASE_FACTIONS = [
       const aliveIds = activeFactions().map(f => f.id);
       if (aliveIds.length <= 1) {
         maybeFinishGame();
-        return;
+        if (gameOver || aliveIds.length === 0) return;
       }
 
       let tries = 0;
@@ -23266,7 +23340,7 @@ const BASE_FACTIONS = [
       cleanupUnits();
       maybeFinishGame();
       render();
-      setTimeout(cycleTurn, 420);
+      scheduleTurnCallback(() => cycleTurn(), 420);
     }
 
     canvas.addEventListener("mousemove", (ev) => {
