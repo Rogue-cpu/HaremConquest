@@ -1326,6 +1326,10 @@ const BASE_FACTIONS = [
       return factionId === playerFactionId();
     }
 
+    function currentHumanMoveCap() {
+      return Math.min(HUMAN_MOVES_PER_TURN + 2, HUMAN_MOVES_PER_TURN + Math.floor(loyalHeirs().length / 3));
+    }
+
     function queenEntry(queenFaction) {
       if (!queenState[queenFaction]) {
         queenState[queenFaction] = {
@@ -7090,7 +7094,7 @@ const BASE_FACTIONS = [
         cap.troops += warBonus;
       }
       treasury += Math.min(2, Math.floor(loyal.length / 2));
-      humanMovesRemaining = Math.min(HUMAN_MOVES_PER_TURN + 2, HUMAN_MOVES_PER_TURN + Math.floor(loyal.length / 3));
+      humanMovesRemaining = currentHumanMoveCap();
       addLog(`${loyal.length} loyal son${loyal.length === 1 ? "" : "s"} steady the dynasty this turn${warBonus > 0 ? `, adding +${warBonus} capital troops` : ""}.`);
     }
 
@@ -8165,6 +8169,12 @@ const BASE_FACTIONS = [
 
     function resumeLoadedTurnState() {
       resetTransientTurnState();
+      const aliveIds = activeFactions().map((faction) => faction.id);
+      if (!gameOver && soloPlayerRoundState(aliveIds) && FACTIONS[currentFactionIndex]?.id !== playerFactionId()) {
+        currentFactionIndex = Math.max(0, FACTIONS.findIndex((faction) => faction.id === playerFactionId()));
+        startTurn(playerFactionId());
+        return;
+      }
       const currentFaction = FACTIONS[currentFactionIndex] || FACTIONS[0];
       if (!currentFaction) return;
       if (gameOver) {
@@ -15509,7 +15519,7 @@ const BASE_FACTIONS = [
         turnInfo.textContent += ` • Recruiting ${queen.unitName}`;
       }
       if (!gameOver && isPlayerControlledFaction(FACTIONS[currentFactionIndex].id)) {
-        const moveCap = HUMAN_MOVES_PER_TURN + Math.floor(loyalHeirs().length / 3);
+        const moveCap = currentHumanMoveCap();
         turnInfo.textContent += ` • Moves: ${humanMovesRemaining}/${moveCap}`;
         turnInfo.textContent += ` • Send: ${Math.round(SEND_OPTIONS[sendModeIndex] * 100)}%`;
         turnInfo.textContent += ` • Treasury: ${treasury}`;
@@ -16829,6 +16839,10 @@ const BASE_FACTIONS = [
       st.treaty = "alliance";
       st.trade = false;
       st.affair = false;
+      st.underworldAssigned = false;
+      st.undergroundLocation = null;
+      st.underworldUsedThisTurn = false;
+      st.underworldRomanceUsedThisTurn = false;
       for (const tile of tiles) {
         if (tile.owner === queenFaction) {
           tile.owner = playerId;
@@ -16858,6 +16872,39 @@ const BASE_FACTIONS = [
       onSeverantRouteQueenSecured(queenFaction, "won over");
       maybeFinishGame();
       render();
+      return true;
+    }
+
+    function returnCapturedQueenToCourt(queenFaction, options = {}) {
+      if (!capturedQueens.includes(queenFaction)) return false;
+      const st = queenEntry(queenFaction);
+      if (leaderState[queenFaction]) {
+        leaderState[queenFaction].defeated = true;
+        leaderState[queenFaction].active = false;
+        leaderState[queenFaction].rebelAgainst = null;
+        leaderState[queenFaction].underAuthorityOf = null;
+      }
+      clearFactionRegimeIdentity(queenFaction);
+      st.joinOfferPending = false;
+      st.affairOfferPending = false;
+      st.elopeOfferPending = false;
+      st.affair = false;
+      st.trade = false;
+      st.treaty = options.treaty || "none";
+      st.underworldAssigned = false;
+      st.undergroundLocation = null;
+      st.underworldUsedThisTurn = false;
+      st.underworldRomanceUsedThisTurn = false;
+      st.assignment = options.assignment || "court";
+      if (options.routeStatus) {
+        st.routeStatus = options.routeStatus;
+        st.lastRouteChangeRound = round;
+      }
+      if (Object.prototype.hasOwnProperty.call(options, "forbiddenThisTurn")) {
+        st.forbiddenThisTurn = Boolean(options.forbiddenThisTurn);
+      }
+      removeQueenUnitForFaction(queenFaction);
+      cleanupUnits();
       return true;
     }
 
@@ -17280,9 +17327,17 @@ const BASE_FACTIONS = [
       const dangerEvent = matronContext?.dangerEvent || buildMatronDangerEvent(queenFaction, sourceLabel, dangerBonus);
       matronState.lastDangerEvent = dangerEvent;
       const protection = resolveMatronProtectionBeforeCapture(dangerEvent, matronContext || {});
-      if (protection.prevented) return false;
       const effectiveDanger = Math.max(0, dangerBonus - (protection.reducedDanger || 0));
-      if (Math.random() > covertCaptureChance(queenFaction, effectiveDanger)) {
+      const captureTriggered = Math.random() <= covertCaptureChance(queenFaction, effectiveDanger);
+      if (protection.prevented) {
+        const escorted = Boolean(matronContext?.bringEscort || matronContext?.sentMatronFirst);
+        if (captureTriggered && protection.result?.type === "interruption_during" && escorted) {
+          if (campaignRouteState?.side === "severant") return severantInterdictCovertCapture(queenFaction, sourceLabel);
+          return matronEscortInterdictCovertCapture(queenFaction, sourceLabel, protection.matron);
+        }
+        return false;
+      }
+      if (!captureTriggered) {
         if (matronContext?.ignoredWarnings) {
           adjustAllActiveMatronTrust(-1);
         } else if (matronContext?.askedForCounsel || matronContext?.bringEscort || matronContext?.sentMatronFirst) {
@@ -18166,15 +18221,27 @@ const BASE_FACTIONS = [
     function autoHumanTurn() {
       if (gameOver) return;
       if (!isPlayerControlledFaction(FACTIONS[currentFactionIndex].id)) return;
+      const remainingMoves = Math.max(0, humanMovesRemaining);
       pendingQueenFaction = null;
       pendingUnitQueenFaction = null;
       selectedTile = null;
       hoveredTile = null;
       endTurnBtn.disabled = true;
       autoTurnBtn.disabled = true;
-      addLog("Your queens take command and play the turn for you.");
+      resistanceBtn.disabled = true;
+      if (remainingMoves <= 0) {
+        addLog("No moves remain. The turn ends immediately.");
+        render();
+        cycleTurn();
+        return;
+      }
+      addLog(`Your queens take command and spend the remaining ${remainingMoves} move${remainingMoves === 1 ? "" : "s"} for you.`);
       render();
-      runAiTurn(playerFactionId());
+      runAiTurn(playerFactionId(), {
+        moveBudget: remainingMoves,
+        consumeHumanMoves: true,
+        autoEndTurn: true,
+      });
     }
 
     function openResistanceActions() {
@@ -19092,7 +19159,7 @@ const BASE_FACTIONS = [
       st.morale = clamp((st.morale || 0) - 8, 0, 100);
 
       const body = `${faction.leader} chooses ${sourceLabel.toLowerCase()} as the moment to spring her trap and take you for herself.\n\nShe is too late. ${highSeverantProfile.hiddenName}'s women are already in the walls, behind the curtains, and in the corridors outside the room. The snare closes around the queen instead.\n\nThe Severant keeps you untouched, strips the traitor of her leverage, and drags her back beneath your roof in chains of obedience before dawn.`;
-      if (!capturedQueens.includes(queenFaction) && leaderState[queenFaction]?.active && !leaderState[queenFaction]?.defeated) {
+      if (!capturedQueens.includes(queenFaction)) {
         return submitQueenToPlayer(
           queenFaction,
           body,
@@ -19105,6 +19172,13 @@ const BASE_FACTIONS = [
           }
         );
       }
+      const wasUnderground = st.underworldAssigned || Boolean(st.undergroundLocation);
+      returnCapturedQueenToCourt(queenFaction, {
+        assignment: "court",
+        routeStatus: queenFaction === campaignRouteState.claimantQueenId ? "claimant" : "subdued",
+        forbiddenThisTurn: true,
+        treaty: "none",
+      });
       queueEventModal({
         label: "Severant Interdiction",
         title: `${highSeverantProfile.hiddenName} Protects What Is Hers`,
@@ -19112,7 +19186,52 @@ const BASE_FACTIONS = [
         portrait: highSeverantPortrait(),
         cta: "Continue",
       });
-      addLog(`${highSeverantProfile.hiddenName} stops ${faction.leader}'s attempted betrayal during ${sourceLabel.toLowerCase()} and has her dragged back under discipline.`);
+      addLog(`${highSeverantProfile.hiddenName} stops ${faction.leader}'s attempted betrayal during ${sourceLabel.toLowerCase()} and has her ${wasUnderground ? "dragged out of the underground and " : ""}returned to your court under discipline.`);
+      onSeverantRouteQueenSecured(queenFaction, wasUnderground ? "interdicted underground" : "interdicted");
+      maybeFinishGame();
+      render();
+      return true;
+    }
+
+    function matronEscortInterdictCovertCapture(queenFaction, sourceLabel, matron) {
+      const faction = factionById(queenFaction);
+      if (!faction) return false;
+      const st = queenEntry(queenFaction);
+      st.hate = clamp((st.hate || 0) + 12, -100, 100);
+      st.fear = clamp((st.fear || 0) + 14, 0, 100);
+      st.trust = clamp((st.trust || 0) - 8, -100, 100);
+      st.romance = Math.max(0, (st.romance || 0) - 6);
+      st.attraction = Math.max(0, (st.attraction || 0) - 4);
+      st.morale = clamp((st.morale || 0) - 6, 0, 100);
+      const matronName = matron?.name || "Your matron escort";
+      const body = `${faction.leader} chooses ${sourceLabel.toLowerCase()} as the moment to close the trap and take you.\n\nShe misjudges the room. ${matronName} and her escort do not let the door stay closed long enough for the snare to harden. The queen is thrown to the floor, stripped of the leverage she thought she had, and marched back into your custody instead.`;
+      if (!capturedQueens.includes(queenFaction)) {
+        return submitQueenToPlayer(
+          queenFaction,
+          body,
+          "Matron Interdiction",
+          {
+            title: `${matronName} Breaks The Trap`,
+            cta: "See Her Seized",
+            logText: `${matronName} breaks ${faction.leader}'s trap during ${sourceLabel.toLowerCase()} and brings the queen into your custody instead.`,
+          }
+        );
+      }
+      const wasUnderground = st.underworldAssigned || Boolean(st.undergroundLocation);
+      returnCapturedQueenToCourt(queenFaction, {
+        assignment: "court",
+        forbiddenThisTurn: false,
+        treaty: "none",
+      });
+      queueEventModal({
+        label: "Matron Interdiction",
+        title: `${matronName} Breaks The Trap`,
+        body,
+        portrait: matron?.portrait || (queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction]),
+        cta: "See Her Returned",
+      });
+      addLog(`${matronName} breaks ${faction.leader}'s trap during ${sourceLabel.toLowerCase()} and has her ${wasUnderground ? "dragged out of the underground and " : ""}returned to your court instead.`);
+      maybeFinishGame();
       render();
       return true;
     }
@@ -23068,6 +23187,30 @@ const BASE_FACTIONS = [
       }
     }
 
+    function advanceWorldRound() {
+      round += 1;
+      resolvePregnancies();
+      resolveMatronPregnancies();
+      resolveCrimeQueenPregnancies();
+      resolveSeverantCourtPregnancies();
+      resolveOfficerPregnancies();
+      resolveSpyPregnancies();
+      resolveHeirTurn();
+      resolveRestorationTurn();
+      resolveUnderworldTurn();
+      if (maybeResolveDynastyEndings()) return false;
+      moveUndergroundQueens();
+      runWorldQueenDiplomacy();
+      triggerWorldEvents();
+      return !gameOver;
+    }
+
+    function soloPlayerRoundState(aliveIds = activeFactions().map((faction) => faction.id)) {
+      return aliveIds.length === 1 &&
+        aliveIds[0] === playerFactionId() &&
+        dormantQueens().length === 0;
+    }
+
     function cycleTurn() {
       if (gameOver) return;
       if (gameBooted && tiles.length) saveGame("auto");
@@ -23080,26 +23223,19 @@ const BASE_FACTIONS = [
       if (aliveIds.length <= 1) {
         maybeFinishGame();
         if (gameOver || aliveIds.length === 0) return;
+        if (soloPlayerRoundState(aliveIds)) {
+          currentFactionIndex = Math.max(0, FACTIONS.findIndex((faction) => faction.id === playerFactionId()));
+          if (!advanceWorldRound()) return;
+          startTurn(playerFactionId());
+          return;
+        }
       }
 
       let tries = 0;
       do {
         currentFactionIndex = (currentFactionIndex + 1) % FACTIONS.length;
         if (currentFactionIndex === 0) {
-          round += 1;
-          resolvePregnancies();
-          resolveMatronPregnancies();
-          resolveCrimeQueenPregnancies();
-          resolveSeverantCourtPregnancies();
-          resolveOfficerPregnancies();
-          resolveSpyPregnancies();
-          resolveHeirTurn();
-          resolveRestorationTurn();
-          resolveUnderworldTurn();
-          if (maybeResolveDynastyEndings()) return;
-          moveUndergroundQueens();
-          runWorldQueenDiplomacy();
-          triggerWorldEvents();
+          if (!advanceWorldRound()) return;
         }
         tries += 1;
       } while (!aliveIds.includes(FACTIONS[currentFactionIndex].id) && tries < 10);
@@ -23224,7 +23360,7 @@ const BASE_FACTIONS = [
       if (!gameOver) {
         humanMovesRemaining = Math.max(0, humanMovesRemaining - 1);
         if (humanMovesRemaining === 0) {
-          const moveCap = HUMAN_MOVES_PER_TURN + Math.floor(loyalHeirs().length / 3);
+          const moveCap = currentHumanMoveCap();
           addLog(`You used all ${moveCap} moves. Turn ended.`);
           render();
           cycleTurn();
@@ -23306,9 +23442,12 @@ const BASE_FACTIONS = [
       return null;
     }
 
-    async function runAiTurn(factionId) {
+    async function runAiTurn(factionId, options = {}) {
+      const moveBudget = Math.max(0, Math.floor(options.moveBudget ?? HUMAN_MOVES_PER_TURN));
+      const consumeHumanMoves = Boolean(options.consumeHumanMoves);
+      const autoEndTurn = options.autoEndTurn !== false;
       let actions = 0;
-      while (actions < HUMAN_MOVES_PER_TURN) {
+      while (actions < moveBudget) {
         const pick = aiPickAction(factionId);
         if (!pick) break;
 
@@ -23335,12 +23474,28 @@ const BASE_FACTIONS = [
         }
 
         actions += 1;
+        if (consumeHumanMoves) {
+          humanMovesRemaining = Math.max(0, humanMovesRemaining - 1);
+          updateHUD();
+        }
       }
 
       cleanupUnits();
       maybeFinishGame();
       render();
-      scheduleTurnCallback(() => cycleTurn(), 420);
+      if (gameOver) return actions;
+      if (consumeHumanMoves) {
+        if (actions === 0) {
+          addLog("Your queens find no useful move and end the turn.");
+        } else {
+          addLog(`Auto turn spends ${actions} move${actions === 1 ? "" : "s"} and passes the turn.`);
+        }
+        render();
+      }
+      if (autoEndTurn) {
+        scheduleTurnCallback(() => cycleTurn(), 420);
+      }
+      return actions;
     }
 
     canvas.addEventListener("mousemove", (ev) => {
