@@ -1389,6 +1389,9 @@ const BASE_FACTIONS = [
         };
       }
       const state = queenState[queenFaction];
+      state.lastRoyalOfferRound = Number.isFinite(state.lastRoyalOfferRound) ? state.lastRoyalOfferRound : -10;
+      state.lastNegotiationTurn = Number.isFinite(state.lastNegotiationTurn) ? state.lastNegotiationTurn : -1;
+      state.protectionUntilRound = Number.isFinite(state.protectionUntilRound) ? state.protectionUntilRound : -1;
       if (capturedQueens.includes(queenFaction)) {
         // Harem queens start at max affection
         state.trust = Math.max(state.trust, 100);
@@ -14191,6 +14194,8 @@ const BASE_FACTIONS = [
     function renderEventPanel() {
       eventPanelEl.innerHTML = "";
       const event = eventQueue[0];
+      // Rebuild these choices from saved data; functions do not survive JSON saves.
+      if (event?.kind === "royal_terms" || event?.kind === "royal_protection") prepareRoyalEvent(event);
       if (!event) {
         modalCloseBtn.disabled = false;
         modalCloseBtn.textContent = "Continue";
@@ -17210,6 +17215,164 @@ const BASE_FACTIONS = [
       }
     }
 
+    function royalNegotiationAvailable(queenFaction) {
+      return !gameOver && gameMode !== "servitude" && queenFaction !== 0 &&
+        leaderState[queenFaction]?.active && !leaderState[queenFaction]?.defeated &&
+        !capturedQueens.includes(queenFaction) && !isSeverantHiddenCourtFaction(queenFaction) &&
+        !severantElaraNoReturnFaction(queenFaction);
+    }
+
+    function royalStrength(factionId) {
+      return ownedTiles(factionId).filter(tile => tile.terrain === "land")
+        .reduce((total, tile) => total + 3 + Math.max(0, tile.troops || 0) + (tile.capital ? 8 : 0), 0);
+    }
+
+    function royalTerms(queenFaction) {
+      const st = queenEntry(queenFaction);
+      const ratio = royalStrength(0) / Math.max(1, royalStrength(queenFaction));
+      const personality = factionById(queenFaction).personality || fallbackPersonality(queenFaction);
+      const possessive = personality === "Aggressive" || personality === "Opportunist" || st.hate >= 50;
+      return {
+        ratio,
+        possessive,
+        yields: ratio >= 1.35 && ratio * 35 + st.fear * 0.5 + st.trust * 0.25 - st.hate * 0.3 >= 65,
+        truce: !possessive || st.trust >= 30 || ratio >= 0.85,
+      };
+    }
+
+    function openRoyalNegotiation(queenFaction, unsolicited = false) {
+      if (!royalNegotiationAvailable(queenFaction)) return false;
+      const st = queenEntry(queenFaction);
+      if (!unsolicited && st.lastNegotiationTurn === diplomacyTurnNumber) return false;
+      if (eventQueue.some(event => event.kind === "royal_terms" && event.queenFaction === queenFaction)) return false;
+      const queen = factionById(queenFaction);
+      const terms = royalTerms(queenFaction);
+      st.lastRoyalOfferRound = round;
+      queueEventModal({
+        kind: "royal_terms", queenFaction,
+        label: "Royal Negotiation",
+        title: `${queen.leader} Wants You Alive`,
+        body: terms.ratio < 0.75
+          ? `${queen.leader} sees your armies faltering. "You are too valuable to lose on a battlefield. ${terms.possessive ? "Yield and become my personal captive. Your command and your future will serve my crown." : "Surrender your crown and serve under my protection. I would rather have you beside my throne than buried beneath it."}"`
+          : terms.yields
+          ? `${queen.leader} recognizes your advantage. "I will surrender my realm and enter your court if you guarantee my life. Or we can negotiate peace. Neither of us needs to die for this war."`
+          : `${queen.leader} studies you with growing interest. "Your talent makes you a valuable ally, and a tempting prize. ${terms.possessive ? "I would like to claim you for my own court." : "I would like you close, under my protection."} Tell me what you offer in return."`,
+        portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
+      });
+      return true;
+    }
+
+    function resolveRoyalTerms(event, choice) {
+      const id = event.queenFaction;
+      if (currentEventModal() !== event) return;
+      if (!royalNegotiationAvailable(id)) { dismissEventModal(); return; }
+      const st = queenEntry(id);
+      if (st.lastNegotiationTurn === diplomacyTurnNumber) { dismissEventModal(); return; }
+      const terms = royalTerms(id);
+      const queen = factionById(id);
+      if (choice === "tribute" && treasury < 10) return;
+      st.lastNegotiationTurn = diplomacyTurnNumber;
+      dismissEventModal();
+      if (choice === "serve") {
+        st.protectionUntilRound = round + 4;
+        st.trust = clamp(st.trust + 8, -100, 100);
+        humanSurrenderTo(id);
+      } else if (choice === "yield" && terms.yields) {
+        submitQueenToPlayer(id, `${queen.leader} lays down her crown in exchange for your guarantee of her life. Her realm joins yours, and she enters your court under negotiated surrender terms.`, "Negotiated Surrender");
+      } else if (choice === "tribute" || (choice === "truce" && terms.truce)) {
+        if (choice === "tribute") treasury -= 10;
+        st.treaty = "truce";
+        st.trust = clamp(st.trust + 4, -100, 100);
+        addLog(`${queen.leader} accepts ${choice === "tribute" ? "10 crowns and a truce" : "a truce between equals"}. You both retain your freedom.`);
+      } else if (choice !== "refuse") {
+        addLog(`${queen.leader} refuses your counteroffer. She still wants you alive, but will not yield on those terms.`);
+      } else {
+        addLog(`You refuse ${queen.leader}'s terms and keep your independence.`);
+      }
+      render();
+    }
+
+    function prepareRoyalEvent(event) {
+      const id = event.queenFaction;
+      if (event.kind === "royal_terms") {
+        const valid = royalNegotiationAvailable(id) && queenEntry(id).lastNegotiationTurn !== diplomacyTurnNumber;
+        if (!valid) {
+          event.actions = [{ label: "Terms No Longer Available", onClick: () => dismissEventModal() }];
+          return;
+        }
+        const terms = royalTerms(id);
+        event.actions = [
+          { label: "Yield My Realm And Enter Her Service", onClick: () => resolveRoyalTerms(event, "serve") },
+          { label: terms.yields ? "Accept Her Surrender; Guarantee Her Life" : "Counteroffer: She Surrenders To Me", onClick: () => resolveRoyalTerms(event, "yield") },
+          { label: terms.truce ? "Propose Peace As Equals" : "Counteroffer: Peace As Equals", onClick: () => resolveRoyalTerms(event, "truce") },
+          { label: "Offer 10 Crowns For A Truce", disabled: treasury < 10, onClick: () => resolveRoyalTerms(event, "tribute") },
+          { label: "Refuse And Remain Free", onClick: () => resolveRoyalTerms(event, "refuse") },
+        ];
+      } else {
+        event.actions = [
+          { label: "Accept Her Protection", onClick: () => resolveRoyalProtection(event, true) },
+          { label: "Keep My Distance", onClick: () => resolveRoyalProtection(event, false) },
+        ];
+      }
+    }
+
+    function resolveRoyalProtection(event, accept) {
+      if (currentEventModal() !== event) return;
+      dismissEventModal();
+      if (gameOver || gameMode !== "servitude" || overlordQueenId !== event.queenFaction) return;
+      const st = queenEntry(overlordQueenId);
+      if (accept) {
+        st.protectionUntilRound = round + 4;
+        st.trust = clamp(st.trust + 6, -100, 100);
+        dynastyState.severantProgress = clamp(dynastyState.severantProgress - 8, 0, 100);
+        resistanceState.exposure = clamp(resistanceState.exposure - 6, 0, 100);
+        addLog(`${factionById(overlordQueenId).leader} intercepts the Order's couriers and shields your identity. Severant progress -8; resistance exposure -6.`);
+      } else {
+        addLog("You keep your distance from your captor. Her shelter would not restore your freedom.");
+      }
+      render();
+    }
+
+    function advanceRoyalInterest() {
+      if (gameOver) return;
+      ensureHighSeverantState();
+      ensureHighSeverantProfile();
+      // Rival interest develops slowly and separately from trust or consent.
+      for (const queen of diplomacyTargetQueens()) {
+        if (isSeverantHiddenCourtFaction(queen.id) || severantElaraNoReturnFaction(queen.id)) continue;
+        const st = queenEntry(queen.id);
+        if (round >= 3 && (round + queen.id) % 3 === 0) st.attraction = clamp(st.attraction + 2, 0, 100);
+      }
+      const severantFree = !highSeverantProfile.captive && highSeverantProfile.confrontationOutcome !== "judged";
+      if (severantFree && round >= 3 && round % 3 === 0) {
+        highSeverantState.interest = clamp(highSeverantState.interest + 2, 0, 100);
+        highSeverantState.obsession = clamp(highSeverantState.obsession + 1, 0, 100);
+      }
+      if (eventQueue.length) return;
+      if (gameMode === "servitude" && overlordQueenId !== null) {
+        const st = queenEntry(overlordQueenId);
+        if (!severantFree || campaignRouteState.side === "severant" || round - st.lastRoyalOfferRound < 5) return;
+        const protective = st.trust >= 15 || st.attraction >= 30 || st.protectionUntilRound >= round;
+        if (!protective) return;
+        st.lastRoyalOfferRound = round;
+        queueEventModal({
+          kind: "royal_protection", queenFaction: overlordQueenId,
+          label: "A Rival Claim", title: "Your Captor Defies The High Severant",
+          body: `${factionById(overlordQueenId).leader} intercepts a sealed demand from the High Severant. "She wants you delivered alive. She calls it strategy, but her interest in you is becoming personal. Other queens are beginning to look at you the same way."\n\nYour captor offers to hide your movements and break the Order's courier trail. "You are valuable to me. I will not simply hand you over." Her protection reduces Severant progress by 8 and resistance exposure by 6; you remain in her service.`,
+          portrait: queenPortraits[overlordQueenId] || QUEEN_PORTRAITS[overlordQueenId],
+        });
+        return;
+      }
+      const candidates = diplomacyTargetQueens().filter(queen => {
+        if (!royalNegotiationAvailable(queen.id)) return false;
+        const st = queenEntry(queen.id);
+        const terms = royalTerms(queen.id);
+        return round >= 3 && round - st.lastRoyalOfferRound >= 5 &&
+          st.lastNegotiationTurn !== diplomacyTurnNumber && (terms.ratio < 0.75 || terms.yields || st.attraction >= 30);
+      });
+      if (candidates.length) openRoyalNegotiation(candidates[(round - 1) % candidates.length].id, true);
+    }
+
     function humanSurrenderTo(queenFaction) {
       const faction = factionById(queenFaction);
       for (const tile of tiles) {
@@ -17240,7 +17403,7 @@ const BASE_FACTIONS = [
       queueEventModal({
         label: "Servitude",
         title: `You Kneel Before ${faction.leader}`,
-        body: `You abandon the Verdant Crown and hand your lands to ${faction.name}.\n\nFrom now on, you fight to expand her realm. In secret, you may also build a hidden resistance and someday rebel against her.`,
+        body: `You abandon the Verdant Crown and hand your lands to ${faction.name}.\n\nShe orders her guards to keep you alive: your command, knowledge, and presence are too valuable to waste.${queenEntry(queenFaction).protectionUntilRound >= round ? " She also promises to conceal you from the High Severant's agents." : ""}\n\nFrom now on, you fight to expand her realm. In secret, you may also build a hidden resistance and someday rebel against her.`,
         portrait: queenPortraits[queenFaction] || QUEEN_PORTRAITS[queenFaction],
         cta: "Serve Her",
       });
@@ -17296,6 +17459,7 @@ const BASE_FACTIONS = [
         turnDevotionStart: 6,
         turnCapitalTroopsStart: 0,
       };
+      queenEntry(queenFaction).protectionUntilRound = round + 6;
       currentFactionIndex = FACTIONS.findIndex(f => f.id === queenFaction);
       addLog(`${faction.leader} captures you during ${sourceLabel.toLowerCase()} and forces you into her service.`);
       queueEventModal({
@@ -18381,9 +18545,9 @@ const BASE_FACTIONS = [
         wrap.appendChild(worshipBtn);
 
         const surrenderBtn = document.createElement("button");
-        surrenderBtn.textContent = "Surrender To Her";
-        surrenderBtn.disabled = !isHumanTurn || !leaderState[f.id]?.active;
-        surrenderBtn.addEventListener("click", () => humanSurrenderTo(f.id));
+        surrenderBtn.textContent = "Negotiate Surrender";
+        surrenderBtn.disabled = !isHumanTurn || !royalNegotiationAvailable(f.id) || st.lastNegotiationTurn === diplomacyTurnNumber;
+        surrenderBtn.addEventListener("click", () => openRoyalNegotiation(f.id));
         wrap.appendChild(surrenderBtn);
 
         grid.appendChild(wrap);
@@ -23202,6 +23366,7 @@ const BASE_FACTIONS = [
       moveUndergroundQueens();
       runWorldQueenDiplomacy();
       triggerWorldEvents();
+      advanceRoyalInterest();
       return !gameOver;
     }
 
